@@ -66,15 +66,29 @@ function ComboboxField({
   options,
   onChange,
   placeholder,
+  onOpenChange,
+  disabled,
+  loading,
 }: {
   value: string;
   options: { label: string; value: string; group?: string }[];
   onChange: (val: string) => void;
   placeholder?: string;
+  onOpenChange?: (open: boolean) => void;
+  disabled?: boolean;
+  loading?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const setOpenExt = useCallback(
+    (nextOpen: boolean) => {
+      setOpen(nextOpen);
+      onOpenChange?.(nextOpen);
+    },
+    [onOpenChange],
+  );
 
   // Sync filter with external value when it changes (e.g. provider switch resets model)
   useEffect(() => {
@@ -105,11 +119,11 @@ function ComboboxField({
   const select = useCallback(
     (val: string) => {
       onChange(val);
-      setOpen(false);
+      setOpenExt(false);
       setFilter("");
       inputRef.current?.blur();
     },
-    [onChange],
+    [onChange, setOpenExt],
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -122,11 +136,11 @@ function ComboboxField({
         select(filter);
       }
     } else if (e.key === "Escape") {
-      setOpen(false);
+      setOpenExt(false);
       setFilter("");
     } else if (e.key === "ArrowDown" && !open) {
       e.preventDefault();
-      setOpen(true);
+      setOpenExt(true);
     }
   };
 
@@ -136,25 +150,35 @@ function ComboboxField({
         <input
           ref={inputRef}
           type="text"
-          className="flex-1 rounded-l-md border border-r-0 border-border px-2.5 py-1.5 bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/40 focus:z-10"
+          disabled={disabled}
+          className={`flex-1 rounded-l-md border border-r-0 border-border px-2.5 py-1.5 bg-transparent outline-none text-sm font-mono placeholder:text-muted-foreground/40 focus:z-10 ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
           value={displayValue}
           placeholder={placeholder ?? "Type or select..."}
           onChange={(e) => {
+            if (disabled) return;
             setFilter(e.target.value);
-            if (!open) setOpen(true);
+            if (!open) setOpenExt(true);
           }}
           onFocus={() => {
-            if (!open) setOpen(true);
+            if (disabled) return;
+            if (!open) setOpenExt(true);
           }}
           onBlur={() => {
             // Delay close to allow click on option to register
-            setTimeout(() => setOpen(false), 150);
+            setTimeout(() => setOpenExt(false), 150);
           }}
-          onKeyDown={handleKeyDown}
+          onKeyDown={(e) => {
+            if (disabled) return;
+            handleKeyDown(e);
+          }}
         />
-        <Popover open={open && filtered.length > 0} onOpenChange={setOpen}>
+        <Popover open={open} onOpenChange={setOpenExt}>
           <PopoverTrigger asChild>
-            <button className="rounded-r-md border border-border px-2 py-1.5 hover:bg-accent/50 transition-colors">
+            <button
+              type="button"
+              disabled={disabled}
+              className={`rounded-r-md border border-border px-2 py-1.5 hover:bg-accent/50 transition-colors ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
+            >
               <ChevronDown className="h-3 w-3 text-muted-foreground" />
             </button>
           </PopoverTrigger>
@@ -164,7 +188,12 @@ function ComboboxField({
             align="start"
             onOpenAutoFocus={(e) => e.preventDefault()}
           >
-            {Array.from(grouped.entries()).map(([group, opts]) => (
+            {loading && (
+              <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                Lade Modelle…
+              </div>
+            )}
+            {!loading && Array.from(grouped.entries()).map(([group, opts]) => (
               <div key={group || "_ungrouped"}>
                 {group && (
                   <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
@@ -187,9 +216,14 @@ function ComboboxField({
                 ))}
               </div>
             ))}
-            {filter && filtered.length === 0 && (
+            {!loading && filter && filtered.length === 0 && (
               <div className="px-2 py-1.5 text-sm text-muted-foreground">
                 Use &quot;{filter}&quot; as custom value (press Enter)
+              </div>
+            )}
+            {!loading && options.length === 0 && !filter && (
+              <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                Keine Modelle — URL erreichbar? Modellname manuell eintippen.
               </div>
             )}
           </PopoverContent>

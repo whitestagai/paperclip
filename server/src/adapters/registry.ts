@@ -85,6 +85,7 @@ import { buildExternalAdapters } from "./plugin-loader.js";
 import { getDisabledAdapterTypes } from "../services/adapter-plugin-store.js";
 import { processAdapter } from "./process/index.js";
 import { httpAdapter } from "./http/index.js";
+import { logger } from "../middleware/logger.js";
 
 const claudeLocalAdapter: ServerAdapterModule = {
   type: "claude_local",
@@ -327,7 +328,11 @@ export async function listAdapterModels(
     try {
       const discovered = await adapter.listModels(opts);
       if (discovered.length > 0) return discovered;
-    } catch {
+    } catch (err) {
+      logger.warn(
+        { err, adapterType: type, url: opts?.url },
+        "adapter.listModels threw — returning empty list",
+      );
       return [];
     }
   }

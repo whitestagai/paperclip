@@ -278,20 +278,23 @@ export interface ConfigFieldOption {
  * keys are interpreted by the generic schema renderer in `ui/`.
  */
 export interface ConfigFieldMetaKnown {
-  /** Existing: provider → models map for `combobox` with provider-scoped options */
+  /** Provider → models map for combobox with provider-scoped options. */
   providerModels?: Record<string, string[]>;
 
   /**
    * Key of another field in the same schema whose value is treated as the base URL
    * when loading combobox options. The renderer calls
    * `GET /api/adapters/:type/models?url=<that-value>` lazily when the dropdown opens.
-   * Requires field.type === "combobox".
+   * Requires field.type === "combobox". Pairs well with `disabledWhenEmpty` pointing
+   * at the same field so the combobox disables itself when the URL is missing.
    */
   optionsFromUrlField?: string;
 
   /**
-   * Key of another field in the same schema. When that field's trimmed value is
-   * empty, this field is rendered disabled (input + popover locked).
+   * Key of another field in the same schema. The renderer treats the referenced
+   * field as "empty" when its value is null/undefined or its trimmed string is "".
+   * When empty, this field is rendered disabled: input + popover locked, current
+   * value preserved in state but not editable.
    */
   disabledWhenEmpty?: string;
 }

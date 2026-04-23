@@ -23,6 +23,7 @@ export type {
   HireApprovedPayload,
   HireApprovedHookResult,
   ConfigFieldOption,
+  ConfigFieldMetaKnown,
   ConfigFieldSchema,
   AdapterConfigSchema,
   ServerAdapterModule,

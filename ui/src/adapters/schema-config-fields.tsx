@@ -12,6 +12,10 @@ import {
 } from "../components/agent-config-primitives";
 import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 import { ChevronDown } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { agentsApi } from "../api/agents";
+import { queryKeys } from "../lib/queryKeys";
+import { useCompany } from "../context/CompanyContext";
 
 // ── Select field (extracted to keep hooks at component top level) ──────
 function SelectField({
@@ -321,6 +325,56 @@ function getDefaultValue(field: ConfigFieldSchema): unknown {
 }
 
 // ---------------------------------------------------------------------------
+// UrlModelsCombobox — lazy-loads models from /adapters/:type/models?url=…
+// ---------------------------------------------------------------------------
+
+function UrlModelsCombobox({
+  adapterType,
+  companyId,
+  url,
+  value,
+  disabled,
+  onChange,
+  placeholder,
+}: {
+  adapterType: string;
+  companyId: string | null | undefined;
+  url: string;
+  value: string;
+  disabled: boolean;
+  onChange: (val: string) => void;
+  placeholder?: string;
+}) {
+  const [hasOpened, setHasOpened] = useState(false);
+
+  const enabled = hasOpened && !disabled && Boolean(companyId) && url.length > 0;
+
+  const { data, isFetching } = useQuery({
+    queryKey: queryKeys.agents.adapterModels(companyId ?? "", adapterType, url),
+    queryFn: () => agentsApi.adapterModels(companyId!, adapterType, url),
+    enabled,
+    staleTime: 30_000,
+  });
+
+  const options = (data ?? []).map((m) => ({ label: m.label, value: m.id }));
+
+  return (
+    <ComboboxField
+      value={value}
+      options={options}
+      disabled={disabled}
+      loading={isFetching}
+      emptyHint="No models — URL reachable? Type a model name manually."
+      onChange={onChange}
+      placeholder={placeholder}
+      onOpenChange={(open) => {
+        if (open) setHasOpened(true);
+      }}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -334,6 +388,7 @@ export function SchemaConfigFields({
   mark,
 }: AdapterConfigFieldsProps) {
   const schema = useConfigSchema(adapterType);
+  const { selectedCompanyId } = useCompany();
 
   const [defaultsApplied, setDefaultsApplied] = useState(false);
   useEffect(() => {
@@ -457,6 +512,39 @@ export function SchemaConfigFields({
 
           case "combobox": {
             const currentVal = String(readValue(field) ?? "");
+
+            // Fall A: URL-abhängige Optionen (new)
+            if (field.meta?.optionsFromUrlField) {
+              const urlFieldKey = field.meta.optionsFromUrlField as string;
+              const urlFieldSchema = schema.fields.find((f) => f.key === urlFieldKey);
+              const urlValue = String(
+                urlFieldSchema ? readValue(urlFieldSchema) ?? "" : "",
+              ).trim();
+
+              const disabledField = field.meta.disabledWhenEmpty as string | undefined;
+              const disabledFieldSchema = disabledField
+                ? schema.fields.find((f) => f.key === disabledField)
+                : undefined;
+              const isDisabled = disabledFieldSchema
+                ? !String(readValue(disabledFieldSchema) ?? "").trim()
+                : false;
+
+              return (
+                <Field key={field.key} label={field.label} hint={field.hint}>
+                  <UrlModelsCombobox
+                    adapterType={adapterType}
+                    companyId={selectedCompanyId}
+                    url={urlValue}
+                    value={currentVal}
+                    disabled={isDisabled}
+                    onChange={(v) => writeValue(field, v || undefined)}
+                    placeholder={field.hint}
+                  />
+                </Field>
+              );
+            }
+
+            // Fall B: providerModels (existing logic, unchanged)
             // Dynamic options: if meta.providerModels exists, compute options
             // based on the current provider value
             let comboboxOptions = field.options ?? [];

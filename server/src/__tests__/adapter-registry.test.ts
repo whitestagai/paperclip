@@ -141,3 +141,86 @@ describe("server adapter registry", () => {
     expect(detectModel).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("listAdapterModels with opts.url", () => {
+  const type = "mock_task4_url";
+
+  afterEach(() => {
+    unregisterServerAdapter(type);
+  });
+
+  it("passes opts.url to the adapter's listModels", async () => {
+    const listSpy = vi.fn(async (_opts?: { url?: string }) => [
+      { id: "remote-model", label: "remote-model" },
+    ]);
+    registerServerAdapter({
+      type,
+      execute: async () => ({
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
+      }),
+      testEnvironment: async () => ({
+        adapterType: type,
+        status: "pass",
+        checks: [],
+        testedAt: new Date(0).toISOString(),
+      }),
+      listModels: listSpy,
+      supportsLocalAgentJwt: false,
+    } as ServerAdapterModule);
+
+    const result = await listAdapterModels(type, { url: "http://x:1234" });
+
+    expect(listSpy).toHaveBeenCalledWith({ url: "http://x:1234" });
+    expect(result).toEqual([{ id: "remote-model", label: "remote-model" }]);
+  });
+
+  it("returns [] when the adapter's listModels throws (URL unreachable)", async () => {
+    registerServerAdapter({
+      type,
+      execute: async () => ({
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
+      }),
+      testEnvironment: async () => ({
+        adapterType: type,
+        status: "pass",
+        checks: [],
+        testedAt: new Date(0).toISOString(),
+      }),
+      listModels: async () => {
+        throw new Error("ECONNREFUSED");
+      },
+      supportsLocalAgentJwt: false,
+    } as ServerAdapterModule);
+
+    const result = await listAdapterModels(type, { url: "http://dead:9999" });
+    expect(result).toEqual([]);
+  });
+
+  it("calls listModels with undefined when opts is omitted (backwards compat)", async () => {
+    const listSpy = vi.fn(async () => [{ id: "legacy", label: "legacy" }]);
+    registerServerAdapter({
+      type,
+      execute: async () => ({
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
+      }),
+      testEnvironment: async () => ({
+        adapterType: type,
+        status: "pass",
+        checks: [],
+        testedAt: new Date(0).toISOString(),
+      }),
+      listModels: listSpy,
+      supportsLocalAgentJwt: false,
+    } as ServerAdapterModule);
+
+    const result = await listAdapterModels(type);
+    expect(listSpy).toHaveBeenCalledWith(undefined);
+    expect(result).toEqual([{ id: "legacy", label: "legacy" }]);
+  });
+});

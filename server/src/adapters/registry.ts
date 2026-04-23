@@ -317,12 +317,19 @@ export function getServerAdapter(type: string): ServerAdapterModule {
   return findActiveServerAdapter(type) ?? processAdapter;
 }
 
-export async function listAdapterModels(type: string): Promise<{ id: string; label: string }[]> {
+export async function listAdapterModels(
+  type: string,
+  opts?: { url?: string },
+): Promise<{ id: string; label: string }[]> {
   const adapter = findActiveServerAdapter(type);
   if (!adapter) return [];
   if (adapter.listModels) {
-    const discovered = await adapter.listModels();
-    if (discovered.length > 0) return discovered;
+    try {
+      const discovered = await adapter.listModels(opts);
+      if (discovered.length > 0) return discovered;
+    } catch {
+      return [];
+    }
   }
   return adapter.models ?? [];
 }

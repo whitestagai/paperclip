@@ -272,6 +272,30 @@ export interface ConfigFieldOption {
   group?: string;
 }
 
+/**
+ * Known keys inside `ConfigFieldSchema.meta`. The field is still typed as
+ * `Record<string, unknown>` so adapters may add arbitrary keys, but these
+ * keys are interpreted by the generic schema renderer in `ui/`.
+ */
+export interface ConfigFieldMetaKnown {
+  /** Existing: provider → models map for `combobox` with provider-scoped options */
+  providerModels?: Record<string, string[]>;
+
+  /**
+   * Key of another field in the same schema whose value is treated as the base URL
+   * when loading combobox options. The renderer calls
+   * `GET /api/adapters/:type/models?url=<that-value>` lazily when the dropdown opens.
+   * Requires field.type === "combobox".
+   */
+  optionsFromUrlField?: string;
+
+  /**
+   * Key of another field in the same schema. When that field's trimmed value is
+   * empty, this field is rendered disabled (input + popover locked).
+   */
+  disabledWhenEmpty?: string;
+}
+
 export interface ConfigFieldSchema {
   key: string;
   label: string;
@@ -299,7 +323,7 @@ export interface ServerAdapterModule {
   sessionManagement?: import("./session-compaction.js").AdapterSessionManagement;
   supportsLocalAgentJwt?: boolean;
   models?: AdapterModel[];
-  listModels?: () => Promise<AdapterModel[]>;
+  listModels?: (opts?: { url?: string }) => Promise<AdapterModel[]>;
   agentConfigurationDoc?: string;
   /**
    * Optional lifecycle hook when an agent is approved/hired (join-request or hire_agent approval).

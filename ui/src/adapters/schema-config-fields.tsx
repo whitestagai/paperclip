@@ -69,6 +69,7 @@ function ComboboxField({
   onOpenChange,
   disabled,
   loading,
+  emptyHint,
 }: {
   value: string;
   options: { label: string; value: string; group?: string }[];
@@ -77,6 +78,7 @@ function ComboboxField({
   onOpenChange?: (open: boolean) => void;
   disabled?: boolean;
   loading?: boolean;
+  emptyHint?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState("");
@@ -164,6 +166,7 @@ function ComboboxField({
             if (!open) setOpenExt(true);
           }}
           onBlur={() => {
+            if (disabled) return;
             // Delay close to allow click on option to register
             setTimeout(() => setOpenExt(false), 150);
           }}
@@ -190,7 +193,7 @@ function ComboboxField({
           >
             {loading && (
               <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                Lade Modelle…
+                Loading models…
               </div>
             )}
             {!loading && Array.from(grouped.entries()).map(([group, opts]) => (
@@ -221,9 +224,9 @@ function ComboboxField({
                 Use &quot;{filter}&quot; as custom value (press Enter)
               </div>
             )}
-            {!loading && options.length === 0 && !filter && (
+            {!loading && options.length === 0 && !filter && emptyHint && (
               <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                Keine Modelle — URL erreichbar? Modellname manuell eintippen.
+                {emptyHint}
               </div>
             )}
           </PopoverContent>

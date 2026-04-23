@@ -781,7 +781,9 @@ export function agentRoutes(db: Db) {
     const companyId = req.params.companyId as string;
     assertCompanyAccess(req, companyId);
     const type = assertKnownAdapterType(req.params.type as string);
-    const models = await listAdapterModels(type);
+    const rawUrl = typeof req.query.url === "string" ? req.query.url : undefined;
+    const url = rawUrl?.trim() || undefined;
+    const models = await listAdapterModels(type, { url });
     res.json(models);
   });
 

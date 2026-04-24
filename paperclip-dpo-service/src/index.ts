@@ -8,6 +8,7 @@ import { Monitor } from "./monitor.js";
 import { startMonitorRunner } from "./monitor-runner.js";
 import { makeClassifierProbe } from "./classifier-probe.js";
 import { postTelegram } from "./telegram.js";
+import { DebugTrail } from "./debug-trail.js";
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
@@ -20,11 +21,23 @@ async function main(): Promise<void> {
     classifier: cfg.classifier,
   });
 
+  const debugTrail = new DebugTrail({
+    enabled: cfg.debugTrail.enabled,
+    dir: cfg.debugTrail.dir,
+  });
+  if (cfg.debugTrail.enabled) {
+    console.warn(
+      `[DEBUG-TRAIL] ACTIVE — plaintext prompts/responses are written to ${cfg.debugTrail.dir}. ` +
+        `Disable in production by unsetting DPO_DEBUG_TRAIL.`,
+    );
+  }
+
   const app = await buildServer({
     sharedKey: cfg.sharedKey,
     classifierUrl: cfg.classifier.url,
     dpo,
     logger: true,
+    debugTrail,
   });
 
   const alertFn = cfg.telegram

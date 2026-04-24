@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+const TRUE_SET = new Set(["1", "true", "yes", "on"]);
+
 const Schema = z.object({
   DPO_PORT: z.coerce.number().default(4711),
   DPO_BIND: z.string().default("0.0.0.0"),
@@ -11,6 +13,8 @@ const Schema = z.object({
   DPO_CLASSIFIER_TIMEOUT_MS: z.coerce.number().default(30000),
   DPO_TELEGRAM_BOT_TOKEN: z.string().optional(),
   DPO_TELEGRAM_CHAT_ID: z.string().optional(),
+  DPO_DEBUG_TRAIL: z.string().optional(),
+  DPO_DEBUG_TRAIL_DIR: z.string().optional(),
 });
 
 export interface ServiceConfig {
@@ -21,6 +25,7 @@ export interface ServiceConfig {
   auditDir: string;
   classifier: { url: string; model: string; timeoutMs: number };
   telegram?: { botToken: string; chatId: string };
+  debugTrail: { enabled: boolean; dir?: string };
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv | Record<string, string | undefined> = process.env): ServiceConfig {
@@ -28,6 +33,7 @@ export function loadConfig(env: NodeJS.ProcessEnv | Record<string, string | unde
   const telegram = parsed.DPO_TELEGRAM_BOT_TOKEN && parsed.DPO_TELEGRAM_CHAT_ID
     ? { botToken: parsed.DPO_TELEGRAM_BOT_TOKEN, chatId: parsed.DPO_TELEGRAM_CHAT_ID }
     : undefined;
+  const debugEnabled = parsed.DPO_DEBUG_TRAIL ? TRUE_SET.has(parsed.DPO_DEBUG_TRAIL.toLowerCase()) : false;
   return {
     port: parsed.DPO_PORT,
     bind: parsed.DPO_BIND,
@@ -40,5 +46,6 @@ export function loadConfig(env: NodeJS.ProcessEnv | Record<string, string | unde
       timeoutMs: parsed.DPO_CLASSIFIER_TIMEOUT_MS,
     },
     telegram,
+    debugTrail: { enabled: debugEnabled, dir: parsed.DPO_DEBUG_TRAIL_DIR },
   };
 }

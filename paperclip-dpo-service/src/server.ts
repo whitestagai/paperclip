@@ -5,6 +5,7 @@ import { registerHealthRoute } from "./routes/health.js";
 import { registerAnonymizeRoute } from "./routes/anonymize.js";
 import { registerDeanonymizeRoute } from "./routes/deanonymize.js";
 import { registerSafeCallRoute } from "./routes/safe-call.js";
+import { DebugTrail } from "./debug-trail.js";
 
 export interface BuildServerOptions {
   sharedKey: string;
@@ -12,15 +13,17 @@ export interface BuildServerOptions {
   dpo: Dpo;
   fetchFn?: typeof fetch;
   logger?: boolean;
+  debugTrail?: DebugTrail;
 }
 
 export async function buildServer(opts: BuildServerOptions): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false });
+  const trail = opts.debugTrail ?? new DebugTrail({ enabled: false });
   registerAuth(app, { sharedKey: opts.sharedKey });
   registerHealthRoute(app, { classifierUrl: opts.classifierUrl, fetchFn: opts.fetchFn });
-  registerAnonymizeRoute(app, { dpo: opts.dpo });
-  registerDeanonymizeRoute(app, { dpo: opts.dpo });
-  registerSafeCallRoute(app, { dpo: opts.dpo, fetchFn: opts.fetchFn });
+  registerAnonymizeRoute(app, { dpo: opts.dpo, debugTrail: trail });
+  registerDeanonymizeRoute(app, { dpo: opts.dpo, debugTrail: trail });
+  registerSafeCallRoute(app, { dpo: opts.dpo, fetchFn: opts.fetchFn, debugTrail: trail });
   await app.ready();
   return app;
 }

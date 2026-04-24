@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Dpo } from "paperclip-dpo";
 import { renderBodyTemplate, extractByPath } from "../template.js";
+import type { DebugTrail } from "../debug-trail.js";
 
 const Body = z.object({
   prompt: z.string().min(1),
@@ -20,6 +21,7 @@ const Body = z.object({
 export interface SafeCallRouteOptions {
   dpo: Dpo;
   fetchFn?: typeof fetch;
+  debugTrail?: DebugTrail;
 }
 
 export function registerSafeCallRoute(app: FastifyInstance, opts: SafeCallRouteOptions): void {
@@ -31,10 +33,48 @@ export function registerSafeCallRoute(app: FastifyInstance, opts: SafeCallRouteO
       return reply.code(400).send({ error: "bad_request", details: parsed.error.flatten() });
     }
     const { prompt, targetLlm, agent, tenantId, external } = parsed.data;
+    const trail = opts.debugTrail;
+    const traceId = trail?.newTraceId() ?? "";
+
+    if (trail?.isEnabled) {
+      trail.write({
+        traceId,
+        route: "safe-call",
+        stage: "request",
+        agent,
+        targetLlm,
+        tenantId,
+        externalUrl: external.url,
+        text: prompt,
+      });
+    }
 
     const anon = await opts.dpo.anonymize({ text: prompt, targetLlm, agent, tenantId });
     if ("blocked" in anon) {
+      if (trail?.isEnabled) {
+        trail.write({
+          traceId,
+          route: "safe-call",
+          stage: "blocked",
+          agent,
+          targetLlm,
+          blockedReason: anon.reason,
+        });
+      }
       return { blocked: true, reason: anon.reason };
+    }
+
+    if (trail?.isEnabled) {
+      trail.write({
+        traceId,
+        route: "safe-call",
+        stage: "anonymized",
+        agent,
+        targetLlm,
+        mappingId: anon.mappingId,
+        externalUrl: external.url,
+        text: anon.anonymizedText,
+      });
     }
 
     const body = renderBodyTemplate(external.bodyTemplate, { prompt: anon.anonymizedText });
@@ -47,10 +87,33 @@ export function registerSafeCallRoute(app: FastifyInstance, opts: SafeCallRouteO
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      if (trail?.isEnabled) {
+        trail.write({
+          traceId,
+          route: "safe-call",
+          stage: "error",
+          agent,
+          targetLlm,
+          errorCode: "external_unreachable",
+          errorMessage: message,
+        });
+      }
       return reply.code(502).send({ error: "external_unreachable", message });
     }
     if (!res.ok) {
       const text = await res.text().catch(() => "");
+      if (trail?.isEnabled) {
+        trail.write({
+          traceId,
+          route: "safe-call",
+          stage: "error",
+          agent,
+          targetLlm,
+          errorCode: "external_failed",
+          httpStatus: res.status,
+          text,
+        });
+      }
       return reply.code(502).send({ error: "external_failed", status: res.status, body: text });
     }
     let json: unknown;
@@ -58,6 +121,17 @@ export function registerSafeCallRoute(app: FastifyInstance, opts: SafeCallRouteO
       json = await res.json();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      if (trail?.isEnabled) {
+        trail.write({
+          traceId,
+          route: "safe-call",
+          stage: "error",
+          agent,
+          targetLlm,
+          errorCode: "external_invalid_json",
+          errorMessage: message,
+        });
+      }
       return reply.code(502).send({ error: "external_invalid_json", message });
     }
 
@@ -66,13 +140,60 @@ export function registerSafeCallRoute(app: FastifyInstance, opts: SafeCallRouteO
       extracted = extractByPath(json, external.responsePath);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
+      if (trail?.isEnabled) {
+        trail.write({
+          traceId,
+          route: "safe-call",
+          stage: "error",
+          agent,
+          targetLlm,
+          errorCode: "response_path_invalid",
+          errorMessage: message,
+        });
+      }
       return reply.code(502).send({ error: "response_path_invalid", message });
     }
     if (extracted === undefined) {
+      if (trail?.isEnabled) {
+        trail.write({
+          traceId,
+          route: "safe-call",
+          stage: "error",
+          agent,
+          targetLlm,
+          errorCode: "response_path_missing",
+          responsePath: external.responsePath,
+        });
+      }
       return reply.code(502).send({ error: "response_path_missing", path: external.responsePath });
     }
 
+    if (trail?.isEnabled) {
+      trail.write({
+        traceId,
+        route: "safe-call",
+        stage: "external_response_raw",
+        agent,
+        targetLlm,
+        mappingId: anon.mappingId,
+        text: extracted,
+      });
+    }
+
     const deanon = opts.dpo.deanonymize({ mappingId: anon.mappingId, text: extracted });
+
+    if (trail?.isEnabled) {
+      trail.write({
+        traceId,
+        route: "safe-call",
+        stage: "deanonymized",
+        agent,
+        targetLlm,
+        mappingId: anon.mappingId,
+        text: deanon.text,
+      });
+    }
+
     return { blocked: false, text: deanon.text };
   });
 }

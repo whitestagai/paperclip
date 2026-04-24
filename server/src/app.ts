@@ -435,5 +435,14 @@ export async function createApp(
     void flushPluginLogBuffer();
   });
 
-  return app;
+  // Return a structured handle so callers that need to reach into the
+  // plugin system can do so (e.g. the heartbeat scheduler wires the
+  // beforeAdapterExecute broadcaster into heartbeatService from index.ts).
+  // `app` remains the primary field; attach convenience helpers for
+  // direct Express-style access so existing callers keep working.
+  const appHandle = app as typeof app & {
+    workerManager: typeof workerManager;
+  };
+  appHandle.workerManager = workerManager;
+  return appHandle;
 }

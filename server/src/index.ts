@@ -656,7 +656,10 @@ export async function startServer(): Promise<StartedServer> {
     });
   
   if (config.heartbeatSchedulerEnabled) {
-    const heartbeat = heartbeatService(db as any);
+    const heartbeat = heartbeatService(db as any, {
+      broadcastBeforeAdapterExecute: (params, brOpts) =>
+        app.workerManager.broadcastBeforeAdapterExecute(params, brOpts),
+    });
     const routines = routineService(db as any);
   
     // Reap orphaned running runs at startup while in-memory execution state is empty,

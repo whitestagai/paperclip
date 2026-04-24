@@ -45,7 +45,7 @@ export type ExecutionWorkspaceCloseActionKind =
   | "git_branch_delete"
   | "remove_local_directory";
 
-export type WorkspaceRuntimeDesiredState = "running" | "stopped";
+export type WorkspaceRuntimeDesiredState = "running" | "stopped" | "manual";
 export type WorkspaceRuntimeServiceStateMap = Record<string, WorkspaceRuntimeDesiredState>;
 export type WorkspaceCommandKind = "service" | "job";
 
@@ -159,6 +159,13 @@ export interface IssueExecutionWorkspaceSettings {
   mode?: ExecutionWorkspaceMode;
   workspaceStrategy?: ExecutionWorkspaceStrategy | null;
   workspaceRuntime?: Record<string, unknown> | null;
+}
+
+export interface ExecutionWorkspaceSummary {
+  id: string;
+  name: string;
+  mode: Exclude<ExecutionWorkspaceMode, "inherit" | "reuse_existing" | "agent_default"> | "adapter_managed" | "cloud_sandbox";
+  projectWorkspaceId: string | null;
 }
 
 export interface ExecutionWorkspace {

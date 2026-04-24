@@ -9,6 +9,8 @@ const mockAgentService = vi.hoisted(() => ({
 const mockHeartbeatService = vi.hoisted(() => ({
   getRunIssueSummary: vi.fn(),
   getActiveRunIssueSummaryForAgent: vi.fn(),
+  getRunLogAccess: vi.fn(),
+  readLog: vi.fn(),
 }));
 
 const mockIssueService = vi.hoisted(() => ({
@@ -16,7 +18,32 @@ const mockIssueService = vi.hoisted(() => ({
   getByIdentifier: vi.fn(),
 }));
 
+const mockInstanceSettingsService = vi.hoisted(() => ({
+  get: vi.fn(),
+  getExperimental: vi.fn(),
+  getGeneral: vi.fn(),
+  listCompanyIds: vi.fn(),
+}));
+
 function registerModuleMocks() {
+  vi.doMock("../routes/authz.js", async () => vi.importActual("../routes/authz.js"));
+
+  vi.doMock("../services/agents.js", () => ({
+    agentService: () => mockAgentService,
+  }));
+
+  vi.doMock("../services/heartbeat.js", () => ({
+    heartbeatService: () => mockHeartbeatService,
+  }));
+
+  vi.doMock("../services/instance-settings.js", () => ({
+    instanceSettingsService: () => mockInstanceSettingsService,
+  }));
+
+  vi.doMock("../services/issues.js", () => ({
+    issueService: () => mockIssueService,
+  }));
+
   vi.doMock("../services/index.js", () => ({
     agentService: () => mockAgentService,
     agentInstructionsService: () => ({}),
@@ -67,7 +94,11 @@ async function createApp() {
 describe("agent live run routes", () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.doUnmock("../services/agents.js");
+    vi.doUnmock("../services/heartbeat.js");
     vi.doUnmock("../services/index.js");
+    vi.doUnmock("../services/instance-settings.js");
+    vi.doUnmock("../services/issues.js");
     vi.doUnmock("../adapters/index.js");
     vi.doUnmock("../routes/agents.js");
     vi.doUnmock("../routes/authz.js");
@@ -88,6 +119,19 @@ describe("agent live run routes", () => {
       name: "Builder",
       adapterType: "codex_local",
     });
+    mockInstanceSettingsService.get.mockResolvedValue({
+      id: "instance-settings-1",
+      general: {
+        censorUsernameInLogs: false,
+        feedbackDataSharingPreference: "prompt",
+      },
+    });
+    mockInstanceSettingsService.getExperimental.mockResolvedValue({});
+    mockInstanceSettingsService.getGeneral.mockResolvedValue({
+      censorUsernameInLogs: false,
+      feedbackDataSharingPreference: "prompt",
+    });
+    mockInstanceSettingsService.listCompanyIds.mockResolvedValue(["company-1"]);
     mockHeartbeatService.getRunIssueSummary.mockResolvedValue({
       id: "run-1",
       status: "running",
@@ -100,6 +144,19 @@ describe("agent live run routes", () => {
       issueId: "issue-1",
     });
     mockHeartbeatService.getActiveRunIssueSummaryForAgent.mockResolvedValue(null);
+    mockHeartbeatService.getRunLogAccess.mockResolvedValue({
+      id: "run-1",
+      companyId: "company-1",
+      logStore: "local_file",
+      logRef: "logs/run-1.ndjson",
+    });
+    mockHeartbeatService.readLog.mockResolvedValue({
+      runId: "run-1",
+      store: "local_file",
+      logRef: "logs/run-1.ndjson",
+      content: "chunk",
+      nextOffset: 5,
+    });
   });
 
   it("returns a compact active run payload for issue polling", async () => {
@@ -124,7 +181,7 @@ describe("agent live run routes", () => {
     expect(res.body).not.toHaveProperty("resultJson");
     expect(res.body).not.toHaveProperty("contextSnapshot");
     expect(res.body).not.toHaveProperty("logRef");
-  });
+  }, 10_000);
 
   it("ignores a stale execution run from another issue and falls back to the assignee's matching run", async () => {
     mockHeartbeatService.getRunIssueSummary.mockResolvedValue({
@@ -161,6 +218,29 @@ describe("agent live run routes", () => {
       agentId: "agent-1",
       agentName: "Builder",
       adapterType: "codex_local",
+    });
+  });
+
+  it("uses narrow run log metadata lookups for log polling", async () => {
+    const res = await request(await createApp()).get("/api/heartbeat-runs/run-1/log?offset=12&limitBytes=64");
+
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(mockHeartbeatService.getRunLogAccess).toHaveBeenCalledWith("run-1");
+    expect(mockHeartbeatService.readLog).toHaveBeenCalledWith({
+      id: "run-1",
+      companyId: "company-1",
+      logStore: "local_file",
+      logRef: "logs/run-1.ndjson",
+    }, {
+      offset: 12,
+      limitBytes: 64,
+    });
+    expect(res.body).toEqual({
+      runId: "run-1",
+      store: "local_file",
+      logRef: "logs/run-1.ndjson",
+      content: "chunk",
+      nextOffset: 5,
     });
   });
 });

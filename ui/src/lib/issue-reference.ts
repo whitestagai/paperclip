@@ -16,7 +16,9 @@ export function parseIssuePathIdFromPath(pathOrUrl: string | null | undefined): 
 
   if (/^https?:\/\//i.test(pathname)) {
     try {
-      pathname = new URL(pathname).pathname;
+      const url = new URL(pathname);
+      if (url.hostname === "github.com" || url.hostname === "www.github.com") return null;
+      pathname = url.pathname;
     } catch {
       return null;
     }
@@ -25,7 +27,9 @@ export function parseIssuePathIdFromPath(pathOrUrl: string | null | undefined): 
   const segments = pathname.split("/").filter(Boolean);
   const issueIndex = segments.findIndex((segment) => segment === "issues");
   if (issueIndex === -1 || issueIndex === segments.length - 1) return null;
-  return decodeURIComponent(segments[issueIndex + 1] ?? "");
+  const issuePathId = decodeURIComponent(segments[issueIndex + 1] ?? "");
+  if (!issuePathId || issuePathId.startsWith(":")) return null;
+  return issuePathId;
 }
 
 export function parseIssueReferenceFromHref(href: string | null | undefined) {

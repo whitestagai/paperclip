@@ -23,11 +23,17 @@ import { secretRoutes } from "./routes/secrets.js";
 import { costRoutes } from "./routes/costs.js";
 import { activityRoutes } from "./routes/activity.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
+import { userProfileRoutes } from "./routes/user-profiles.js";
 import { sidebarBadgeRoutes } from "./routes/sidebar-badges.js";
 import { sidebarPreferenceRoutes } from "./routes/sidebar-preferences.js";
 import { inboxDismissalRoutes } from "./routes/inbox-dismissals.js";
 import { instanceSettingsRoutes } from "./routes/instance-settings.js";
+import {
+  instanceDatabaseBackupRoutes,
+  type InstanceDatabaseBackupService,
+} from "./routes/instance-database-backups.js";
 import { llmRoutes } from "./routes/llms.js";
+import { authRoutes } from "./routes/auth.js";
 import { assetRoutes } from "./routes/assets.js";
 import { accessRoutes } from "./routes/access.js";
 import { pluginRoutes } from "./routes/plugins.js";
@@ -70,6 +76,7 @@ const VITE_DEV_STATIC_PATHS = new Set([
   "/favicon.ico",
   "/favicon.svg",
   "/site.webmanifest",
+  "/sw.js",
 ]);
 
 export function resolveViteHmrPort(serverPort: number): number {
@@ -79,11 +86,21 @@ export function resolveViteHmrPort(serverPort: number): number {
   return Math.max(1_024, serverPort - 10_000);
 }
 
-function shouldServeViteDevHtml(req: ExpressRequest): boolean {
+export function shouldServeViteDevHtml(req: ExpressRequest): boolean {
   const pathname = req.path;
   if (VITE_DEV_STATIC_PATHS.has(pathname)) return false;
   if (VITE_DEV_ASSET_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return false;
   return req.accepts(["html"]) === "html";
+}
+
+export function shouldEnablePrivateHostnameGuard(opts: {
+  deploymentMode: DeploymentMode;
+  deploymentExposure: DeploymentExposure;
+}): boolean {
+  return (
+    opts.deploymentExposure === "private" &&
+    (opts.deploymentMode === "local_trusted" || opts.deploymentMode === "authenticated")
+  );
 }
 
 export async function createApp(
@@ -100,6 +117,7 @@ export async function createApp(
         now?: Date;
       }): Promise<unknown>;
     };
+    databaseBackupService?: InstanceDatabaseBackupService;
     deploymentMode: DeploymentMode;
     deploymentExposure: DeploymentExposure;
     allowedHostnames: string[];
@@ -109,6 +127,7 @@ export async function createApp(
     instanceId?: string;
     hostVersion?: string;
     localPluginDir?: string;
+    pluginMigrationDb?: Db;
     betterAuthHandler?: express.RequestHandler;
     resolveSession?: (req: ExpressRequest) => Promise<BetterAuthSessionResult | null>;
   },
@@ -123,8 +142,10 @@ export async function createApp(
     },
   }));
   app.use(httpLogger);
-  const privateHostnameGateEnabled =
-    opts.deploymentMode === "authenticated" && opts.deploymentExposure === "private";
+  const privateHostnameGateEnabled = shouldEnablePrivateHostnameGuard({
+    deploymentMode: opts.deploymentMode,
+    deploymentExposure: opts.deploymentExposure,
+  });
   const privateHostnameAllowSet = resolvePrivateHostnameAllowSet({
     allowedHostnames: opts.allowedHostnames,
     bindHost: opts.bindHost,
@@ -142,23 +163,7 @@ export async function createApp(
       resolveSession: opts.resolveSession,
     }),
   );
-  app.get("/api/auth/get-session", (req, res) => {
-    if (req.actor.type !== "board" || !req.actor.userId) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
-    res.json({
-      session: {
-        id: `paperclip:${req.actor.source}:${req.actor.userId}`,
-        userId: req.actor.userId,
-      },
-      user: {
-        id: req.actor.userId,
-        email: null,
-        name: req.actor.source === "local_implicit" ? "Local Board" : null,
-      },
-    });
-  });
+  app.use("/api/auth", authRoutes(db));
   if (opts.betterAuthHandler) {
     app.all("/api/auth/{*authPath}", opts.betterAuthHandler);
   }
@@ -192,10 +197,14 @@ export async function createApp(
   api.use(costRoutes(db));
   api.use(activityRoutes(db));
   api.use(dashboardRoutes(db));
+  api.use(userProfileRoutes(db));
   api.use(sidebarBadgeRoutes(db));
   api.use(sidebarPreferenceRoutes(db));
   api.use(inboxDismissalRoutes(db));
   api.use(instanceSettingsRoutes(db));
+  if (opts.databaseBackupService) {
+    api.use(instanceDatabaseBackupRoutes(opts.databaseBackupService));
+  }
   const hostServicesDisposers = new Map<string, () => void>();
   const workerManager = createPluginWorkerManager();
   const pluginRegistry = pluginRegistryService(db);
@@ -223,7 +232,10 @@ export async function createApp(
   let viteHtmlRenderer: ReturnType<typeof createCachedViteHtmlRenderer> | null = null;
   const loader = pluginLoader(
     db,
-    { localPluginDir: opts.localPluginDir ?? DEFAULT_LOCAL_PLUGIN_DIR },
+    {
+      localPluginDir: opts.localPluginDir ?? DEFAULT_LOCAL_PLUGIN_DIR,
+      migrationDb: opts.pluginMigrationDb,
+    },
     {
       workerManager,
       eventBus,
@@ -287,9 +299,46 @@ export async function createApp(
     const uiDist = candidates.find((p) => fs.existsSync(path.join(p, "index.html")));
     if (uiDist) {
       const indexHtml = applyUiBranding(fs.readFileSync(path.join(uiDist, "index.html"), "utf-8"));
-      app.use(express.static(uiDist));
-      app.get(/.*/, (_req, res) => {
-        res.status(200).set("Content-Type", "text/html").end(indexHtml);
+      // Hashed asset files (Vite emits them under /assets/<name>.<hash>.<ext>)
+      // never change once built, so they can be cached aggressively.
+      app.use(
+        "/assets",
+        express.static(path.join(uiDist, "assets"), {
+          maxAge: "1y",
+          immutable: true,
+        }),
+      );
+      // Non-hashed static files (favicon.ico, manifest, robots.txt, etc.):
+      // short cache so operators who swap them out see the new version
+      // reasonably fast. Override for `index.html` specifically — it is
+      // served by this middleware for `/` and `/index.html`, and it must
+      // never outlive the asset hashes it points at.
+      app.use(
+        express.static(uiDist, {
+          maxAge: "1h",
+          setHeaders(res, filePath) {
+            if (path.basename(filePath) === "index.html") {
+              res.set("Cache-Control", "no-cache");
+            }
+          },
+        }),
+      );
+      // SPA fallback. Only for non-asset routes — if the browser asks for
+      // /assets/something.js that doesn't exist, we must NOT serve the HTML
+      // shell: the browser would try to load it as a JavaScript module, fail
+      // with a MIME-type error, and cache that broken response. Return 404
+      // instead. The index.html response itself is no-cache so a subsequent
+      // deploy's updated asset hashes are picked up on next load.
+      app.get(/.*/, (req, res) => {
+        if (req.path.startsWith("/assets/")) {
+          res.status(404).end();
+          return;
+        }
+        res
+          .status(200)
+          .set("Content-Type", "text/html")
+          .set("Cache-Control", "no-cache")
+          .end(indexHtml);
       });
     } else {
       console.warn("[paperclip] UI dist not found; running in API-only mode");
@@ -298,6 +347,7 @@ export async function createApp(
 
   if (opts.uiMode === "vite-dev") {
     const uiRoot = path.resolve(__dirname, "../../ui");
+    const publicUiRoot = path.resolve(uiRoot, "public");
     const hmrPort = resolveViteHmrPort(opts.serverPort);
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -320,6 +370,9 @@ export async function createApp(
     });
     const renderViteHtml = viteHtmlRenderer;
 
+    if (fs.existsSync(publicUiRoot)) {
+      app.use(express.static(publicUiRoot, { index: false }));
+    }
     app.get(/.*/, async (req, res, next) => {
       if (!shouldServeViteDevHtml(req)) {
         next();
@@ -382,5 +435,14 @@ export async function createApp(
     void flushPluginLogBuffer();
   });
 
-  return app;
+  // Return a structured handle so callers that need to reach into the
+  // plugin system can do so (e.g. the heartbeat scheduler wires the
+  // beforeAdapterExecute broadcaster into heartbeatService from index.ts).
+  // `app` remains the primary field; attach convenience helpers for
+  // direct Express-style access so existing callers keep working.
+  const appHandle = app as typeof app & {
+    workerManager: typeof workerManager;
+  };
+  appHandle.workerManager = workerManager;
+  return appHandle;
 }

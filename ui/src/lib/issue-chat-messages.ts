@@ -10,6 +10,10 @@ import type {
 import type { Agent, IssueComment } from "@paperclipai/shared";
 import type { ActiveRunForIssue, LiveRunForIssue } from "../api/heartbeats";
 import { formatAssigneeUserLabel } from "./assignees";
+import {
+  buildIssueThreadInteractionSummary,
+  type IssueThreadInteraction,
+} from "./issue-thread-interactions";
 import type { IssueTimelineEvent } from "./issue-timeline-events";
 import {
   summarizeNotice,
@@ -270,11 +274,16 @@ function authorNameForComment(
   comment: IssueChatComment,
   agentMap?: Map<string, Agent>,
   currentUserId?: string | null,
+  userLabelMap?: ReadonlyMap<string, string> | null,
 ) {
   if (comment.authorAgentId) {
     return agentMap?.get(comment.authorAgentId)?.name ?? comment.authorAgentId.slice(0, 8);
   }
-  return formatAssigneeUserLabel(comment.authorUserId ?? null, currentUserId) ?? "You";
+  const authorUserId = comment.authorUserId ?? null;
+  if (!authorUserId) return "You";
+  const userLabel = userLabelMap?.get(authorUserId)?.trim();
+  if (userLabel) return userLabel;
+  return formatAssigneeUserLabel(authorUserId, currentUserId, userLabelMap) ?? "You";
 }
 
 function formatStatusLabel(status: string) {
@@ -285,12 +294,13 @@ function createCommentMessage(args: {
   comment: IssueChatComment;
   agentMap?: Map<string, Agent>;
   currentUserId?: string | null;
+  userLabelMap?: ReadonlyMap<string, string> | null;
   companyId?: string | null;
   projectId?: string | null;
 }): ThreadMessage {
-  const { comment, agentMap, currentUserId, companyId, projectId } = args;
+  const { comment, agentMap, currentUserId, userLabelMap, companyId, projectId } = args;
   const createdAt = toDate(comment.createdAt);
-  const authorName = authorNameForComment(comment, agentMap, currentUserId);
+  const authorName = authorNameForComment(comment, agentMap, currentUserId, userLabelMap);
   const custom = {
     kind: "comment",
     commentId: comment.id,
@@ -335,13 +345,14 @@ function createTimelineEventMessage(args: {
   event: IssueTimelineEvent;
   agentMap?: Map<string, Agent>;
   currentUserId?: string | null;
+  userLabelMap?: ReadonlyMap<string, string> | null;
 }) {
-  const { event, agentMap, currentUserId } = args;
+  const { event, agentMap, currentUserId, userLabelMap } = args;
   const actorName = event.actorType === "agent"
     ? (agentMap?.get(event.actorId)?.name ?? event.actorId.slice(0, 8))
     : event.actorType === "system"
       ? "System"
-      : (formatAssigneeUserLabel(event.actorId, currentUserId) ?? "Board");
+      : (formatAssigneeUserLabel(event.actorId, currentUserId, userLabelMap) ?? "Board");
 
   const lines: string[] = [`${actorName} updated this issue`];
   if (event.statusChange) {
@@ -352,10 +363,10 @@ function createTimelineEventMessage(args: {
   if (event.assigneeChange) {
     const from = event.assigneeChange.from.agentId
       ? (agentMap?.get(event.assigneeChange.from.agentId)?.name ?? event.assigneeChange.from.agentId.slice(0, 8))
-      : (formatAssigneeUserLabel(event.assigneeChange.from.userId, currentUserId) ?? "Unassigned");
+      : (formatAssigneeUserLabel(event.assigneeChange.from.userId, currentUserId, userLabelMap) ?? "Unassigned");
     const to = event.assigneeChange.to.agentId
       ? (agentMap?.get(event.assigneeChange.to.agentId)?.name ?? event.assigneeChange.to.agentId.slice(0, 8))
-      : (formatAssigneeUserLabel(event.assigneeChange.to.userId, currentUserId) ?? "Unassigned");
+      : (formatAssigneeUserLabel(event.assigneeChange.to.userId, currentUserId, userLabelMap) ?? "Unassigned");
     lines.push(`Assignee: ${from} -> ${to}`);
   }
 
@@ -374,6 +385,23 @@ function createTimelineEventMessage(args: {
         actorId: event.actorId,
         statusChange: event.statusChange ?? null,
         assigneeChange: event.assigneeChange ?? null,
+      },
+    },
+  };
+  return message;
+}
+
+function createInteractionMessage(interaction: IssueThreadInteraction) {
+  const message: ThreadSystemMessage = {
+    id: `interaction:${interaction.id}`,
+    role: "system",
+    createdAt: toDate(interaction.createdAt),
+    content: [{ type: "text", text: buildIssueThreadInteractionSummary(interaction) }],
+    metadata: {
+      custom: {
+        kind: "interaction",
+        anchorId: `interaction-${interaction.id}`,
+        interaction,
       },
     },
   };
@@ -731,6 +759,7 @@ function createLiveRunMessage(args: {
 
 export function buildIssueChatMessages(args: {
   comments: readonly IssueChatComment[];
+  interactions?: readonly IssueThreadInteraction[];
   timelineEvents: readonly IssueTimelineEvent[];
   linkedRuns: readonly IssueChatLinkedRun[];
   liveRuns: readonly LiveRunForIssue[];
@@ -743,9 +772,11 @@ export function buildIssueChatMessages(args: {
   projectId?: string | null;
   agentMap?: Map<string, Agent>;
   currentUserId?: string | null;
+  userLabelMap?: ReadonlyMap<string, string> | null;
 }) {
   const {
     comments,
+    interactions = [],
     timelineEvents,
     linkedRuns,
     liveRuns,
@@ -758,6 +789,7 @@ export function buildIssueChatMessages(args: {
     projectId,
     agentMap,
     currentUserId,
+    userLabelMap,
   } = args;
 
   const orderedMessages: MessageWithOrder[] = [];
@@ -766,7 +798,15 @@ export function buildIssueChatMessages(args: {
     orderedMessages.push({
       createdAtMs: toTimestamp(comment.createdAt),
       order: 1,
-      message: createCommentMessage({ comment, agentMap, currentUserId, companyId, projectId }),
+      message: createCommentMessage({ comment, agentMap, currentUserId, userLabelMap, companyId, projectId }),
+    });
+  }
+
+  for (const interaction of sortByCreated(interactions)) {
+    orderedMessages.push({
+      createdAtMs: toTimestamp(interaction.createdAt),
+      order: 2,
+      message: createInteractionMessage(interaction),
     });
   }
 
@@ -774,7 +814,7 @@ export function buildIssueChatMessages(args: {
     orderedMessages.push({
       createdAtMs: toTimestamp(event.createdAt),
       order: 0,
-      message: createTimelineEventMessage({ event, agentMap, currentUserId }),
+      message: createTimelineEventMessage({ event, agentMap, currentUserId, userLabelMap }),
     });
   }
 

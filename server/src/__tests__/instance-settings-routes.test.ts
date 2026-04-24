@@ -11,11 +11,6 @@ const mockInstanceSettingsService = vi.hoisted(() => ({
 }));
 const mockLogActivity = vi.hoisted(() => vi.fn());
 
-vi.mock("../services/index.js", () => ({
-  instanceSettingsService: () => mockInstanceSettingsService,
-  logActivity: mockLogActivity,
-}));
-
 function registerModuleMocks() {
   vi.doMock("../services/index.js", () => ({
     instanceSettingsService: () => mockInstanceSettingsService,
@@ -42,6 +37,7 @@ async function createApp(actor: any) {
 describe("instance settings routes", () => {
   beforeEach(() => {
     vi.resetModules();
+    vi.doUnmock("../services/index.js");
     vi.doUnmock("../routes/instance-settings.js");
     vi.doUnmock("../routes/authz.js");
     vi.doUnmock("../middleware/index.js");
@@ -174,6 +170,22 @@ describe("instance settings routes", () => {
       keyboardShortcuts: false,
       feedbackDataSharingPreference: "prompt",
     });
+  });
+
+  it("rejects signed-in users without company access from reading general settings", async () => {
+    const app = await createApp({
+      type: "board",
+      userId: "user-2",
+      source: "session",
+      isInstanceAdmin: false,
+      companyIds: [],
+      memberships: [],
+    });
+
+    const res = await request(app).get("/api/instance/settings/general");
+
+    expect(res.status).toBe(403);
+    expect(mockInstanceSettingsService.getGeneral).not.toHaveBeenCalled();
   });
 
   it("rejects non-admin board users from updating general settings", async () => {

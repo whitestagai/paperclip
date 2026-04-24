@@ -1,4 +1,5 @@
 export type { Company } from "./company.js";
+export type { Environment, EnvironmentLease, LocalEnvironmentConfig } from "./environment.js";
 export type {
   FeedbackVote,
   FeedbackDataSharingPreference,
@@ -63,6 +64,7 @@ export type { AssetImage } from "./asset.js";
 export type { Project, ProjectCodebase, ProjectCodebaseOrigin, ProjectGoalRef, ProjectWorkspace } from "./project.js";
 export type {
   ExecutionWorkspace,
+  ExecutionWorkspaceSummary,
   ExecutionWorkspaceConfig,
   ExecutionWorkspaceCloseAction,
   ExecutionWorkspaceCloseActionKind,
@@ -101,6 +103,9 @@ export type {
 export type {
   Issue,
   IssueAssigneeAdapterOverrides,
+  IssueReferenceSource,
+  IssueRelatedWorkItem,
+  IssueRelatedWorkSummary,
   IssueRelation,
   IssueRelationIssueSummary,
   IssueExecutionPolicy,
@@ -110,6 +115,28 @@ export type {
   IssueExecutionStagePrincipal,
   IssueExecutionDecision,
   IssueComment,
+  IssueThreadInteractionActorFields,
+  SuggestedTaskDraft,
+  SuggestTasksPayload,
+  SuggestTasksResultCreatedTask,
+  SuggestTasksResult,
+  AskUserQuestionsQuestionOption,
+  AskUserQuestionsQuestion,
+  AskUserQuestionsPayload,
+  AskUserQuestionsAnswer,
+  AskUserQuestionsResult,
+  RequestConfirmationIssueDocumentTarget,
+  RequestConfirmationCustomTarget,
+  RequestConfirmationTarget,
+  RequestConfirmationPayload,
+  RequestConfirmationResult,
+  IssueThreadInteractionBase,
+  SuggestTasksInteraction,
+  AskUserQuestionsInteraction,
+  RequestConfirmationInteraction,
+  IssueThreadInteraction,
+  IssueThreadInteractionPayload,
+  IssueThreadInteractionResult,
   IssueDocument,
   IssueDocumentSummary,
   DocumentRevision,
@@ -166,17 +193,38 @@ export type {
   InstanceSchedulerHeartbeatAgent,
 } from "./heartbeat.js";
 export type { LiveEvent } from "./live.js";
-export type { DashboardSummary } from "./dashboard.js";
+export type { DashboardRunActivityDay, DashboardSummary } from "./dashboard.js";
 export type { ActivityEvent } from "./activity.js";
+export type {
+  UserProfileActivitySummary,
+  UserProfileAgentUsage,
+  UserProfileDailyPoint,
+  UserProfileIdentity,
+  UserProfileIssueSummary,
+  UserProfileProviderUsage,
+  UserProfileResponse,
+  UserProfileWindowStats,
+} from "./user-profile.js";
 export type { SidebarBadges } from "./sidebar-badges.js";
 export type { SidebarOrderPreference } from "./sidebar-preferences.js";
 export type { InboxDismissal } from "./inbox-dismissal.js";
 export type {
+  AccessUserProfile,
+  CompanyMemberRecord,
+  CompanyMembersResponse,
+  ArchiveCompanyMemberResponse,
   CompanyMembership,
+  CompanyInviteListResponse,
+  CompanyInviteRecord,
   PrincipalPermissionGrant,
   Invite,
   JoinRequest,
+  JoinRequestInviteSummary,
+  JoinRequestRecord,
   InstanceUserRoleGrant,
+  AdminUserDirectoryEntry,
+  UserCompanyAccessEntry,
+  UserCompanyAccessResponse,
 } from "./access.js";
 export type { QuotaWindow, ProviderQuotaResult } from "./quota.js";
 export type {
@@ -222,8 +270,13 @@ export type {
   PluginLauncherDeclaration,
   PluginMinimumHostVersion,
   PluginUiDeclaration,
+  PluginDatabaseDeclaration,
+  PluginApiRouteCompanyResolution,
+  PluginApiRouteDeclaration,
   PaperclipPluginManifestV1,
   PluginRecord,
+  PluginDatabaseNamespaceRecord,
+  PluginMigrationRecord,
   PluginStateRecord,
   PluginConfig,
   PluginEntityRecord,
@@ -231,4 +284,8 @@ export type {
   PluginJobRecord,
   PluginJobRunRecord,
   PluginWebhookDeliveryRecord,
+  PluginDatabaseCoreReadTable,
+  PluginDatabaseMigrationStatus,
+  PluginDatabaseNamespaceMode,
+  PluginDatabaseNamespaceStatus,
 } from "./plugin.js";

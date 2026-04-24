@@ -5600,6 +5600,15 @@ export function heartbeatService(db: Db, opts: HeartbeatServiceOptions = {}) {
       // runtime config, or block the run (fail-closed egress gates, etc.).
       // Plugin-less deployments skip this block entirely (broadcaster omitted).
       let effectiveRuntimeConfig: Record<string, unknown> = runtimeConfig;
+      logger.info(
+        {
+          runId: run.id,
+          agentId: agent.id,
+          adapterType: agent.adapterType,
+          broadcasterWired: !!broadcastBeforeAdapterExecute,
+        },
+        "[diag:hook] entering beforeAdapterExecute pre-check",
+      );
       if (broadcastBeforeAdapterExecute) {
         const preExecuteInput: BeforeAdapterExecuteParams = {
           agentId: agent.id,
@@ -5612,7 +5621,21 @@ export function heartbeatService(db: Db, opts: HeartbeatServiceOptions = {}) {
         };
         let preExecuteResult: BeforeAdapterExecuteResult;
         try {
+          logger.info(
+            { runId: run.id, agentId: agent.id },
+            "[diag:hook] calling broadcastBeforeAdapterExecute",
+          );
           preExecuteResult = await broadcastBeforeAdapterExecute(preExecuteInput);
+          logger.info(
+            {
+              runId: run.id,
+              agentId: agent.id,
+              hasEnv: !!preExecuteResult.env,
+              envKeys: preExecuteResult.env ? Object.keys(preExecuteResult.env) : [],
+              blocked: !!preExecuteResult.block,
+            },
+            "[diag:hook] broadcastBeforeAdapterExecute returned",
+          );
         } catch (err) {
           // Broadcast-level failure (not a single plugin's error — those are
           // already swallowed inside the broadcaster). Log and continue

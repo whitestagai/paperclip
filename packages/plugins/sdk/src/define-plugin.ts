@@ -48,6 +48,10 @@
  */
 
 import type { PluginContext } from "./types.js";
+import type {
+  BeforeAdapterExecuteParams,
+  BeforeAdapterExecuteResult,
+} from "./protocol.js";
 
 // ---------------------------------------------------------------------------
 // Health check result
@@ -228,6 +232,36 @@ export interface PluginDefinition {
    * access, capabilities, and checkout policy.
    */
   onApiRequest?(input: PluginApiRequestInput): Promise<PluginApiResponse>;
+
+  /**
+   * Called by the host immediately before an agent's adapter is executed.
+   *
+   * Plugins use this hook to observe pending runs and optionally modify the
+   * adapter's runtime configuration — the canonical use case is injecting
+   * environment variables that reroute egress traffic through a proxy
+   * (PII-proxy, observability-gateway, etc.).
+   *
+   * Return value shape:
+   *  - Omit or return `undefined` to leave the run unchanged.
+   *  - Return `{ env }` to merge env variables into the adapter subprocess
+   *    (highest-priority override).
+   *  - Return `{ runtimeConfig }` for broader config overrides (use sparingly).
+   *  - Return `{ block }` to abort the run before the adapter is called.
+   *    The host marks the run failed with the provided reason and skips
+   *    subsequent plugins' hooks.
+   *
+   * The host invokes registered hooks in a deterministic order (install order
+   * or plugin-id). Results are merged shallow — later plugins override
+   * earlier ones for identical env keys. The first `block` wins.
+   *
+   * Plugins MUST NOT log or persist the input payload verbatim: it contains
+   * fully resolved secrets and internal identifiers. Treat it as sensitive.
+   *
+   * @see PLUGIN_SPEC.md §13.11 — `beforeAdapterExecute`
+   */
+  onBeforeAdapterExecute?(
+    input: BeforeAdapterExecuteParams,
+  ): Promise<BeforeAdapterExecuteResult | void> | BeforeAdapterExecuteResult | void;
 }
 
 // ---------------------------------------------------------------------------

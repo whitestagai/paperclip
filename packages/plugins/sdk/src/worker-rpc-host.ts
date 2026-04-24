@@ -76,6 +76,8 @@ import type {
   GetDataParams,
   PerformActionParams,
   ExecuteToolParams,
+  BeforeAdapterExecuteParams,
+  BeforeAdapterExecuteResult,
   WorkerToHostMethodName,
   WorkerToHostMethods,
 } from "./protocol.js";
@@ -1079,6 +1081,9 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
       case "executeTool":
         return handleExecuteTool(params as ExecuteToolParams);
 
+      case "beforeAdapterExecute":
+        return handleBeforeAdapterExecute(params as BeforeAdapterExecuteParams);
+
       default:
         throw Object.assign(
           new Error(`Unknown method: ${method}`),
@@ -1112,6 +1117,7 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
     if (plugin.definition.onHealth) supportedMethods.push("health");
     if (plugin.definition.onShutdown) supportedMethods.push("shutdown");
     if (plugin.definition.onApiRequest) supportedMethods.push("handleApiRequest");
+    if (plugin.definition.onBeforeAdapterExecute) supportedMethods.push("beforeAdapterExecute");
 
     return { ok: true, supportedMethods };
   }
@@ -1253,6 +1259,19 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
       throw new Error(`No tool handler registered for "${params.toolName}"`);
     }
     return entry.fn(params.parameters, params.runContext);
+  }
+
+  async function handleBeforeAdapterExecute(
+    params: BeforeAdapterExecuteParams,
+  ): Promise<BeforeAdapterExecuteResult> {
+    if (!plugin.definition.onBeforeAdapterExecute) {
+      throw Object.assign(
+        new Error("beforeAdapterExecute is not implemented by this plugin"),
+        { code: PLUGIN_RPC_ERROR_CODES.METHOD_NOT_IMPLEMENTED },
+      );
+    }
+    const result = await plugin.definition.onBeforeAdapterExecute(params);
+    return (result ?? {}) as BeforeAdapterExecuteResult;
   }
 
   // -----------------------------------------------------------------------

@@ -142,6 +142,8 @@ export type {
   GetDataParams,
   PerformActionParams,
   ExecuteToolParams,
+  BeforeAdapterExecuteParams,
+  BeforeAdapterExecuteResult,
   PluginModalBoundsRequest,
   PluginRenderCloseEvent,
   PluginLauncherRenderContextSnapshot,

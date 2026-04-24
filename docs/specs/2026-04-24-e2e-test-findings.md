@@ -158,12 +158,11 @@ Der Upstream-PR an Paperclip ist ready to merge, die npm-Publishes sind bereit s
 2. ~~**Debug-Trail zurückportieren** in die Streaming-Route (Schritt B).~~ ✅ `b022bdb6` — vier Stages (request/anonymized/external_response_raw/deanonymized) plus blocked/error; `forwardedHeaderNames` im request-Eintrag macht Header-Set sichtbar; smoketest gegen `/anthropic/v1/messages` mit Fake-Key liefert {request,anonymized,error:httpStatus=401} wie erwartet.
 3. **`NODE_DEBUG=http`** im Buchhalter für einen diagnostischen Run.
 4. ~~**Re-Test** mit Mustermann-Datensatz.~~ ⚠️ 2026-04-24 ~19:31 CEST durchgeführt — Buchhalter auf `claude_local` + `adapterConfig.env.ANTHROPIC_API_KEY` via PATCH, WHI-104 assign-basierter Wakeup, Run `5456dfd1-1dc9-4ebf-b133-d1f53dd1d2b0` abgeschlossen `succeeded`, `total_cost_usd=0.20198`, `apiKeySource: ANTHROPIC_API_KEY`. **Debug-Trail nach dem Run: 0 Einträge.** Keine "pii-proxy active — injecting provider base URL" / "pii-proxy skipped" / "pii-proxy unreachable" im Paperclip-Log. → Hook `onBeforeAdapterExecute` wurde **nicht invoked**, Claude-CLI lief direkt gegen `api.anthropic.com`. PII (Mustermann) ist durch. Buchhalter + Issue wurden 1:1 aus Snapshot restored.
-5. **Neue Haupthypothese — Broadcaster nicht verdrahtet im Wake-Pfad.** Es gibt im Server mehrere `heartbeatService()`-Instanzen (`server/src/index.ts:659` mit broadcaster, aber `routes/agents.ts:133`, `routes/issues.ts:389`, `routes/approvals.ts:32`, `services/plugin-host-services.ts:469`, `services/routines.ts:362` ohne broadcaster). Queue ist zwar DB-shared, aber `enqueueWakeup` könnte einen Code-Pfad haben der `executeRun` direkt aus der broadcaster-losen Instanz triggert. Prüfen:
-   - In `services/heartbeat.ts` ab `enqueueWakeup` (Zeile 6466) tracen, wann/wo nach dem insert `executeRun` gestartet wird.
-   - Temporär ein `logger.info` vor `broadcastBeforeAdapterExecute` in heartbeat.ts:5603 setzen und Re-Test — damit sichtbar wird, ob der Code-Pfad überhaupt erreicht wird.
-   - Alternativ Plugin-Worker-seitig: `ctx.logger.info` als erste Zeile in `onBeforeAdapterExecute` einbauen, um RPC-Empfang zu verifizieren.
-6. **Falls Hook greift und 401 weiter**: Claude-CLI-Source anschauen, wie sie den Auth-Modus bestimmt (Pfad-Info: `/opt/homebrew/bin/claude` → `which claude`, dann Quelle finden).
-7. **Fallback-Umgehung verhindern**: Wenn der DPO 502 o.ä. zurückgibt, darf die CLI nicht auf direkte anthropic.com schwenken. Vermutlich durch Env-Var wie `ANTHROPIC_DISABLE_API_KEY_FALLBACK=1` — recherchieren, ob die CLI so was unterstützt.
+5. ~~**Neue Haupthypothese — Broadcaster nicht verdrahtet im Wake-Pfad.**~~ ✅ 2026-04-24 20:01 bestätigt per Diag-Log (`broadcasterWired: false` für den Assignment-Wakeup, `true` für den Timer-Tick). Fix commit `0ca91450`: lazy-resolve shared broadcaster in `heartbeatService`, `setSharedBeforeAdapterExecuteBroadcaster()` einmalig in `index.ts` nach `createApp`. Verifiziert:
+   - Fake-Key-Run: 16 Header via DPO durchgereicht (`x-stainless-*`, `user-agent`, `anthropic-dangerous-direct-browser-access`, …), Debug-Trail zeigt request→anonymized→error(401) — wie erwartet.
+   - Echter Re-Test: 7× vollständiger request→anonymized→external_response_raw→deanonymized-Roundtrip, 0 Errors, `total_cost_usd 0.7055`, `apiKeySource ANTHROPIC_API_KEY`, `stop_reason end_turn` — **PII-Schutz greift end-to-end**.
+   - 23/23 heartbeat-Unit-Tests grün.
+6. **Fallback-Umgehung verhindern**: Wenn der DPO 502 o.ä. zurückgibt, darf die CLI nicht auf direkte anthropic.com schwenken. Vermutlich durch Env-Var wie `ANTHROPIC_DISABLE_API_KEY_FALLBACK=1` — recherchieren, ob die CLI so was unterstützt. (Ab jetzt optional — der Hook-Bug ist gefixt, die CLI geht immer über den DPO, wenn der Hook invoked wurde.)
 
 ---
 
@@ -174,3 +173,5 @@ Dieser Test hat **~$0.22** an Anthropic-API-Kosten verursacht (eigenes Account).
 **Keine Kunden-PII exponiert** — Test verwendete Mustermann-Daten.
 
 **Re-Test 2026-04-24 19:31:** weitere **$0.20** auf eigenes Account — ebenfalls keine Kunden-PII. Muster-Daten desselben WHI-104-Issues. Der Hook griff nicht, Claude-CLI ging direkt an api.anthropic.com (siehe Abschnitt 7, Punkt 4–5).
+
+**Verifikations-Run 2026-04-24 20:11 (nach Fix `0ca91450`):** **$0.71** auf eigenes Account. 7 vollständige DPO-Roundtrips — Max Mustermann / max@example.com werden zu Pseudonymen anonymisiert, gehen pseudonymisiert an Anthropic, werden beim Streaming zurück deanonymisiert. **Keine PII bei Anthropic in Klartext.** Gesamt-Budget-Verbrauch dieser Session: ca. **$1.13** (≈ 1.07€).

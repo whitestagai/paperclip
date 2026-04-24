@@ -1852,6 +1852,28 @@ export interface HeartbeatServiceOptions {
 }
 
 /**
+ * Process-wide fallback broadcaster set once at startup. Routes, approvals,
+ * and background services create their own bare `heartbeatService(db)`
+ * instances (for read methods and wakeup-enqueue); without this fallback,
+ * any run dispatched through such an instance — for example an
+ * assignment-triggered wakeup from the issues route — would bypass the
+ * plugin hook entirely, because `enqueueWakeup` calls
+ * `startNextQueuedRunForAgent` → `executeRun` on the *same* instance that
+ * enqueued the work. Setting this once in `createApp`/`index.ts` lets all
+ * bare instances inherit the hook without threading the broadcaster
+ * through every service constructor.
+ */
+let sharedBeforeAdapterExecuteBroadcaster:
+  | HeartbeatServiceOptions["broadcastBeforeAdapterExecute"]
+  | undefined;
+
+export function setSharedBeforeAdapterExecuteBroadcaster(
+  fn: HeartbeatServiceOptions["broadcastBeforeAdapterExecute"] | undefined,
+): void {
+  sharedBeforeAdapterExecuteBroadcaster = fn;
+}
+
+/**
  * Error thrown when a plugin's `beforeAdapterExecute` hook returns `block`.
  * Caught by the heartbeat dispatcher and converted into a failed run with
  * the plugin-provided reason visible in the run's error message.
@@ -1866,7 +1888,15 @@ export class AdapterPreExecuteBlockedError extends Error {
 }
 
 export function heartbeatService(db: Db, opts: HeartbeatServiceOptions = {}) {
-  const broadcastBeforeAdapterExecute = opts.broadcastBeforeAdapterExecute;
+  // Resolve the broadcaster lazily on each call: routes and services are
+  // constructed during `createApp`, before index.ts has a chance to publish
+  // the shared fallback. Reading it at execute-time instead of factory-time
+  // lets bare instances pick up the broadcaster as soon as it's registered,
+  // without threading it through every service constructor.
+  const resolveBroadcaster = ():
+    | HeartbeatServiceOptions["broadcastBeforeAdapterExecute"]
+    | undefined =>
+    opts.broadcastBeforeAdapterExecute ?? sharedBeforeAdapterExecuteBroadcaster;
   const instanceSettings = instanceSettingsService(db);
   const getCurrentUserRedactionOptions = async () => ({
     enabled: (await instanceSettings.getGeneral()).censorUsernameInLogs,
@@ -5600,15 +5630,7 @@ export function heartbeatService(db: Db, opts: HeartbeatServiceOptions = {}) {
       // runtime config, or block the run (fail-closed egress gates, etc.).
       // Plugin-less deployments skip this block entirely (broadcaster omitted).
       let effectiveRuntimeConfig: Record<string, unknown> = runtimeConfig;
-      logger.info(
-        {
-          runId: run.id,
-          agentId: agent.id,
-          adapterType: agent.adapterType,
-          broadcasterWired: !!broadcastBeforeAdapterExecute,
-        },
-        "[diag:hook] entering beforeAdapterExecute pre-check",
-      );
+      const broadcastBeforeAdapterExecute = resolveBroadcaster();
       if (broadcastBeforeAdapterExecute) {
         const preExecuteInput: BeforeAdapterExecuteParams = {
           agentId: agent.id,
@@ -5621,21 +5643,7 @@ export function heartbeatService(db: Db, opts: HeartbeatServiceOptions = {}) {
         };
         let preExecuteResult: BeforeAdapterExecuteResult;
         try {
-          logger.info(
-            { runId: run.id, agentId: agent.id },
-            "[diag:hook] calling broadcastBeforeAdapterExecute",
-          );
           preExecuteResult = await broadcastBeforeAdapterExecute(preExecuteInput);
-          logger.info(
-            {
-              runId: run.id,
-              agentId: agent.id,
-              hasEnv: !!preExecuteResult.env,
-              envKeys: preExecuteResult.env ? Object.keys(preExecuteResult.env) : [],
-              blocked: !!preExecuteResult.block,
-            },
-            "[diag:hook] broadcastBeforeAdapterExecute returned",
-          );
         } catch (err) {
           // Broadcast-level failure (not a single plugin's error — those are
           // already swallowed inside the broadcaster). Log and continue

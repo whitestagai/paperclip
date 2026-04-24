@@ -34,6 +34,7 @@ import {
   instanceSettingsService,
   reconcilePersistedRuntimeServicesOnStartup,
   routineService,
+  setSharedBeforeAdapterExecuteBroadcaster,
 } from "./services/index.js";
 import { createFeedbackTraceShareClientFromConfig } from "./services/feedback-share-client.js";
 import { createStorageServiceFromConfig } from "./storage/index.js";
@@ -655,6 +656,14 @@ export async function startServer(): Promise<StartedServer> {
       logger.error({ err }, "startup reconciliation of persisted runtime services failed");
     });
   
+  // Also publish the broadcaster as the process-wide shared fallback, so
+  // bare `heartbeatService(db)` instances in routes/*.ts and services/*.ts
+  // inherit plugin-hook wiring and don't silently skip the pre-execute
+  // broadcast when they dispatch runs (e.g. assignment-triggered wakeups).
+  setSharedBeforeAdapterExecuteBroadcaster((params, brOpts) =>
+    app.workerManager.broadcastBeforeAdapterExecute(params, brOpts),
+  );
+
   if (config.heartbeatSchedulerEnabled) {
     const heartbeat = heartbeatService(db as any, {
       broadcastBeforeAdapterExecute: (params, brOpts) =>

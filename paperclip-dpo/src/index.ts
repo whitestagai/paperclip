@@ -31,6 +31,7 @@ export interface DpoOptions {
 export interface Dpo {
   anonymize(req: AnonymizeRequest): Promise<AnonymizeResponse>;
   deanonymize(req: DeanonymizeRequest): DeanonymizeResult;
+  getMappingTable(mappingId: string): Map<string, string>;
   close(): void;
 }
 
@@ -120,6 +121,13 @@ export function createDpo(opts: DpoOptions): Dpo {
     deanonymize(req: DeanonymizeRequest): DeanonymizeResult {
       const mappings = store.read(req.mappingId);
       return { text: deanonymizeText(req.text, mappings) };
+    },
+
+    getMappingTable(mappingId: string): Map<string, string> {
+      const entries = store.read(mappingId);
+      const table = new Map<string, string>();
+      for (const entry of entries) table.set(entry.pseudonym, entry.plaintext);
+      return table;
     },
 
     close(): void {

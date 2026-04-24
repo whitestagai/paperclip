@@ -25,9 +25,50 @@ const sharedOpts = {
   singleLine: true,
 };
 
+/**
+ * Reduziert das Log-Volumen durch Begrenzung der Request-Header.
+ * Nur relevante Felder werden geloggt; Cookies und große Header werden redactet.
+ */
+const reqSerializer = pino.stdSerializers.req;
+
 export const logger = pino({
   level: "debug",
-  redact: ["req.headers.authorization"],
+  redact: [
+    "req.headers.authorization",
+    "req.headers.cookie",
+    'req.headers["referer"]',
+    'req.headers["x-forwarded-for"]',
+  ],
+  serializers: {
+    req: (req) => {
+      const serialized = reqSerializer(req);
+      // Nur relevante Header behalten, große Werte redacten
+      if (serialized?.headers) {
+        const headers: Record<string, string> = {};
+        const keepHeaders = new Set([
+          "host",
+          "content-type",
+          "accept",
+          "user-agent",
+          "x-request-id",
+        ]);
+        for (const [key, value] of Object.entries(serialized.headers)) {
+          const lowerKey = key.toLowerCase();
+          if (keepHeaders.has(lowerKey)) {
+            headers[key] = String(value);
+          } else if (lowerKey === "cookie" || lowerKey.startsWith("x-")) {
+            headers[key] = "[redacted]";
+          } else {
+            // Alle anderen Header beibehalten, aber kürzen
+            const strVal = String(value);
+            headers[key] = strVal.length > 200 ? `${strVal.slice(0, 197)}...` : strVal;
+          }
+        }
+        serialized.headers = headers;
+      }
+      return serialized;
+    },
+  },
 }, pino.transport({
   targets: [
     {

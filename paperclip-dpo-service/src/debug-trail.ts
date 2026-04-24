@@ -12,7 +12,7 @@ export type DebugStage =
 
 export interface DebugTrailInput {
   traceId: string;
-  route: "anonymize" | "deanonymize" | "safe-call";
+  route: "anonymize" | "deanonymize" | "safe-call" | "anthropic-passthrough";
   stage: DebugStage;
   agent?: string;
   targetLlm?: string;
@@ -25,6 +25,8 @@ export interface DebugTrailInput {
   errorMessage?: string;
   httpStatus?: number;
   responsePath?: string;
+  forwardedHeaderNames?: string[];
+  streaming?: boolean;
 }
 
 export type DebugTrailEntry = DebugTrailInput & { ts: string };

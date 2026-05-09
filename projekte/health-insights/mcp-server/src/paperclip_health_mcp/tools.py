@@ -68,3 +68,45 @@ async def get_metric_range(
         "trend": linear_trend(numeric_values),
         "values": values,
     }
+
+
+async def get_workouts(
+    pool: asyncpg.Pool,
+    from_date: date,
+    to_date: date,
+    workout_type: str | None = None,
+) -> dict:
+    """All workouts whose start_ts falls within [from_date, to_date] inclusive."""
+    query = (
+        "SELECT start_ts, end_ts, type, duration_sec, "
+        "active_energy_kcal, distance_m, avg_hr "
+        "FROM health_workouts "
+        "WHERE start_ts::date BETWEEN $1 AND $2"
+    )
+    params: list = [from_date, to_date]
+    if workout_type is not None:
+        query += " AND type = $3"
+        params.append(workout_type)
+    query += " ORDER BY start_ts"
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(query, *params)
+
+    return {
+        "from": from_date.isoformat(),
+        "to": to_date.isoformat(),
+        "type_filter": workout_type,
+        "count": len(rows),
+        "workouts": [
+            {
+                "start_ts": r["start_ts"].isoformat(),
+                "end_ts": r["end_ts"].isoformat(),
+                "type": r["type"],
+                "duration_sec": r["duration_sec"],
+                "active_energy_kcal": r["active_energy_kcal"],
+                "distance_m": r["distance_m"],
+                "avg_hr": r["avg_hr"],
+            }
+            for r in rows
+        ],
+    }

@@ -70,3 +70,51 @@ async def test_get_metric_range_no_data(clean_db):
     assert result["values"] == []
     assert result["stats"]["count"] == 0
     assert result["trend"]["direction"] == "insufficient_data"
+
+
+from datetime import datetime, timezone
+from paperclip_health_mcp.tools import get_workouts
+
+
+@pytest.mark.asyncio
+async def test_get_workouts_returns_list_in_range(clean_db):
+    pool = clean_db
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO health_workouts "
+            "(start_ts, end_ts, type, duration_sec, active_energy_kcal, distance_m, avg_hr) "
+            "VALUES ($1, $2, 'Running', 1800, 320, 5200, 148)",
+            datetime(2026, 5, 5, 7, 0, tzinfo=timezone.utc),
+            datetime(2026, 5, 5, 7, 30, tzinfo=timezone.utc),
+        )
+        await conn.execute(
+            "INSERT INTO health_workouts "
+            "(start_ts, end_ts, type, duration_sec, active_energy_kcal) "
+            "VALUES ($1, $2, 'Strength', 2700, 180)",
+            datetime(2026, 5, 6, 18, 0, tzinfo=timezone.utc),
+            datetime(2026, 5, 6, 18, 45, tzinfo=timezone.utc),
+        )
+    result = await get_workouts(pool, date(2026, 5, 1), date(2026, 5, 7))
+    assert len(result["workouts"]) == 2
+    assert result["workouts"][0]["type"] == "Running"
+    assert result["workouts"][0]["duration_sec"] == 1800
+    assert result["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_get_workouts_filtered_by_type(clean_db):
+    pool = clean_db
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO health_workouts (start_ts, end_ts, type, duration_sec) VALUES "
+            "($1, $2, 'Running', 1800), ($3, $4, 'Strength', 2700)",
+            datetime(2026, 5, 5, 7, 0, tzinfo=timezone.utc),
+            datetime(2026, 5, 5, 7, 30, tzinfo=timezone.utc),
+            datetime(2026, 5, 6, 18, 0, tzinfo=timezone.utc),
+            datetime(2026, 5, 6, 18, 45, tzinfo=timezone.utc),
+        )
+    result = await get_workouts(
+        pool, date(2026, 5, 1), date(2026, 5, 7), workout_type="Running"
+    )
+    assert result["count"] == 1
+    assert result["workouts"][0]["type"] == "Running"

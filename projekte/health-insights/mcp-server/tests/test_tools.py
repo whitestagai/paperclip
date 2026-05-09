@@ -118,3 +118,10 @@ async def test_get_workouts_filtered_by_type(clean_db):
     )
     assert result["count"] == 1
     assert result["workouts"][0]["type"] == "Running"
+
+
+def test_server_imports_and_registers_three_tools():
+    """The server module imports and FastMCP has the 3 tools registered."""
+    from paperclip_health_mcp.server import mcp
+    tool_names = {tool.name for tool in mcp._tool_manager.list_tools()}
+    assert tool_names == {"get_daily_summary", "get_metric_range", "get_workouts"}

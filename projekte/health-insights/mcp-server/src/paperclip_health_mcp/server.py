@@ -1,12 +1,11 @@
 """MCP server entry point. Registers the 3 tools and runs over stdio."""
-import asyncio
 import logging
 from datetime import date
 
 from mcp.server.fastmcp import FastMCP
 
 from . import tools as t
-from .db import get_pool, close_pool
+from .db import get_pool
 
 log = logging.getLogger("paperclip_health_mcp")
 
@@ -72,10 +71,12 @@ async def get_workouts(
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO)
-    try:
-        mcp.run()
-    finally:
-        asyncio.run(close_pool())
+    # Pool cleanup is intentionally omitted: mcp.run() owns its own anyio
+    # event loop, and asyncpg connections are bound to that loop. Calling
+    # asyncio.run(close_pool()) afterwards would create a new loop and
+    # cross-loop-close the pool. The OS reclaims connections cleanly when
+    # the stdio process exits, so this is safe in practice.
+    mcp.run()
 
 
 if __name__ == "__main__":

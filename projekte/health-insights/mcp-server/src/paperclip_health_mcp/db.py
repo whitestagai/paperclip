@@ -12,7 +12,10 @@ async def create_pool() -> asyncpg.Pool:
         url,
         min_size=1,
         max_size=4,
-        server_settings={"search_path": "paperclip_health"},
+        server_settings={
+            "search_path": "paperclip_health",
+            "TimeZone": "Europe/Berlin",
+        },
     )
 
 

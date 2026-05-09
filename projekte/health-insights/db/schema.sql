@@ -52,6 +52,24 @@ CREATE TABLE IF NOT EXISTS health_workouts (
 CREATE INDEX IF NOT EXISTS idx_workouts_start
   ON health_workouts (start_ts DESC);
 
+-- Anomaly detection flags (used by Phase 2 anomaly detection)
+CREATE TABLE IF NOT EXISTS health_anomaly_flags (
+  id BIGSERIAL PRIMARY KEY,
+  detected_at TIMESTAMPTZ DEFAULT NOW(),
+  metric VARCHAR(64),
+  date DATE,
+  value DOUBLE PRECISION,
+  baseline_avg DOUBLE PRECISION,
+  z_score DOUBLE PRECISION,
+  rule VARCHAR(64),
+  severity VARCHAR(16),
+  reviewed_by_agent BOOLEAN DEFAULT FALSE,
+  agent_classification VARCHAR(32),
+  agent_note TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_anomaly_flags_unreviewed
+  ON health_anomaly_flags (detected_at DESC) WHERE reviewed_by_agent = FALSE;
+
 -- Ingest run marker (used by Paperclip routine in Phase 2 to gate briefings)
 CREATE TABLE IF NOT EXISTS health_ingest_runs (
   date DATE PRIMARY KEY,

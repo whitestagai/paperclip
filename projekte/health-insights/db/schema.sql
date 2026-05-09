@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS health_samples (
   unit VARCHAR(32),
   raw JSONB,
   ingested_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE (metric, source, start_ts)
+  UNIQUE NULLS NOT DISTINCT (metric, source, start_ts)
 );
 CREATE INDEX IF NOT EXISTS idx_samples_metric_start
   ON health_samples (metric, start_ts DESC);

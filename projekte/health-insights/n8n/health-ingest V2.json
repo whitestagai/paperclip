@@ -1,0 +1,196 @@
+{
+  "name": "health-ingest V2",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "1a2b3c4d-1111-4111-8111-000000000001",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 320]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "/Users/walterschoenenbroecher.de/Library/Mobile Documents/iCloud~com~ifunography~HealthExport/Documents/Daily Export Gesundheit/Gesundheitsdaten-*.json",
+        "options": {}
+      },
+      "id": "1a2b3c4d-1111-4111-8111-000000000002",
+      "name": "Read Daily Exports",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [460, 320]
+    },
+    {
+      "parameters": {
+        "operation": "fromJson",
+        "binaryPropertyName": "data",
+        "options": {}
+      },
+      "id": "1a2b3c4d-1111-4111-8111-00000000000A",
+      "name": "Parse JSON Binary",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [580, 320]
+    },
+    {
+      "parameters": {
+        "jsCode": "const KCAL_PER_KJ = 1 / 4.184;\n\nfunction normalizeSimple(name, units, s) {\n  let metric = name, value = s.qty, unit = units;\n  if (metric === 'active_energy' || metric === 'basal_energy_burned') {\n    if (units === 'kJ') { value = value * KCAL_PER_KJ; unit = 'kcal'; }\n    metric = metric === 'active_energy' ? 'active_energy_kcal' : 'basal_energy_kcal';\n  }\n  return [{ metric, source: s.source || null, start_ts: s.date, end_ts: null, value, unit, raw: s }];\n}\nfunction normalizeHeartRate(units, s) {\n  return [{ metric: 'heart_rate', source: s.source || null, start_ts: s.date, end_ts: null, value: s.Avg, unit: units, raw: s }];\n}\nfunction normalizeSleep(s) {\n  return [\n    ['sleep_total_hours',  s.totalSleep],\n    ['sleep_core_hours',   s.core],\n    ['sleep_deep_hours',   s.deep],\n    ['sleep_rem_hours',    s.rem],\n    ['sleep_awake_hours',  s.awake],\n    ['sleep_in_bed_hours', s.inBed],\n  ].filter(([, v]) => v != null).map(([metric, value]) => ({\n    metric, source: s.source || null, start_ts: s.date, end_ts: null, value, unit: 'h', raw: s\n  }));\n}\nfunction normalizeMetric(m) {\n  const ss = m.data || [];\n  if (m.name === 'heart_rate')    return ss.flatMap(x => normalizeHeartRate(m.units, x));\n  if (m.name === 'sleep_analysis') return ss.flatMap(x => normalizeSleep(x));\n  return ss.flatMap(x => normalizeSimple(m.name, m.units, x));\n}\n\nconst out = [];\nfor (const item of $input.all()) {\n  const metrics = (item.json && item.json.data && item.json.data.metrics) || [];\n  for (const m of metrics) out.push(...normalizeMetric(m));\n}\nreturn out.map(json => ({ json }));"
+      },
+      "id": "1a2b3c4d-1111-4111-8111-000000000003",
+      "name": "Normalize Samples",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [740, 320]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ (() => {\n  const esc = v => v == null ? 'NULL' : \"'\" + String(v).replace(/'/g, \"''\") + \"'\";\n  const num = v => v == null ? 'NULL' : String(v);\n  const ts  = v => v == null ? 'NULL' : \"'\" + String(v).replace(/'/g, \"''\") + \"'::timestamptz\";\n  const json = v => v == null ? 'NULL' : \"'\" + JSON.stringify(v).replace(/'/g, \"''\") + \"'::jsonb\";\n  return \"INSERT INTO paperclip_health.health_samples \" +\n    \"(metric, source, start_ts, end_ts, value, unit, raw) VALUES (\" +\n    esc($json.metric) + ', ' + esc($json.source) + ', ' +\n    ts($json.start_ts) + ', ' + ts($json.end_ts) + ', ' +\n    num($json.value) + ', ' + esc($json.unit) + ', ' +\n    json($json.raw) +\n    \") ON CONFLICT (metric, source, start_ts) DO NOTHING;\";\n})() }}",
+        "options": {}
+      },
+      "id": "1a2b3c4d-1111-4111-8111-000000000004",
+      "name": "Insert Samples",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [900, 320],
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_INGEST_CRED_ID",
+          "name": "Postgres Health Ingest"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH cumulative AS (\n  SELECT unnest(ARRAY[\n    'step_count', 'active_energy_kcal', 'basal_energy_kcal',\n    'flights_climbed', 'apple_exercise_time', 'apple_stand_time',\n    'time_in_daylight', 'mindful_minutes', 'walking_running_distance',\n    'breathing_disturbances',\n    'sleep_total_hours', 'sleep_core_hours', 'sleep_deep_hours',\n    'sleep_rem_hours', 'sleep_awake_hours', 'sleep_in_bed_hours'\n  ])::varchar AS metric\n)\nINSERT INTO paperclip_health.health_daily (date, metric, min, max, avg, sum, count)\nSELECT\n  (start_ts AT TIME ZONE 'Europe/Berlin')::date AS date,\n  s.metric,\n  CASE WHEN s.metric IN (SELECT metric FROM cumulative) THEN NULL ELSE MIN(value) END,\n  CASE WHEN s.metric IN (SELECT metric FROM cumulative) THEN NULL ELSE MAX(value) END,\n  CASE WHEN s.metric IN (SELECT metric FROM cumulative) THEN NULL ELSE AVG(value) END,\n  CASE WHEN s.metric IN (SELECT metric FROM cumulative) THEN SUM(value) ELSE NULL END,\n  COUNT(*) AS count\nFROM paperclip_health.health_samples s\nWHERE start_ts >= NOW() - INTERVAL '8 days'\nGROUP BY (start_ts AT TIME ZONE 'Europe/Berlin')::date, s.metric\nON CONFLICT (date, metric) DO UPDATE SET\n  min = EXCLUDED.min, max = EXCLUDED.max, avg = EXCLUDED.avg,\n  sum = EXCLUDED.sum, count = EXCLUDED.count,\n  computed_at = NOW();",
+        "options": {}
+      },
+      "id": "1a2b3c4d-1111-4111-8111-000000000005",
+      "name": "Compute Daily Aggregate",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1120, 320],
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_INGEST_CRED_ID",
+          "name": "Postgres Health Ingest"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO paperclip_health.health_ingest_runs (date, status, files_processed, samples_written)\nVALUES (CURRENT_DATE, 'ready', 1, 0)\nON CONFLICT (date) DO UPDATE SET\n  status = 'ready',\n  files_processed = paperclip_health.health_ingest_runs.files_processed + 1,\n  finished_at = NOW();",
+        "options": {}
+      },
+      "id": "1a2b3c4d-1111-4111-8111-000000000006",
+      "name": "Mark Ingest Run",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1340, 320],
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_INGEST_CRED_ID",
+          "name": "Postgres Health Ingest"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT TO_CHAR(date, 'YYYY-MM-DD') AS date, metric, min, max, avg, sum, count\nFROM paperclip_health.health_daily\nWHERE date = CURRENT_DATE\nORDER BY metric;",
+        "options": {}
+      },
+      "id": "1a2b3c4d-1111-4111-8111-000000000007",
+      "name": "Read Daily for Today",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1560, 320],
+      "executeOnce": true,
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_WITH_INGEST_CRED_ID",
+          "name": "Postgres Health Ingest"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all().map(i => i.json);\nif (rows.length === 0) return [{ json: { skip: true } }];\n\nconst isoDate = rows[0].date;\nconst byMetric = Object.fromEntries(rows.map(r => [r.metric, r]));\n\nconst fmtH = h => (h == null ? '—' : `${Math.floor(h)}h${String(Math.round((h - Math.floor(h)) * 60)).padStart(2, '0')}`);\nconst fmt1 = v => (v == null ? '—' : Math.round(v * 10) / 10);\nconst fmtI = v => (v == null ? '—' : Math.round(v));\nconst get  = (m, k) => (byMetric[m] && byMetric[m][k] != null) ? byMetric[m][k] : null;\n\nlet md = `# Health Daily — ${isoDate}\\n\\n`;\n\nmd += `## Sleep\\n`;\nmd += `- Total: ${fmtH(get('sleep_total_hours', 'sum'))}\\n`;\nmd += `- Deep: ${fmtH(get('sleep_deep_hours', 'sum'))}, REM: ${fmtH(get('sleep_rem_hours', 'sum'))}, Core: ${fmtH(get('sleep_core_hours', 'sum'))}, Awake: ${fmtH(get('sleep_awake_hours', 'sum'))}\\n\\n`;\n\nmd += `## Recovery\\n`;\nmd += `- HRV (avg): ${fmt1(get('heart_rate_variability', 'avg'))} ms\\n`;\nmd += `- Resting HR: ${fmt1(get('resting_heart_rate', 'avg'))} bpm\\n`;\nmd += `- Respiratory rate (avg): ${fmt1(get('respiratory_rate', 'avg'))} /min\\n`;\nmd += `- Wrist temp (avg): ${fmt1(get('apple_sleeping_wrist_temperature', 'avg'))} °C\\n\\n`;\n\nmd += `## Activity\\n`;\nmd += `- Steps: ${fmtI(get('step_count', 'sum'))}\\n`;\nmd += `- Active energy: ${fmtI(get('active_energy_kcal', 'sum'))} kcal\\n`;\nmd += `- Basal energy: ${fmtI(get('basal_energy_kcal', 'sum'))} kcal\\n`;\nmd += `- Exercise time: ${fmtI(get('apple_exercise_time', 'sum'))} min\\n`;\nmd += `- Stand time: ${fmtI(get('apple_stand_time', 'sum'))} min\\n`;\nmd += `- Distance: ${fmt1(get('walking_running_distance', 'sum'))} km\\n`;\nmd += `- Mindful: ${fmtI(get('mindful_minutes', 'sum'))} min\\n\\n`;\n\nmd += `## Vitals\\n`;\nmd += `- Heart rate (avg / min / max): ${fmt1(get('heart_rate', 'avg'))} / ${fmt1(get('heart_rate', 'min'))} / ${fmt1(get('heart_rate', 'max'))} bpm\\n`;\nmd += `- SpO₂ (avg / min): ${fmt1(get('blood_oxygen_saturation', 'avg'))} / ${fmt1(get('blood_oxygen_saturation', 'min'))} %\\n`;\nmd += `- Daylight: ${fmtI(get('time_in_daylight', 'sum'))} min\\n`;\n\nreturn [{ json: { date: isoDate, content: md } }];"
+      },
+      "id": "1a2b3c4d-1111-4111-8111-000000000008",
+      "name": "Format Daily Markdown",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 320],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "={{ '/Volumes/WHITESTAG-ARCHIV/Obsidian/WHITESTAG-Vault/Health/Daily/' + $json.date + '.md' }}",
+        "dataPropertyName": "content",
+        "options": {
+          "append": false
+        }
+      },
+      "id": "1a2b3c4d-1111-4111-8111-000000000009",
+      "name": "Write Daily Markdown",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [2000, 320],
+      "executeOnce": true
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{ "node": "Read Daily Exports", "type": "main", "index": 0 }]]
+    },
+    "Read Daily Exports": {
+      "main": [[{ "node": "Parse JSON Binary", "type": "main", "index": 0 }]]
+    },
+    "Parse JSON Binary": {
+      "main": [[{ "node": "Normalize Samples", "type": "main", "index": 0 }]]
+    },
+    "Normalize Samples": {
+      "main": [[{ "node": "Insert Samples", "type": "main", "index": 0 }]]
+    },
+    "Insert Samples": {
+      "main": [[{ "node": "Compute Daily Aggregate", "type": "main", "index": 0 }]]
+    },
+    "Compute Daily Aggregate": {
+      "main": [[{ "node": "Mark Ingest Run", "type": "main", "index": 0 }]]
+    },
+    "Mark Ingest Run": {
+      "main": [[{ "node": "Read Daily for Today", "type": "main", "index": 0 }]]
+    },
+    "Read Daily for Today": {
+      "main": [[{ "node": "Format Daily Markdown", "type": "main", "index": 0 }]]
+    },
+    "Format Daily Markdown": {
+      "main": [[{ "node": "Write Daily Markdown", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [],
+  "pinData": {},
+  "meta": {
+    "templateCreatedBy": "Paperclip Health Insights Phase 1"
+  }
+}

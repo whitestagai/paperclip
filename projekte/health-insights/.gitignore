@@ -2,4 +2,5 @@ data/
 mcp-server/.venv/
 mcp-server/.pytest_cache/
 mcp-server/**/__pycache__/
+mcp-server/**/*.egg-info/
 *.log

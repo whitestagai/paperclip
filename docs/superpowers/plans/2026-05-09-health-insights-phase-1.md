@@ -1239,51 +1239,109 @@ git commit -m "chore(health-mcp): launchd plist for always-on MCP server"
 
 ---
 
-## Task 10: n8n Workflow — Validate + Parse Sample Export
+## Task 10: n8n Workflow — Read + Parse Daily Export
 
 **Files:**
 - Create: `projekte/health-insights/n8n/health-ingest V1.json` (exported from n8n UI at end of task series)
-- Create: `projekte/health-insights/docs/metric-mapping.md`
+- Create: `projekte/health-insights/docs/metric-shapes.md`
 
 **Note on n8n tasks (10–13):** The workflow is built incrementally in the n8n UI. Each task adds a node group, tested with a manual run before proceeding. JSON is exported only after all four tasks complete.
 
-- [ ] **Step 1: Write metric-mapping reference**
+**Real-world iCloud path (verified 2026-05-10):**
 
-Create `projekte/health-insights/docs/metric-mapping.md`:
+```
+~/Library/Mobile Documents/iCloud~com~ifunography~HealthExport/Documents/Daily Export Gesundheit/Gesundheitsdaten-YYYY-MM-DD.json
+```
+
+App is **Health Auto Export by Ifunography** (bundle `com.ifunography.HealthExport`). Files are 500-700 KB JSON each, one per day, written by the iPhone's Daily Export automation.
+
+**Workouts:** the daily export does NOT include workouts by default. Workouts in `AutoSync/Workouts/*.hae` are LZFSE-compressed (n8n cannot decompress without a plugin). Two options:
+- **Recommended:** in Health Auto Export iPhone app → Daily Export config → enable "Workouts" so they appear in the daily JSON as `data.workouts[]`
+- **Fallback:** defer workouts to Phase 2 (the `get_workouts` MCP tool already handles empty results gracefully)
+
+This plan assumes Walter enables daily-export workouts before Task 11 step 4. If not, skip the workouts branch.
+
+- [ ] **Step 1: Write metric-shapes reference**
+
+Create `projekte/health-insights/docs/metric-shapes.md`:
 
 ```markdown
-# Health Auto Export → Canonical Metric Names
+# Health Auto Export — Metric Shapes Reference
 
-Health Auto Export exports use Apple Health identifiers. We normalize them
-in the n8n ingest workflow before writing to Postgres.
+Health Auto Export by Ifunography exports metrics already as canonical
+snake_case names — no Apple Health identifier mapping is needed. The JSON
+shape *of each sample* varies by metric type, though.
 
-## Mapping (Phase 1 starter set — extend as needed)
+## Sample shapes (verified from real exports)
 
-| Health Auto Export field          | Canonical `metric` |
-|-----------------------------------|--------------------|
-| `HKQuantityTypeIdentifierStepCount`               | `step_count`        |
-| `HKQuantityTypeIdentifierActiveEnergyBurned`      | `active_energy_kcal`|
-| `HKQuantityTypeIdentifierHeartRate`               | `heart_rate`        |
-| `HKQuantityTypeIdentifierRestingHeartRate`        | `resting_heart_rate`|
-| `HKQuantityTypeIdentifierHeartRateVariabilitySDNN`| `hrv_sdnn`          |
-| `HKQuantityTypeIdentifierRespiratoryRate`         | `respiratory_rate`  |
-| `HKQuantityTypeIdentifierOxygenSaturation`        | `spo2`              |
-| `HKQuantityTypeIdentifierBodyTemperature`         | `body_temperature`  |
-| `HKCategoryTypeIdentifierSleepAnalysis` (asleep)  | `sleep_asleep_seconds` |
-| `HKCategoryTypeIdentifierSleepAnalysis` (in bed)  | `sleep_in_bed_seconds` |
-| Workout (`HKWorkout`)                             | (separate table `health_workouts`) |
+### Shape A: Simple quantity (27 of 29 metrics)
+
+```json
+{ "date": "2026-05-09 16:39:00 +0200", "qty": 9.218, "source": "Ultra 3" }
+```
+
+Metrics with this shape (non-exhaustive): `step_count`, `active_energy`,
+`basal_energy_burned`, `flights_climbed`, `apple_exercise_time`,
+`apple_stand_hour`, `apple_stand_time`, `heart_rate_variability`,
+`resting_heart_rate`, `respiratory_rate`, `blood_oxygen_saturation`,
+`blood_glucose`, `mindful_minutes`, `breathing_disturbances`,
+`time_in_daylight`, `environmental_audio_exposure`, `headphone_audio_exposure`,
+`walking_running_distance`, `walking_speed`, `walking_step_length`,
+`walking_heart_rate_average`, `walking_asymmetry_percentage`,
+`walking_double_support_percentage`, `stair_speed_up`, `stair_speed_down`,
+`physical_effort`, `apple_sleeping_wrist_temperature`.
+
+### Shape B: HR aggregate (1 metric: `heart_rate`)
+
+```json
+{ "date": "2026-05-09 00:07:00 +0200", "source": "Ultra 3",
+  "Min": 68, "Max": 68, "Avg": 68 }
+```
+
+For `heart_rate` we store `Avg` as the canonical value. Daily aggregate's
+`MIN(value)` / `MAX(value)` / `AVG(value)` over all 5-minute Avg samples
+gives a useful daily summary.
+
+### Shape C: Sleep session (1 metric: `sleep_analysis`)
+
+```json
+{ "date": "2026-05-09 00:00:00 +0200", "source": "Ultra 3",
+  "totalSleep": 5.17, "core": 3.50, "deep": 0.27, "rem": 1.41,
+  "awake": 0.44, "asleep": 0,
+  "inBedStart": "...", "sleepStart": "...", "sleepEnd": "...", "inBedEnd": "...", "inBed": 0 }
+```
+
+Values are in **hours**. We explode each sleep sample into six canonical
+metrics: `sleep_total_hours`, `sleep_core_hours`, `sleep_deep_hours`,
+`sleep_rem_hours`, `sleep_awake_hours`, `sleep_in_bed_hours`.
+
+## Date format
+
+All `date` fields use `"YYYY-MM-DD HH:MM:SS +ZZZZ"` (with a space, not the
+ISO-8601 `T`). Postgres `TIMESTAMPTZ` accepts this directly without
+preprocessing — pass the raw string to a `$N::timestamptz` parameter.
+
+## Unit normalization
+
+Health Auto Export emits `active_energy` and `basal_energy_burned` in **kJ**,
+not kcal. We rename to `active_energy_kcal` / `basal_energy_kcal` and
+divide by 4.184 during normalization so canonical metrics are always in kcal.
 
 ## Aggregation choices
 
-- `step_count`, `active_energy_kcal`, `sleep_*_seconds` → daily **sum**
-- `heart_rate`, `hrv_sdnn`, `respiratory_rate`, `spo2`, `body_temperature` → daily **avg + min + max**
-- `resting_heart_rate` → daily **avg** (already daily-frequency)
-
-## Adding a new metric
-
-1. Add a row to the table above
-2. Add a normalization branch in n8n `health-ingest V<n>` node `Normalize Metric Name`
-3. Decide aggregation: sum vs avg/min/max — update n8n node `Compute Daily Aggregate`
+- **Cumulative (daily sum):** `step_count`, `active_energy_kcal`,
+  `basal_energy_kcal`, `flights_climbed`, `apple_exercise_time`,
+  `apple_stand_time`, `time_in_daylight`, `mindful_minutes`,
+  `walking_running_distance`, `breathing_disturbances`,
+  `sleep_*_hours`
+- **Instant readings (daily avg + min + max):** `heart_rate`,
+  `heart_rate_variability`, `respiratory_rate`, `blood_oxygen_saturation`,
+  `walking_speed`, `walking_step_length`, `walking_heart_rate_average`,
+  `apple_sleeping_wrist_temperature`, `environmental_audio_exposure`,
+  `headphone_audio_exposure`, `physical_effort`, `stair_speed_up`,
+  `stair_speed_down`, `walking_asymmetry_percentage`,
+  `walking_double_support_percentage`, `blood_glucose`
+- **Daily-frequency (avg only):** `resting_heart_rate`, `apple_stand_hour`
 ```
 
 - [ ] **Step 2: Build the n8n workflow base in the UI**
@@ -1291,53 +1349,116 @@ in the n8n ingest workflow before writing to Postgres.
 In n8n UI, create new workflow named **`health-ingest V1`** with these nodes:
 
 1. **Schedule Trigger** — every 30 min (Cron `*/30 * * * *`)
-2. **Read Binary Files** node — path `/Users/walterschoenenbroecher.de/Library/Mobile Documents/iCloud~com~lybrary~HealthAutoExport/Documents/*.json` (exact path verified during setup; iCloud paths under `~/Library/Mobile Documents/`)
-3. **Function (JS)** node `Parse JSON` — parse binary → JSON object, extract `data.metrics` (array) and `data.workouts` (array)
-4. **Function (JS)** node `Normalize Metric Name` — rewrite Apple Health identifiers per the mapping above. Function body:
+2. **Read Binary Files** node — file path glob:
+   ```
+   /Users/walterschoenenbroecher.de/Library/Mobile Documents/iCloud~com~ifunography~HealthExport/Documents/Daily Export Gesundheit/Gesundheitsdaten-*.json
+   ```
+3. **Function (JS)** node `Normalize Samples` — parse binary, walk `data.metrics`, emit one item per (metric, sample) tuple. Function body:
 
 ```javascript
-const MAP = {
-  HKQuantityTypeIdentifierStepCount: 'step_count',
-  HKQuantityTypeIdentifierActiveEnergyBurned: 'active_energy_kcal',
-  HKQuantityTypeIdentifierHeartRate: 'heart_rate',
-  HKQuantityTypeIdentifierRestingHeartRate: 'resting_heart_rate',
-  HKQuantityTypeIdentifierHeartRateVariabilitySDNN: 'hrv_sdnn',
-  HKQuantityTypeIdentifierRespiratoryRate: 'respiratory_rate',
-  HKQuantityTypeIdentifierOxygenSaturation: 'spo2',
-  HKQuantityTypeIdentifierBodyTemperature: 'body_temperature',
-};
-const items = $input.all();
-return items.flatMap(item => {
-  const metrics = item.json.metrics ?? [];
-  return metrics.flatMap(m => {
-    const canonical = MAP[m.name];
-    if (!canonical) return [];  // skip unmapped for now
-    return (m.data ?? []).map(d => ({ json: {
-      metric: canonical,
-      source: d.source ?? null,
-      start_ts: d.date ?? d.startDate,
-      end_ts: d.endDate ?? null,
-      value: d.qty ?? d.value ?? null,
-      unit: m.units ?? null,
-      raw: d,
-    }}));
-  });
-});
+const KCAL_PER_KJ = 1 / 4.184;
+
+// Cumulative metrics that need daily-sum aggregation. Used downstream
+// in Compute Daily Aggregate; just informational here for the reader.
+// Most metrics fall into "instant reading" (avg/min/max). See metric-shapes.md.
+
+function normalizeSimple(metricName, units, sample) {
+  // Shape A: { date, qty, source }
+  let metric = metricName;
+  let value = sample.qty;
+  let unit = units;
+  // Energy: kJ → kcal, rename metric
+  if (metric === 'active_energy' || metric === 'basal_energy_burned') {
+    if (units === 'kJ') {
+      value = value * KCAL_PER_KJ;
+      unit = 'kcal';
+    }
+    metric = metric === 'active_energy' ? 'active_energy_kcal' : 'basal_energy_kcal';
+  }
+  return [{
+    metric, source: sample.source || null,
+    start_ts: sample.date,
+    end_ts: null,
+    value, unit,
+    raw: sample,
+  }];
+}
+
+function normalizeHeartRate(units, sample) {
+  // Shape B: { date, Min, Max, Avg, source } — store Avg as the value.
+  // (Daily Min/Max are derived from MIN/MAX(value) across 5-minute Avg samples.)
+  return [{
+    metric: 'heart_rate',
+    source: sample.source || null,
+    start_ts: sample.date,
+    end_ts: null,
+    value: sample.Avg,
+    unit: units,
+    raw: sample,
+  }];
+}
+
+function normalizeSleep(sample) {
+  // Shape C: explode into six per-phase metrics in hours.
+  const fields = [
+    ['sleep_total_hours',  sample.totalSleep],
+    ['sleep_core_hours',   sample.core],
+    ['sleep_deep_hours',   sample.deep],
+    ['sleep_rem_hours',    sample.rem],
+    ['sleep_awake_hours',  sample.awake],
+    ['sleep_in_bed_hours', sample.inBed],
+  ];
+  return fields
+    .filter(([, v]) => v != null)
+    .map(([metric, value]) => ({
+      metric,
+      source: sample.source || null,
+      start_ts: sample.date,
+      end_ts: null,
+      value,
+      unit: 'h',
+      raw: sample,
+    }));
+}
+
+function normalizeMetric(m) {
+  const samples = m.data ?? [];
+  if (m.name === 'heart_rate') {
+    return samples.flatMap(s => normalizeHeartRate(m.units, s));
+  }
+  if (m.name === 'sleep_analysis') {
+    return samples.flatMap(s => normalizeSleep(s));
+  }
+  return samples.flatMap(s => normalizeSimple(m.name, m.units, s));
+}
+
+// n8n binary input → parse JSON
+const out = [];
+for (const item of $input.all()) {
+  const binary = item.binary?.data;
+  if (!binary) continue;
+  const text = Buffer.from(binary.data, 'base64').toString('utf8');
+  let parsed;
+  try { parsed = JSON.parse(text); } catch (e) { continue; }
+  const metrics = parsed?.data?.metrics ?? [];
+  for (const m of metrics) {
+    out.push(...normalizeMetric(m));
+  }
+}
+return out.map(json => ({ json }));
 ```
 
-- [ ] **Step 3: Get a real export to test against**
+- [ ] **Step 3: Run workflow with the existing exports**
 
-Manual step (Walter): on iPhone, run a one-off Health Auto Export to iCloud. Verify the JSON arrives at the path used in node 2.
+Walter has files in the iCloud folder already (`Gesundheitsdaten-2026-05-08.json`, `Gesundheitsdaten-2026-05-09.json`). Click **Execute Workflow**.
 
-- [ ] **Step 4: Run workflow in n8n UI, verify output**
+Expected: `Normalize Samples` outputs ~5000-10000 items per file, each with `{metric, source, start_ts, value, unit, raw}` shape. No errors.
 
-Click **Execute Workflow**. Expected: `Normalize Metric Name` node outputs N items, each with `{metric, source, start_ts, value, ...}` shape. No errors.
-
-- [ ] **Step 5: Commit metric mapping doc**
+- [ ] **Step 4: Commit metric-shapes doc**
 
 ```bash
-git add projekte/health-insights/docs/metric-mapping.md
-git commit -m "docs(health): add Health Auto Export metric mapping reference"
+git add projekte/health-insights/docs/metric-shapes.md
+git commit -m "docs(health): document Health Auto Export metric shapes"
 ```
 
 (Workflow JSON commit happens in Task 13 after the workflow is complete.)
@@ -1351,68 +1472,115 @@ git commit -m "docs(health): add Health Auto Export metric mapping reference"
 
 - [ ] **Step 1: Add Postgres credentials in n8n**
 
-n8n UI → Credentials → New → Postgres. Use a dedicated INGEST role:
+Create a dedicated INGEST role with INSERT/UPDATE rights (kept separate from the read-only MCP role):
 
 ```bash
-psql -d health <<'SQL'
-CREATE ROLE paperclip_health_ingest WITH LOGIN PASSWORD '<chosen-by-walter>';
+PGHOST=127.0.0.1 PGPORT=5432 psql -d health <<'SQL'
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'paperclip_health_ingest') THEN
+    CREATE ROLE paperclip_health_ingest WITH LOGIN PASSWORD 'temp-change-me-walter';
+  END IF;
+END $$;
 GRANT USAGE ON SCHEMA paperclip_health TO paperclip_health_ingest;
 GRANT INSERT, SELECT, UPDATE ON ALL TABLES IN SCHEMA paperclip_health
   TO paperclip_health_ingest;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA paperclip_health
   TO paperclip_health_ingest;
+ALTER DEFAULT PRIVILEGES IN SCHEMA paperclip_health
+  GRANT INSERT, SELECT, UPDATE ON TABLES TO paperclip_health_ingest;
+ALTER DEFAULT PRIVILEGES IN SCHEMA paperclip_health
+  GRANT USAGE, SELECT ON SEQUENCES TO paperclip_health_ingest;
 SQL
 ```
 
-Then add the Postgres credential in n8n with this role.
+Then **change the password** to a real one:
+
+```bash
+PGHOST=127.0.0.1 PGPORT=5432 psql -d health -c "ALTER ROLE paperclip_health_ingest WITH PASSWORD '<real-password>';"
+```
+
+In n8n UI → **Credentials** → **+ Add credential** → **Postgres**:
+- Host: `127.0.0.1` · Port: `5432` · Database: `health`
+- User: `paperclip_health_ingest` · Password: `<real-password>`
+- SSL: Disable (loopback)
 
 - [ ] **Step 2: Add `Insert Samples` Postgres node**
 
-After `Normalize Metric Name`, add a **Postgres** node:
+After `Normalize Samples`, add a **Postgres** node `Insert Samples`:
 
 - Operation: **Execute Query**
-- Query (parameterized):
+- Query:
 
 ```sql
 INSERT INTO paperclip_health.health_samples
   (metric, source, start_ts, end_ts, value, unit, raw)
-VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+VALUES ($1, $2, $3::timestamptz, $4::timestamptz, $5, $6, $7::jsonb)
 ON CONFLICT (metric, source, start_ts) DO NOTHING
 RETURNING id;
 ```
 
-- Parameters (from input items): `={{ $json.metric }}`, `={{ $json.source }}`, `={{ $json.start_ts }}`, `={{ $json.end_ts }}`, `={{ $json.value }}`, `={{ $json.unit }}`, `={{ JSON.stringify($json.raw) }}`
+Parameters (one expression per `$N`, in n8n's "Query Parameters" field):
 
-- [ ] **Step 3: Test idempotency**
-
-Run the workflow twice with the same export. After the second run, verify:
-
-```bash
-psql -d health -c "SELECT COUNT(*) FROM paperclip_health.health_samples;"
+```
+={{ $json.metric }}
+={{ $json.source }}
+={{ $json.start_ts }}
+={{ $json.end_ts }}
+={{ $json.value }}
+={{ $json.unit }}
+={{ JSON.stringify($json.raw) }}
 ```
 
-Expected: same count as after first run (no duplicates).
+The `::timestamptz` casts handle Health Auto Export's `"YYYY-MM-DD HH:MM:SS +0200"` format directly — Postgres parses it natively.
 
-- [ ] **Step 4: Add `Insert Workouts` branch**
+- [ ] **Step 3: Test idempotency with the existing two daily files**
 
-Parallel to the metrics path, add another branch from `Parse JSON`:
+Run the workflow twice. After both runs:
+
+```bash
+PGHOST=127.0.0.1 PGPORT=5432 psql -d health -c "SELECT COUNT(*) FROM paperclip_health.health_samples;"
+PGHOST=127.0.0.1 PGPORT=5432 psql -d health -c "SELECT metric, COUNT(*) FROM paperclip_health.health_samples GROUP BY metric ORDER BY 2 DESC LIMIT 10;"
+```
+
+Expected: same count after second run as after first; >20 distinct metrics with multi-thousand sample counts (heart_rate ~380/day, active_energy ~880/day, etc.).
+
+- [ ] **Step 4 (optional, requires daily-export workouts enabled): Add `Insert Workouts` branch**
+
+**Skip this step entirely if workouts aren't enabled in Health Auto Export's daily-export config.** The `get_workouts` MCP tool already handles empty results. Defer to Phase 2.
+
+If workouts ARE enabled, the daily JSON contains `data.workouts[]` with this shape (as observed in `AutoSync/Workouts/*.hae` after decompression — the daily-export shape is documented as similar but Walter should run one export and check):
+
+```javascript
+// Verify the actual shape with:
+//   jq '.data.workouts[0]' "<latest export>.json"
+// before relying on these field names.
+```
+
+Add a parallel branch from the file-read node:
 
 - **Function (JS)** `Extract Workouts`:
 
 ```javascript
-const items = $input.all();
-return items.flatMap(item =>
-  (item.json.workouts ?? []).map(w => ({ json: {
-    start_ts: w.start ?? w.startDate,
-    end_ts: w.end ?? w.endDate,
-    type: w.name ?? w.type ?? 'Unknown',
-    duration_sec: Math.round((w.duration ?? 0) * 60),
-    active_energy_kcal: w.activeEnergyBurned?.qty ?? null,
-    distance_m: w.distance?.qty ? w.distance.qty * 1000 : null,
-    avg_hr: w.avgHeartRate ?? null,
-    raw: w,
-  }}))
-);
+const out = [];
+for (const item of $input.all()) {
+  const binary = item.binary?.data;
+  if (!binary) continue;
+  const text = Buffer.from(binary.data, 'base64').toString('utf8');
+  const parsed = JSON.parse(text);
+  for (const w of (parsed?.data?.workouts ?? [])) {
+    out.push({ json: {
+      start_ts: w.start ?? w.startDate,
+      end_ts:   w.end   ?? w.endDate,
+      type:     w.name  ?? 'Unknown',
+      duration_sec: w.duration ? Math.round(w.duration * 60) : null,
+      active_energy_kcal: w.activeEnergy ?? w.activeEnergyBurned?.qty ?? null,
+      distance_m:  w.totalDistance ? w.totalDistance * 1000 : null,
+      avg_hr:      w.avgHeartRate ?? null,
+      raw: w,
+    }});
+  }
+}
+return out;
 ```
 
 - **Postgres** node `Insert Workouts`:
@@ -1420,21 +1588,22 @@ return items.flatMap(item =>
 ```sql
 INSERT INTO paperclip_health.health_workouts
   (start_ts, end_ts, type, duration_sec, active_energy_kcal, distance_m, avg_hr, raw)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+VALUES ($1::timestamptz, $2::timestamptz, $3, $4, $5, $6, $7, $8::jsonb)
 ON CONFLICT (start_ts, type) DO NOTHING
 RETURNING id;
 ```
 
-- [ ] **Step 5: Run + spot check**
-
-Click **Execute Workflow**. Then:
+- [ ] **Step 5: Spot-check the data**
 
 ```bash
-psql -d health -c "SELECT metric, COUNT(*) FROM paperclip_health.health_samples GROUP BY metric ORDER BY 2 DESC LIMIT 10;"
-psql -d health -c "SELECT type, COUNT(*) FROM paperclip_health.health_workouts GROUP BY type;"
+PGHOST=127.0.0.1 PGPORT=5432 psql -d health <<'SQL'
+SELECT metric, COUNT(*) FROM paperclip_health.health_samples GROUP BY metric ORDER BY 2 DESC LIMIT 15;
+SELECT MIN(start_ts), MAX(start_ts) FROM paperclip_health.health_samples;
+SELECT type, COUNT(*) FROM paperclip_health.health_workouts GROUP BY type;
+SQL
 ```
 
-Expected: counts > 0 across multiple metrics; workouts populated if any exist in the export.
+Expected: heart_rate, active_energy_kcal, basal_energy_kcal, step_count near the top with hundreds-to-thousands of samples; min/max timestamps cover 2026-05-08 and 2026-05-09; workouts table empty unless Step 4 was completed.
 
 - [ ] **Step 6: No commit yet** (workflow JSON committed in Task 13)
 
@@ -1445,68 +1614,80 @@ Expected: counts > 0 across multiple metrics; workouts populated if any exist in
 **Files:**
 - Modify: `health-ingest V1` in n8n UI
 
+The aggregation logic uses a **list of cumulative metrics** to decide whether to emit `sum` or `min/max/avg` per row in `health_daily`. The list is duplicated between this node and the Markdown formatter (Task 13) — keep them in sync, or move to a `health_metric_meta` table in a future iteration.
+
 - [ ] **Step 1: Add `Compute Daily Aggregate` Postgres node**
 
-After both insert branches converge (use a **Merge** node first), add a **Postgres** node `Compute Daily Aggregate` with this query:
+After `Insert Samples` (and `Insert Workouts` if added in Task 11.4), use a **Merge** node (mode: "Combine" → "Multiplex") to converge the branches, then add a **Postgres** node `Compute Daily Aggregate`:
 
 ```sql
+WITH cumulative AS (
+  SELECT unnest(ARRAY[
+    'step_count', 'active_energy_kcal', 'basal_energy_kcal',
+    'flights_climbed', 'apple_exercise_time', 'apple_stand_time',
+    'time_in_daylight', 'mindful_minutes', 'walking_running_distance',
+    'breathing_disturbances',
+    'sleep_total_hours', 'sleep_core_hours', 'sleep_deep_hours',
+    'sleep_rem_hours', 'sleep_awake_hours', 'sleep_in_bed_hours'
+  ])::varchar AS metric
+)
 INSERT INTO paperclip_health.health_daily (date, metric, min, max, avg, sum, count)
 SELECT
-  start_ts::date AS date,
-  metric,
-  CASE WHEN metric IN ('step_count','active_energy_kcal',
-                       'sleep_asleep_seconds','sleep_in_bed_seconds')
-       THEN NULL ELSE MIN(value) END AS min,
-  CASE WHEN metric IN ('step_count','active_energy_kcal',
-                       'sleep_asleep_seconds','sleep_in_bed_seconds')
-       THEN NULL ELSE MAX(value) END AS max,
-  CASE WHEN metric IN ('step_count','active_energy_kcal',
-                       'sleep_asleep_seconds','sleep_in_bed_seconds')
-       THEN NULL ELSE AVG(value) END AS avg,
-  CASE WHEN metric IN ('step_count','active_energy_kcal',
-                       'sleep_asleep_seconds','sleep_in_bed_seconds')
-       THEN SUM(value) ELSE NULL END AS sum,
+  (start_ts AT TIME ZONE 'Europe/Berlin')::date AS date,
+  s.metric,
+  CASE WHEN s.metric IN (SELECT metric FROM cumulative) THEN NULL ELSE MIN(value) END,
+  CASE WHEN s.metric IN (SELECT metric FROM cumulative) THEN NULL ELSE MAX(value) END,
+  CASE WHEN s.metric IN (SELECT metric FROM cumulative) THEN NULL ELSE AVG(value) END,
+  CASE WHEN s.metric IN (SELECT metric FROM cumulative) THEN SUM(value) ELSE NULL END,
   COUNT(*) AS count
-FROM paperclip_health.health_samples
+FROM paperclip_health.health_samples s
 WHERE start_ts >= NOW() - INTERVAL '8 days'   -- recompute last 8 days every run
-GROUP BY start_ts::date, metric
+GROUP BY (start_ts AT TIME ZONE 'Europe/Berlin')::date, s.metric
 ON CONFLICT (date, metric) DO UPDATE SET
-  min = EXCLUDED.min,
-  max = EXCLUDED.max,
-  avg = EXCLUDED.avg,
-  sum = EXCLUDED.sum,
-  count = EXCLUDED.count,
+  min = EXCLUDED.min, max = EXCLUDED.max, avg = EXCLUDED.avg,
+  sum = EXCLUDED.sum, count = EXCLUDED.count,
   computed_at = NOW();
 ```
 
-This recomputes the last 8 days each run — cheap, and handles late-arriving samples.
+`AT TIME ZONE 'Europe/Berlin'` ensures a sample at 23:30 CET on May 8 is bucketed to the May 8 date, not May 9 UTC. The pool's `TimeZone` setting from Task 1's fix would also handle this, but pinning it here makes the query independent of session settings.
+
+The recompute window of 8 days is cheap (each metric × 7 days × ~few-hundred samples) and absorbs late-arriving samples from previous days.
 
 - [ ] **Step 2: Add `Mark Ingest Run` Postgres node**
 
-After the aggregate, add:
+After the aggregate, add a **Postgres** node:
 
 ```sql
-INSERT INTO paperclip_health.health_ingest_runs (date, status, files_processed, samples_written)
-VALUES (CURRENT_DATE, 'ready', $1::int, $2::int)
+INSERT INTO paperclip_health.health_ingest_runs
+  (date, status, files_processed, samples_written)
+VALUES (CURRENT_DATE, 'ready', 1, 0)
 ON CONFLICT (date) DO UPDATE SET
   status = 'ready',
-  files_processed = paperclip_health.health_ingest_runs.files_processed + EXCLUDED.files_processed,
-  samples_written = paperclip_health.health_ingest_runs.samples_written + EXCLUDED.samples_written,
+  files_processed = paperclip_health.health_ingest_runs.files_processed + 1,
   finished_at = NOW();
 ```
 
-Parameters from upstream node counts.
+(Phase 2's daily briefing routine polls this row to decide if the day's data is "ready".)
 
 - [ ] **Step 3: Test**
 
-Run the workflow. Verify:
+Click **Execute Workflow**. Verify:
 
 ```bash
-psql -d health -c "SELECT * FROM paperclip_health.health_daily WHERE date = CURRENT_DATE;"
-psql -d health -c "SELECT * FROM paperclip_health.health_ingest_runs;"
+PGHOST=127.0.0.1 PGPORT=5432 psql -d health <<'SQL'
+SELECT date, COUNT(*) AS metric_count
+FROM paperclip_health.health_daily
+GROUP BY date ORDER BY date DESC;
+
+SELECT date, metric, min, max, avg, sum, count
+FROM paperclip_health.health_daily
+WHERE date = '2026-05-09' AND metric IN ('step_count', 'heart_rate', 'sleep_total_hours', 'hrv_sdnn');
+
+SELECT * FROM paperclip_health.health_ingest_runs;
+SQL
 ```
 
-Expected: `health_daily` populated for today's metrics; `health_ingest_runs` row for today with `status = 'ready'`.
+Expected: rows for 2026-05-08 and 2026-05-09 with ~25-30 metrics each; `step_count.sum` around your daily total; `heart_rate.avg/min/max` populated; `sleep_total_hours.sum` near the totalSleep value from the JSON; ingest_runs row for today with status=`ready`.
 
 ---
 
@@ -1536,38 +1717,38 @@ if (rows.length === 0) return [{ json: { skip: true } }];
 const date = rows[0].date;
 const isoDate = typeof date === 'string' ? date.slice(0, 10) : date.toISOString().slice(0, 10);
 
-const groupOrder = {
-  sleep:    ['sleep_asleep_seconds', 'sleep_in_bed_seconds'],
-  recovery: ['hrv_sdnn', 'resting_heart_rate', 'respiratory_rate'],
-  activity: ['step_count', 'active_energy_kcal'],
-  vitals:   ['heart_rate', 'spo2', 'body_temperature'],
-};
-
 const byMetric = Object.fromEntries(rows.map(r => [r.metric, r]));
 
-const fmtSec = s => s == null ? '—' : `${Math.floor(s/3600)}h${String(Math.floor((s%3600)/60)).padStart(2,'0')}`;
-const fmt = (r, valueKey = 'avg') =>
-  r == null ? '—' : (r[valueKey] == null ? '—' : Math.round(r[valueKey] * 10) / 10);
+const fmtH  = h => (h == null ? '—' : `${Math.floor(h)}h${String(Math.round((h - Math.floor(h)) * 60)).padStart(2, '0')}`);
+const fmt1  = v => (v == null ? '—' : Math.round(v * 10) / 10);
+const fmtI  = v => (v == null ? '—' : Math.round(v));
+const get   = (m, k) => byMetric[m]?.[k] ?? null;
 
 let md = `# Health Daily — ${isoDate}\n\n`;
 
 md += `## Sleep\n`;
-md += `- Asleep: ${fmtSec(byMetric.sleep_asleep_seconds?.sum)}\n`;
-md += `- In bed: ${fmtSec(byMetric.sleep_in_bed_seconds?.sum)}\n\n`;
+md += `- Total: ${fmtH(get('sleep_total_hours', 'sum'))}\n`;
+md += `- Deep: ${fmtH(get('sleep_deep_hours', 'sum'))}, REM: ${fmtH(get('sleep_rem_hours', 'sum'))}, Core: ${fmtH(get('sleep_core_hours', 'sum'))}, Awake: ${fmtH(get('sleep_awake_hours', 'sum'))}\n\n`;
 
 md += `## Recovery\n`;
-md += `- HRV (avg): ${fmt(byMetric.hrv_sdnn)} ms\n`;
-md += `- Resting HR: ${fmt(byMetric.resting_heart_rate)} bpm\n`;
-md += `- Respiratory rate: ${fmt(byMetric.respiratory_rate)} /min\n\n`;
+md += `- HRV (avg): ${fmt1(get('heart_rate_variability', 'avg'))} ms\n`;
+md += `- Resting HR: ${fmt1(get('resting_heart_rate', 'avg'))} bpm\n`;
+md += `- Respiratory rate (avg): ${fmt1(get('respiratory_rate', 'avg'))} /min\n`;
+md += `- Wrist temp (avg): ${fmt1(get('apple_sleeping_wrist_temperature', 'avg'))} °C\n\n`;
 
 md += `## Activity\n`;
-md += `- Steps: ${byMetric.step_count?.sum ?? '—'}\n`;
-md += `- Active energy: ${fmt(byMetric.active_energy_kcal, 'sum')} kcal\n\n`;
+md += `- Steps: ${fmtI(get('step_count', 'sum'))}\n`;
+md += `- Active energy: ${fmtI(get('active_energy_kcal', 'sum'))} kcal\n`;
+md += `- Basal energy: ${fmtI(get('basal_energy_kcal', 'sum'))} kcal\n`;
+md += `- Exercise time: ${fmtI(get('apple_exercise_time', 'sum'))} min\n`;
+md += `- Stand time: ${fmtI(get('apple_stand_time', 'sum'))} min\n`;
+md += `- Distance: ${fmt1(get('walking_running_distance', 'sum'))} km\n`;
+md += `- Mindful: ${fmtI(get('mindful_minutes', 'sum'))} min\n\n`;
 
 md += `## Vitals\n`;
-md += `- Heart rate (avg / min / max): ${fmt(byMetric.heart_rate)} / ${fmt(byMetric.heart_rate, 'min')} / ${fmt(byMetric.heart_rate, 'max')} bpm\n`;
-md += `- SpO₂ (avg): ${fmt(byMetric.spo2)} %\n`;
-md += `- Body temp (avg): ${fmt(byMetric.body_temperature)} °C\n`;
+md += `- Heart rate (avg / min / max): ${fmt1(get('heart_rate', 'avg'))} / ${fmt1(get('heart_rate', 'min'))} / ${fmt1(get('heart_rate', 'max'))} bpm\n`;
+md += `- SpO₂ (avg / min): ${fmt1(get('blood_oxygen_saturation', 'avg'))} / ${fmt1(get('blood_oxygen_saturation', 'min'))} %\n`;
+md += `- Daylight: ${fmtI(get('time_in_daylight', 'sum'))} min\n`;
 
 return [{ json: { date: isoDate, content: md } }];
 ```

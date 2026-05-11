@@ -155,22 +155,37 @@ const manifest: PaperclipPluginManifestV1 = {
           properties: {
             companyId: { type: "string", format: "uuid" },
             issuePrefix: { type: "string" },
-            topAgentIds: { type: "array", items: { type: "string", format: "uuid" } },
+            topAgents: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  agentId: { type: "string", format: "uuid" },
+                  label: { type: "string" },
+                },
+                required: ["agentId", "label"],
+              },
+            },
             enabled: { type: "boolean", default: true },
           },
-          required: ["companyId", "issuePrefix", "topAgentIds"],
+          required: ["companyId", "issuePrefix", "topAgents"],
         },
         default: [
           {
             companyId: "9cebf3cf-efe8-4597-a400-f06488900a87",
             issuePrefix: "WHI",
-            topAgentIds: ["506c873e-3a40-4483-9a45-0eb0fa1554bb"],
+            topAgents: [
+              { agentId: "506c873e-3a40-4483-9a45-0eb0fa1554bb", label: "CEO" },
+              { agentId: "e24b8d9d-143e-4141-b413-4361aa618771", label: "Sekretärin" },
+            ],
             enabled: true,
           },
           {
             companyId: "158c4959-4973-4cb0-8066-55ec0f35625e",
             issuePrefix: "HEA",
-            topAgentIds: ["6ddf2bfa-fe1c-4e26-a316-091b6ef3c182"],
+            topAgents: [
+              { agentId: "6ddf2bfa-fe1c-4e26-a316-091b6ef3c182", label: "CHO" },
+            ],
             enabled: true,
           },
         ],
@@ -215,10 +230,15 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>"
 Create `packages/plugins/pushover-watch/src/config-schema.ts`:
 
 ```ts
+export type TopAgent = {
+  agentId: string;
+  label: string;
+};
+
 export type CompanyConfig = {
   companyId: string;
   issuePrefix: string;
-  topAgentIds: string[];
+  topAgents: TopAgent[];
   enabled?: boolean;
 };
 
@@ -386,7 +406,12 @@ import { matchesT1, matchesT2, matchesT3 } from "../src/transitions.js";
 import type { CachedIssueState } from "../src/config-schema.js";
 
 const CEO = "506c873e-3a40-4483-9a45-0eb0fa1554bb";
+const SEKR = "e24b8d9d-143e-4141-b413-4361aa618771";
 const WALTER = "18r34Ghx5N0LHRptMCT6Fp1WaoGqhvc9";
+const TOP_AGENTS = [
+  { agentId: CEO, label: "CEO" },
+  { agentId: SEKR, label: "Sekretärin" },
+];
 
 function state(over: Partial<CachedIssueState> = {}): CachedIssueState {
   return {
@@ -398,29 +423,35 @@ function state(over: Partial<CachedIssueState> = {}): CachedIssueState {
   };
 }
 
-describe("matchesT1 — CEO/CHO task done", () => {
-  it("fires when status moves to done with assignee in topAgentIds", () => {
+describe("matchesT1 — top-agent task done", () => {
+  it("fires when CEO closes a task", () => {
     const prev = state({ status: "in_progress", assigneeAgentId: CEO });
     const next = state({ status: "done", assigneeAgentId: CEO });
-    expect(matchesT1(prev, next, [CEO])).toBe(true);
+    expect(matchesT1(prev, next, TOP_AGENTS)).toEqual({ matches: true, label: "CEO" });
+  });
+
+  it("fires when Sekretärin closes a task and returns her label", () => {
+    const prev = state({ status: "in_progress", assigneeAgentId: SEKR });
+    const next = state({ status: "done", assigneeAgentId: SEKR });
+    expect(matchesT1(prev, next, TOP_AGENTS)).toEqual({ matches: true, label: "Sekretärin" });
   });
 
   it("does not fire when status was already done", () => {
     const prev = state({ status: "done", assigneeAgentId: CEO });
     const next = state({ status: "done", assigneeAgentId: CEO });
-    expect(matchesT1(prev, next, [CEO])).toBe(false);
+    expect(matchesT1(prev, next, TOP_AGENTS)).toEqual({ matches: false });
   });
 
-  it("does not fire when assignee is not in topAgentIds", () => {
+  it("does not fire when assignee is not in topAgents", () => {
     const prev = state({ status: "in_progress", assigneeAgentId: "other-agent" });
     const next = state({ status: "done", assigneeAgentId: "other-agent" });
-    expect(matchesT1(prev, next, [CEO])).toBe(false);
+    expect(matchesT1(prev, next, TOP_AGENTS)).toEqual({ matches: false });
   });
 
   it("does not fire when status is not done", () => {
     const prev = state({ status: "todo", assigneeAgentId: CEO });
     const next = state({ status: "in_progress", assigneeAgentId: CEO });
-    expect(matchesT1(prev, next, [CEO])).toBe(false);
+    expect(matchesT1(prev, next, TOP_AGENTS)).toEqual({ matches: false });
   });
 });
 
@@ -472,17 +503,20 @@ Expected: FAIL — `transitions.js` not found.
 Create `packages/plugins/pushover-watch/src/transitions.ts`:
 
 ```ts
-import type { CachedIssueState } from "./config-schema.js";
+import type { CachedIssueState, TopAgent } from "./config-schema.js";
+
+export type T1Match = { matches: true; label: string } | { matches: false };
 
 export function matchesT1(
   prev: CachedIssueState,
   next: CachedIssueState,
-  topAgentIds: string[],
-): boolean {
-  if (next.status !== "done") return false;
-  if (prev.status === "done") return false;
-  if (!next.assigneeAgentId) return false;
-  return topAgentIds.includes(next.assigneeAgentId);
+  topAgents: TopAgent[],
+): T1Match {
+  if (next.status !== "done") return { matches: false };
+  if (prev.status === "done") return { matches: false };
+  if (!next.assigneeAgentId) return { matches: false };
+  const hit = topAgents.find((a) => a.agentId === next.assigneeAgentId);
+  return hit ? { matches: true, label: hit.label } : { matches: false };
 }
 
 export function matchesT2(
@@ -511,7 +545,7 @@ export function matchesT3(
 pnpm --filter @paperclipai/plugin-pushover-watch test -- transitions
 ```
 
-Expected: all 9 tests PASS.
+Expected: all 10 tests PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -726,7 +760,7 @@ describe("bootstrapCompany", () => {
     await bootstrapCompany(ctx, {
       companyId: "company-1",
       issuePrefix: "WHI",
-      topAgentIds: ["agent-1"],
+      topAgents: [{ agentId: "agent-1", label: "CEO" }],
     });
 
     // marker
@@ -766,13 +800,13 @@ describe("bootstrapCompany", () => {
     await bootstrapCompany(ctx, {
       companyId: "company-1",
       issuePrefix: "WHI",
-      topAgentIds: ["agent-1"],
+      topAgents: [{ agentId: "agent-1", label: "CEO" }],
     });
     ctx.issues.list.mockClear();
     await bootstrapCompany(ctx, {
       companyId: "company-1",
       issuePrefix: "WHI",
-      topAgentIds: ["agent-1"],
+      topAgents: [{ agentId: "agent-1", label: "CEO" }],
     });
     expect(ctx.issues.list).not.toHaveBeenCalled();
   });
@@ -914,6 +948,7 @@ import { handleIssueUpdated } from "../src/triggers.js";
 import type { PluginConfig, CachedIssueState } from "../src/config-schema.js";
 
 const CEO = "506c873e-3a40-4483-9a45-0eb0fa1554bb";
+const SEKR = "e24b8d9d-143e-4141-b413-4361aa618771";
 const WALTER = "18r34Ghx5N0LHRptMCT6Fp1WaoGqhvc9";
 const WHI = "9cebf3cf-efe8-4597-a400-f06488900a87";
 
@@ -925,7 +960,15 @@ function baseConfig(): PluginConfig {
     clickbackBaseUrl: "https://company.whitestag.ai",
     dryRun: false,
     companies: [
-      { companyId: WHI, issuePrefix: "WHI", topAgentIds: [CEO], enabled: true },
+      {
+        companyId: WHI,
+        issuePrefix: "WHI",
+        topAgents: [
+          { agentId: CEO, label: "CEO" },
+          { agentId: SEKR, label: "Sekretärin" },
+        ],
+        enabled: true,
+      },
     ],
   };
 }
@@ -981,6 +1024,25 @@ describe("handleIssueUpdated", () => {
     expect(body.get("title")).toMatch(/^\[WHI\] CEO erledigt:/);
     expect(body.get("url")).toBe("https://company.whitestag.ai/WHI/issues/WHI-42");
     expect(body.get("priority")).toBe("0");
+  });
+
+  it("fires T1 with Sekretärin label when Sekretärin task moves to done", async () => {
+    const prev: CachedIssueState = {
+      status: "in_progress",
+      assigneeAgentId: SEKR,
+      assigneeUserId: null,
+      updatedAt: "2026-05-11T09:00:00.000Z",
+    };
+    const ctx = makeCtx(prev);
+    await handleIssueUpdated(
+      ctx,
+      baseConfig(),
+      event({ assigneeAgentId: SEKR }),
+    );
+
+    expect(ctx.http.fetch).toHaveBeenCalledTimes(1);
+    const body = new URLSearchParams(ctx.http.fetch.mock.calls[0][1].body);
+    expect(body.get("title")).toMatch(/^\[WHI\] Sekretärin erledigt:/);
   });
 
   it("does not fire when prev state is unknown (post-bootstrap-gap safety)", async () => {
@@ -1150,13 +1212,14 @@ export async function handleIssueUpdated(
 
   const url = issueUrl(config, company, event.payload.identifier);
 
-  // T1: CEO/CHO done
-  if (matchesT1(prev, next, company.topAgentIds)) {
+  // T1: top-agent done (CEO / CHO / Sekretärin …) — title uses the matched agent's label
+  const t1 = matchesT1(prev, next, company.topAgents);
+  if (t1.matches) {
     const { userKey, appToken } = await resolveCredentials(ctx, config);
     await dispatch(ctx, config, {
       userKey,
       appToken,
-      title: `[${company.issuePrefix}] CEO erledigt: ${truncate(event.payload.title, 80)}`,
+      title: `[${company.issuePrefix}] ${t1.label} erledigt: ${truncate(event.payload.title, 80)}`,
       message: event.payload.title,
       url,
       urlTitle: "In Paperclip öffnen",
@@ -1316,7 +1379,7 @@ describe("handleCommentCreated (T4)", () => {
 });
 
 describe("handleApprovalCreated (T5)", () => {
-  it("fires on pending request_board_approval", async () => {
+  it("fires on pending request_board_approval — generic title when creator is unknown", async () => {
     const ctx = makeCtx(null);
     await handleApprovalCreated(ctx, baseConfig(), {
       eventId: "evt-5",
@@ -1337,6 +1400,48 @@ describe("handleApprovalCreated (T5)", () => {
     expect(body.get("priority")).toBe("1");
     expect(body.get("title")).toMatch(/^\[WHI\] Approval wartet:/);
     expect(body.get("url")).toBe("https://company.whitestag.ai/WHI/approvals/appr-1");
+  });
+
+  it("prefixes the creator label when createdByAgentId matches a topAgent (Sekretärin)", async () => {
+    const ctx = makeCtx(null);
+    await handleApprovalCreated(ctx, baseConfig(), {
+      eventId: "evt-5b",
+      eventType: "approval.created",
+      occurredAt: "2026-05-11T10:05:00.000Z",
+      companyId: WHI,
+      entityId: "appr-1b",
+      entityType: "approval",
+      payload: {
+        id: "appr-1b",
+        type: "request_board_approval",
+        status: "pending",
+        title: "Reply-Entwurf freigeben",
+        createdByAgentId: SEKR,
+      },
+    } as any);
+    const body = new URLSearchParams(ctx.http.fetch.mock.calls[0][1].body);
+    expect(body.get("title")).toMatch(/^\[WHI\] Sekretärin · Approval wartet:/);
+  });
+
+  it("falls back to the generic title when createdByAgentId is not a topAgent", async () => {
+    const ctx = makeCtx(null);
+    await handleApprovalCreated(ctx, baseConfig(), {
+      eventId: "evt-5c",
+      eventType: "approval.created",
+      occurredAt: "2026-05-11T10:05:00.000Z",
+      companyId: WHI,
+      entityId: "appr-1c",
+      entityType: "approval",
+      payload: {
+        id: "appr-1c",
+        type: "request_board_approval",
+        status: "pending",
+        title: "Vom CTO eingereicht",
+        createdByAgentId: "some-other-agent-id",
+      },
+    } as any);
+    const body = new URLSearchParams(ctx.http.fetch.mock.calls[0][1].body);
+    expect(body.get("title")).toMatch(/^\[WHI\] Approval wartet:/);
   });
 
   it("does not fire on non-pending or non-board-approval payload", async () => {
@@ -1410,6 +1515,7 @@ type ApprovalCreatedPayload = {
   type: string;
   status: string;
   title?: string;
+  createdByAgentId?: string | null;
 };
 
 export async function handleApprovalCreated(
@@ -1425,11 +1531,17 @@ export async function handleApprovalCreated(
   const { userKey, appToken } = await resolveCredentials(ctx, config);
   const approvalUrl = `${config.clickbackBaseUrl}/${company.issuePrefix}/approvals/${event.payload.id}`;
   const title = event.payload.title ?? "Approval-Request";
+  const creator = event.payload.createdByAgentId
+    ? company.topAgents.find((a) => a.agentId === event.payload.createdByAgentId)
+    : undefined;
+  const headline = creator
+    ? `${creator.label} · Approval wartet`
+    : `Approval wartet`;
 
   await dispatch(ctx, config, {
     userKey,
     appToken,
-    title: `[${company.issuePrefix}] Approval wartet: ${truncate(title, 80)}`,
+    title: `[${company.issuePrefix}] ${headline}: ${truncate(title, 80)}`,
     message: title,
     url: approvalUrl,
     urlTitle: "In Paperclip öffnen",
@@ -1550,7 +1662,12 @@ describe("pushover-watch worker integration", () => {
         clickbackBaseUrl: "https://company.whitestag.ai",
         dryRun: false,
         companies: [
-          { companyId: WHI, issuePrefix: "WHI", topAgentIds: [CEO], enabled: true },
+          {
+            companyId: WHI,
+            issuePrefix: "WHI",
+            topAgents: [{ agentId: CEO, label: "CEO" }],
+            enabled: true,
+          },
         ],
       },
     });
@@ -1606,7 +1723,12 @@ describe("pushover-watch worker integration", () => {
         boardUserId: WALTER, clickbackBaseUrl: "https://example.com",
         dryRun: false,
         companies: [
-          { companyId: WHI, issuePrefix: "WHI", topAgentIds: [CEO], enabled: true },
+          {
+            companyId: WHI,
+            issuePrefix: "WHI",
+            topAgents: [{ agentId: CEO, label: "CEO" }],
+            enabled: true,
+          },
         ],
       },
     });
@@ -1701,8 +1823,8 @@ Expected: HTTP 200 with the new plugin record.
     "clickbackBaseUrl": "https://company.whitestag.ai",
     "dryRun": true,
     "companies": [
-      {"companyId":"9cebf3cf-efe8-4597-a400-f06488900a87","issuePrefix":"WHI","topAgentIds":["506c873e-3a40-4483-9a45-0eb0fa1554bb"],"enabled":true},
-      {"companyId":"158c4959-4973-4cb0-8066-55ec0f35625e","issuePrefix":"HEA","topAgentIds":["6ddf2bfa-fe1c-4e26-a316-091b6ef3c182"],"enabled":true}
+      {"companyId":"9cebf3cf-efe8-4597-a400-f06488900a87","issuePrefix":"WHI","topAgents":[{"agentId":"506c873e-3a40-4483-9a45-0eb0fa1554bb","label":"CEO"},{"agentId":"e24b8d9d-143e-4141-b413-4361aa618771","label":"Sekretärin"}],"enabled":true},
+      {"companyId":"158c4959-4973-4cb0-8066-55ec0f35625e","issuePrefix":"HEA","topAgents":[{"agentId":"6ddf2bfa-fe1c-4e26-a316-091b6ef3c182","label":"CHO"}],"enabled":true}
     ]
   }'
 ```
@@ -1777,11 +1899,11 @@ Otherwise skip this step.
 
 **Spec coverage check (run mentally before handing off):**
 
-- Trigger T1 (CEO/CHO done) → Task 5 predicate + Task 8 dispatch ✓
+- Trigger T1 (top-agent done — CEO / CHO / Sekretärin, label-driven title) → Task 5 predicate + Task 8 dispatch ✓
 - Trigger T2 (in_review handover) → Task 5 predicate + Task 8 dispatch ✓
 - Trigger T3 (blocked + mention) → Task 5 predicate + Task 8 (uses listComments + commentMentionsUser) ✓
 - Trigger T4 (comment mention) → Task 9 ✓
-- Trigger T5 (pending approval) → Task 9 ✓
+- Trigger T5 (pending approval — optional creator-label via `createdByAgentId`) → Task 9 ✓
 - Bootstrap state seeding → Task 7 ✓
 - Pushover client + dry-run mode → Task 6 + Task 8 (dispatch helper) ✓
 - Instance config schema with `companies[]` + secret refs → Task 2 ✓
@@ -1793,5 +1915,5 @@ Otherwise skip this step.
 1. Exact `createTestHarness` signature — adjust Task 10 Step 3 wiring if the SDK signature differs.
 2. Exact `event.payload` shape for `issue.updated` — the plan assumes `{id, identifier, title, status, assigneeAgentId, assigneeUserId}`. If the host sends a different shape (e.g. delta-only), adjust the `IssueUpdatedPayload` type and fetch the full issue via `ctx.issues.get`.
 3. Exact `event.payload` shape for `issue.comment.created` — the plan assumes `body`, `authorUserId`, `authorAgentId`, plus issue context. If the host omits `issueTitle`/`issueIdentifier`, fetch the issue via `ctx.issues.get` before composing the notification.
-4. Exact `event.payload` shape for `approval.created` — verify `type`, `status`, `title` are inline; if `title` lives in a nested `payload.payload`, adjust the type.
+4. Exact `event.payload` shape for `approval.created` — verify `type`, `status`, `title`, and `createdByAgentId` are inline; if `title` lives in a nested `payload.payload`, adjust the type. If `createdByAgentId` is absent from the event, T5 falls back to the generic title (no failure mode — verified by the third T5 test in Task 9).
 5. Config update endpoint path — Task 11 Step 4 assumes `PUT /api/plugins/:id/config`. Grep `server/paperclip/server/src/routes/plugins.ts` if it differs.

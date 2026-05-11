@@ -37,6 +37,7 @@ Out of Scope: andere Companies (Clara Sound), andere Event-Typen, Notifications 
 | WHITESTAG Company-ID | `9cebf3cf-efe8-4597-a400-f06488900a87` |
 | WHITESTAG Issue-Prefix | `WHI` |
 | WHITESTAG CEO-Agent-ID | `506c873e-3a40-4483-9a45-0eb0fa1554bb` |
+| WHITESTAG Sekretärin-Agent-ID | `e24b8d9d-143e-4141-b413-4361aa618771` |
 | Health Company-ID | `158c4959-4973-4cb0-8066-55ec0f35625e` |
 | Health Issue-Prefix | `HEA` |
 | Health CHO-Agent-ID | `6ddf2bfa-fe1c-4e26-a316-091b6ef3c182` |
@@ -147,26 +148,42 @@ const manifest: PaperclipPluginManifestV1 = {
           properties: {
             companyId: { type: "string", format: "uuid" },
             issuePrefix: { type: "string", description: "z.B. WHI oder HEA" },
-            topAgentIds: {
+            topAgents: {
               type: "array",
-              items: { type: "string", format: "uuid" },
-              description: "Agent-IDs deren done-Tasks getriggert werden (CEO/CHO).",
+              description:
+                "Agents, deren done-Events T1 triggern und deren Approvals (via createdByAgentId) das Label in T5 setzen.",
+              items: {
+                type: "object",
+                properties: {
+                  agentId: { type: "string", format: "uuid" },
+                  label: {
+                    type: "string",
+                    description: "Anzeigename im Notification-Titel (z.B. CEO, CHO, Sekretärin).",
+                  },
+                },
+                required: ["agentId", "label"],
+              },
             },
             enabled: { type: "boolean", default: true },
           },
-          required: ["companyId", "issuePrefix", "topAgentIds"],
+          required: ["companyId", "issuePrefix", "topAgents"],
         },
         default: [
           {
             companyId: "9cebf3cf-efe8-4597-a400-f06488900a87",
             issuePrefix: "WHI",
-            topAgentIds: ["506c873e-3a40-4483-9a45-0eb0fa1554bb"],
+            topAgents: [
+              { agentId: "506c873e-3a40-4483-9a45-0eb0fa1554bb", label: "CEO" },
+              { agentId: "e24b8d9d-143e-4141-b413-4361aa618771", label: "Sekretärin" },
+            ],
             enabled: true,
           },
           {
             companyId: "158c4959-4973-4cb0-8066-55ec0f35625e",
             issuePrefix: "HEA",
-            topAgentIds: ["6ddf2bfa-fe1c-4e26-a316-091b6ef3c182"],
+            topAgents: [
+              { agentId: "6ddf2bfa-fe1c-4e26-a316-091b6ef3c182", label: "CHO" },
+            ],
             enabled: true,
           },
         ],
@@ -247,11 +264,13 @@ runWorker(plugin, import.meta.url);
 
 | # | Event | Bedingung | Pushover-Priority | Title-Template |
 |---|---|---|---|---|
-| T1 | `issue.updated` | `prev.status≠done ∧ new.status=done ∧ new.assigneeAgentId ∈ companyCfg.topAgentIds` | `0` | `[<PREFIX>] CEO erledigt: <issue.title>` |
+| T1 | `issue.updated` | `prev.status≠done ∧ new.status=done ∧ new.assigneeAgentId ∈ companyCfg.topAgents[].agentId` | `0` | `[<PREFIX>] <label> erledigt: <issue.title>` |
 | T2 | `issue.updated` | `prev.status≠in_review ∧ new.status=in_review ∧ new.assigneeUserId=boardUserId` | `0` | `[<PREFIX>] Review-Handover: <issue.title>` |
 | T3 | `issue.updated` | `prev.status≠blocked ∧ new.status=blocked ∧ jüngster Kommentar enthält user://<boardUserId>` | `1` | `[<PREFIX>] Blockiert, braucht dich: <issue.title>` |
 | T4 | `issue.comment.created` | Body matcht `user://18r34Ghx5N0LHRptMCT6Fp1WaoGqhvc9` UND Author ≠ Walter | `0` | `[<PREFIX>] @-Mention von <author>: <issue.title>` |
-| T5 | `approval.created` | `payload.type=request_board_approval ∧ payload.status=pending` | `1` | `[<PREFIX>] Approval wartet: <payload.title>` |
+| T5 | `approval.created` | `payload.type=request_board_approval ∧ payload.status=pending` | `1` | mit Creator-Label: `[<PREFIX>] <label> · Approval wartet: <payload.title>` · Fallback (Creator nicht in `topAgents` oder Feld fehlt): `[<PREFIX>] Approval wartet: <payload.title>` |
+
+**Label-Lookup (T1 + T5):** `<label>` wird per `companyCfg.topAgents.find(a => a.agentId === <agent>).label` aufgelöst. Für T1 ist `<agent> = new.assigneeAgentId`, für T5 `<agent> = payload.createdByAgentId` (siehe offene Punkte unten — Feld muss im Approval-Payload verifiziert werden).
 
 **Click-Back-URL** für T1–T4: `<clickbackBaseUrl>/<PREFIX>/issues/<issue.identifier>`
 **Click-Back-URL** für T5: `<clickbackBaseUrl>/<PREFIX>/approvals/<approval.id>`
@@ -327,7 +346,7 @@ async function handleIssueUpdated(ctx, config, event) {
   const companyCfg = config.companies.find((c) => c.companyId === event.companyId);
   if (!companyCfg) return;
 
-  if (matchesT1(prev, next, companyCfg.topAgentIds)) {
+  if (matchesT1(prev, next, companyCfg.topAgents)) {
     await dispatchT1(ctx, config, companyCfg, event, next);
   } else if (matchesT2(prev, next, config.boardUserId)) {
     await dispatchT2(ctx, config, companyCfg, event, next);
@@ -427,7 +446,7 @@ const [userKey, appToken] = await Promise.all([
 
 | Datei | Inhalt |
 |---|---|
-| `tests/transitions.test.ts` | Unit-Tests für alle 5 Trigger-Bedingungen, inkl. Negativ-Cases (kein prev-State, gleicher Status, falscher Assignee). |
+| `tests/transitions.test.ts` | Unit-Tests für alle 5 Trigger-Bedingungen, inkl. Negativ-Cases (kein prev-State, gleicher Status, falscher Assignee). T1: Label-Lookup für CEO und Sekretärin separat. T5: Creator-Label-Pfad UND generischer Fallback bei fehlendem `createdByAgentId`. |
 | `tests/mentions.test.ts` | Mention-Parser: leerer Body, mehrfach-Mentions, falsche Schemata, Unicode-Anzeigename. |
 | `tests/worker.spec.ts` | `createTestHarness({ manifest })` → `plugin.definition.setup(harness.ctx)` → `harness.emit("issue.updated", {...})` → assert Pushover-fetch-Mock erhielt erwarteten Payload. |
 
@@ -460,7 +479,7 @@ const [userKey, appToken] = await Promise.all([
 
 ## Bekannte offene Punkte (zur Coding-Zeit zu klären)
 
-1. **`approval.created`-Payload-Schema** — Bestätigen, dass `payload.type`, `payload.status`, `payload.title` direkt im Event sind. Falls nicht: zusätzlicher `ctx.http`-Call gegen `/api/approvals/<id>`.
+1. **`approval.created`-Payload-Schema** — Bestätigen, dass `payload.type`, `payload.status`, `payload.title` und `payload.createdByAgentId` direkt im Event sind. Falls `createdByAgentId` fehlt: zusätzlicher `ctx.http`-Call gegen `/api/approvals/<id>` oder Fallback auf den generischen T5-Titel ohne Creator-Label.
 2. **`ctx.issues.list` / `ctx.issues.getLatestComment` Verfügbarkeit** — laut SDK-Doc unter "issues and comments" vorhanden; exakte Methodensignaturen beim Coding gegen `@paperclipai/plugin-sdk/types` prüfen. Fallback: `ctx.http.fetch` gegen lokale Paperclip-API.
 3. **Multi-Worker-Race-Conditions** — Plugin-Worker laufen aktuell single-instance; bei späterer Skalierung Locking ergänzen.
 4. **User-Display-Name für T4** — Mention-Notification soll den Author des Kommentars anzeigen; `event.payload.authorAgentName` / `authorUserName` werden geprüft, Fallback `"jemand"`.

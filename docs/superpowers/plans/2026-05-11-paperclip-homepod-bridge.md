@@ -10,6 +10,8 @@
 
 **Spec:** [`docs/superpowers/specs/2026-05-11-paperclip-homepod-bridge-design.md`](../specs/2026-05-11-paperclip-homepod-bridge-design.md)
 
+> **⚠️ Pivot während der Ausführung (2026-05-11):** Task 1 hat gezeigt, dass macOS AirPlay-Geräte nicht namentlich für `SwitchAudioSource` exponiert (nur generisches `AirPlay`-Device, das ohne aktiven Routing-Kontext stumm bleibt). Dazu fehlt der "Set Playback Destination"-Aktion in macOS-Shortcuts (nur iOS). **Pivot auf pyatv** (Python AirPlay-2-Streaming): `say -o` erzeugt WAV, `atvremote stream_file=...` streamt direkt an die HomePod-AirPlay-ID. Vorteil: kein System-Audio-Eingriff, Mac-Wiedergabe läuft parallel. Spec ist auf den neuen Stand gebracht; die Tasks unten beschreiben den ursprünglichen (verworfenen) Weg — die tatsächliche Implementation steht in der Spec.
+
 ---
 
 ## File Structure

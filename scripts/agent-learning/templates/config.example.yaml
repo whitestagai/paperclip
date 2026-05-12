@@ -1,0 +1,117 @@
+# Agent Learning Loops — Config
+# Walter darf hier alles anpassen. Trigger-Script liest die Datei bei jedem Lauf frisch.
+# Der Board-API-Key liegt NICHT hier, sondern in
+# ~/.paperclip/instances/default/agent-learning.secret (chmod 600).
+
+vault:
+  root: /Volumes/WHITESTAG-ARCHIV/Obsidian/WHITESTAG-Vault
+  knowledge_dir: Paperclip/Skill-Wissen
+  agents_dir: Paperclip/Agenten
+
+paperclip:
+  api_base: http://127.0.0.1:3100
+
+companies:
+  whitestag:
+    id: 9cebf3cf-efe8-4597-a400-f06488900a87
+    slug: whitestag
+  health:
+    id: 158c4959-4973-4cb0-8066-55ec0f35625e
+    slug: health
+# Clara Sound (0e426844-309c-4528-9aa5-90ff76790a51) bewusst ausgeschlossen — eigener Vault später.
+
+agents:
+  online_recherche:
+    id: d80fe6b9-b2ac-4d58-8525-8bbbb1d0caf7
+    slug: online-recherche
+  vault_maintainer:
+    id: 3067ea1d-5050-4032-aff5-1f759f544160
+    slug: vault-maintainer
+
+knowledge_loop:
+  routine_name: recherche-pass
+  schedule: "0 1 * * *"
+  assignee_agent_id: d80fe6b9-b2ac-4d58-8525-8bbbb1d0caf7
+  max_turns_per_run: 30
+  timeout_sec: 600
+  rotation:
+    mon: [n8n, photoshop]
+    tue: [blender, mistika-vr]
+    wed: [adobe-cep, premiere]
+    thu: [pyatv, homepod-bridge]
+    fri: [claude-api, paperclip-sdk]
+    sat: []
+    sun: []
+
+lessons_loop:
+  routine_name: reibungs-sweep
+  schedule: "0 2 * * *"
+  assignee_agent_id: 3067ea1d-5050-4032-aff5-1f759f544160
+  lookback_hours: 24
+  trigger_run_statuses: [failed, errored]
+  always_pickup_marker: "LESSON-CANDIDATE"
+  max_runs_per_sweep: 10
+  selection_order: newest_first
+  skip_if_empty: true
+
+decay_pass:
+  schedule: "0 3 * * 0"
+  knowledge_archive_after_days: 180
+  lessons_archive_after_days: 90
+
+budgets:
+  memory_md_max_lines: 200
+  knowledge_files_per_domain: 30
+  lessons_per_agent: 50
+  context_bundle_max_tokens: 5000
+
+domains:
+  n8n:
+    title: "n8n Workflow Automation"
+    sources:
+      - https://docs.n8n.io/release-notes/
+      - https://community.n8n.io/c/announcements/
+    skill_refs: [whitestag-n8n-workflow]
+  photoshop:
+    title: "Adobe Photoshop"
+    sources:
+      - https://helpx.adobe.com/photoshop/release-note/photoshop-release-notes.html
+    skill_refs: [adobe-automation]
+  blender:
+    title: "Blender 3D"
+    sources:
+      - https://www.blender.org/download/releases/
+    skill_refs: [blender-scripting]
+  mistika-vr:
+    title: "Mistika VR"
+    sources: []
+    skill_refs: [mistika-vr-pipeline]
+  adobe-cep:
+    title: "Adobe CEP / UXP Extensions"
+    sources:
+      - https://github.com/Adobe-CEP/CEP-Resources/releases
+    skill_refs: [adobe-automation]
+  premiere:
+    title: "Adobe Premiere Pro"
+    sources:
+      - https://helpx.adobe.com/premiere-pro/release-note/premiere-pro-release-notes.html
+    skill_refs: []
+  pyatv:
+    title: "pyatv — Apple TV / HomePod direkt-streamen"
+    sources:
+      - https://pyatv.dev/
+      - https://github.com/postlund/pyatv/releases
+    skill_refs: []
+  homepod-bridge:
+    title: "HomePod-Bridge (Paperclip → HomePod Voice)"
+    sources: []
+    skill_refs: []
+  claude-api:
+    title: "Anthropic Claude API & SDK"
+    sources:
+      - https://docs.anthropic.com/en/release-notes
+    skill_refs: [claude-api]
+  paperclip-sdk:
+    title: "Paperclip Plugin SDK"
+    sources: []
+    skill_refs: [paperclip, paperclip-create-plugin]

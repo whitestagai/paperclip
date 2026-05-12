@@ -11,6 +11,7 @@ source "$HERE/lib/vault_ops.sh"
 source "$HERE/lib/slug.sh"
 source "$HERE/lib/rotation.sh"
 source "$HERE/lib/idempotency.sh"
+source "$HERE/lib/decay.sh"
 
 MODE="${1:-}"; shift || true
 DRY_RUN=0
@@ -166,7 +167,20 @@ EOF
     ;;
 
   decay)
-    log "Decay-Pass placeholder — wired in Task 13"
+    log "Decay-Pass starting"
+    k_days=$(yq '.decay_pass.knowledge_archive_after_days' "$CONFIG_FILE")
+    l_days=$(yq '.decay_pass.lessons_archive_after_days' "$CONFIG_FILE")
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      log "DRY-RUN: would archive knowledge >${k_days}d and lessons >${l_days}d in $CONFIG_VAULT_ROOT/$CONFIG_VAULT_AGENTS_DIR"
+    else
+      decay_run "$CONFIG_VAULT_ROOT" "$CONFIG_VAULT_KNOWLEDGE_DIR" "$CONFIG_VAULT_AGENTS_DIR" "$k_days" "$l_days"
+      vault_status_append "## $(date +"%Y-%m-%d %H:%M") — Decay-Pass" <<EOF
+- knowledge_archive_after_days: ${k_days}
+- lessons_archive_after_days: ${l_days}
+EOF
+    fi
+    log "Decay-Pass done."
     ;;
 
   *)

@@ -18,9 +18,10 @@ Das gelernte Wissen wird so abgelegt, dass
 
 ## Voraussetzungen
 
-- Paperclip-Dev-Server läuft lokal (`ing.paperclip.dev` launchd-Service).
+- Paperclip-Dev-Server läuft lokal (`ing.paperclip.dev` launchd-Service) auf Port `3100`.
 - Online-Recherche-Agent läuft bereits auf `claude_local` mit `claude-sonnet-4-6` (siehe Chatverlauf `2026-05-11 Chatverlauf Recherche-Agent claude_local.md`), `heartbeat: false`, `wakeOnDemand: true`.
 - Vault gemounted unter `/Volumes/WHITESTAG-ARCHIV/Obsidian/WHITESTAG-Vault/`. Bei nicht-gemountetem Vault: graceful degradation (alter Sync-Stand bleibt aktiv, kein Schreiben).
+- **Auth:** Paperclip läuft in `deploymentMode: "authenticated"`. Externe Scripts authentifizieren sich per **Board-API-Key** (Bearer-Token, Format `pcp_board_<48 hex>`, TTL 30 Tage). Erzeugt über den CLI-Auth-Challenge-Flow: `POST /api/cli-auth/challenges` → returns `boardApiToken` und `approvalUrl` → Walter approved im Browser unter `/cli-auth/<id>?token=<secret>` → Token aktiv. Storage: `~/.paperclip/instances/default/agent-learning.secret` (chmod 600, KEY=VALUE-Format), gelesen via `source` im Trigger-Script, **nie** in der YAML-Config oder im Repo. Rotation: vor Ablauf neuen Challenge anlegen und Secret-File überschreiben.
 - **Precondition vor Implementation:** Vault-Maintainer-Adapter zurück auf `lmstudio_local` umstellen (war versehentlich `claude_local`). PATCH `/api/agents/3067ea1d-5050-4032-aff5-1f759f544160` mit `adapterType: lmstudio_local` und entsprechender Modell-Config. (Konkrete Modell-Wahl: in der Plan-Phase festlegen — Walter hat ein lokales LM-Studio-MLX-Setup, Modell entscheidet sich nach Tool-Use-Fähigkeit.)
 
 ## Konstanten
@@ -32,6 +33,8 @@ Das gelernte Wissen wird so abgelegt, dass
 | Clara Sound Company-ID | `0e426844-309c-4528-9aa5-90ff76790a51` (ausgeschlossen) |
 | Online-Recherche Agent-ID | `d80fe6b9-b2ac-4d58-8525-8bbbb1d0caf7` (im WHITESTAG-Vault verifiziert) |
 | Vault-Maintainer Agent-ID | `3067ea1d-5050-4032-aff5-1f759f544160` (WHITESTAG) |
+| Paperclip API Base | `http://127.0.0.1:3100` |
+| Board-API-Key Secret-File | `~/.paperclip/instances/default/agent-learning.secret` (chmod 600) |
 | Vault-Root | `/Volumes/WHITESTAG-ARCHIV/Obsidian/WHITESTAG-Vault/` |
 | Vault-Knowledge-Dir | `Paperclip/Skill-Wissen/` |
 | Vault-Agenten-Dir | `Paperclip/Agenten/<company-slug>/<agent-slug>/` |

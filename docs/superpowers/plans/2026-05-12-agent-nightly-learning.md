@@ -90,30 +90,81 @@ Wenn fehlt: `brew install jq yq` und nochmal.
 
 Run:
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3100/api/companies
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:3100/api/health
 ```
-Expected: `200`.
+Expected: `200`. Health endpoint braucht keine Auth.
 
 Wenn nicht `200`: `launchctl list | grep paperclip` → prüfen ob `ing.paperclip.dev` läuft.
 
-- [ ] **Step 3: Verify all three company IDs and resolve any mismatch**
+- [ ] **Step 3: Ensure Board-API-Key secret file exists**
+
+Paperclip läuft in `deploymentMode: "authenticated"` → externe Calls brauchen Bearer-Token.
+
+Check:
+```bash
+[ -f ~/.paperclip/instances/default/agent-learning.secret ] && echo "EXISTS" || echo "MISSING"
+```
+
+**Wenn `EXISTS`:** Token-Format prüfen:
+```bash
+grep -E "^PAPERCLIP_BOARD_API_KEY=pcp_board_[a-f0-9]{48}$" ~/.paperclip/instances/default/agent-learning.secret \
+  && echo "FORMAT OK" || echo "FORMAT BAD"
+```
+
+**Wenn `MISSING` oder `FORMAT BAD`:** neuen Token via CLI-Auth-Challenge erzeugen:
+
+```bash
+# 1. Challenge POSTen (öffentlich, kein Auth nötig)
+RESP=$(curl -s -X POST http://127.0.0.1:3100/api/cli-auth/challenges \
+  -H "Content-Type: application/json" \
+  -d '{"command":"agent-learning-trigger.sh","clientName":"Agent Learning Loops","requestedAccess":"board"}')
+CHAL_ID=$(echo "$RESP" | jq -r '.id')
+CHAL_TOKEN=$(echo "$RESP" | jq -r '.token')
+BOARD_TOKEN=$(echo "$RESP" | jq -r '.boardApiToken')
+APPROVAL_URL=$(echo "$RESP" | jq -r '.approvalUrl')
+echo "Open in browser and approve: $APPROVAL_URL"
+echo "Challenge expires in 10 min"
+
+# 2. Polle bis approved (Walter klickt im Browser)
+until curl -s "http://127.0.0.1:3100/api/cli-auth/challenges/${CHAL_ID}?token=${CHAL_TOKEN}" \
+  | jq -r '.status' | grep -q "^approved$"; do sleep 3; done
+
+# 3. Token in Secret-File ablegen
+cat > ~/.paperclip/instances/default/agent-learning.secret <<EOF
+# Agent Learning — Board API Key
+# Created: $(date -u +%Y-%m-%d) via /api/cli-auth/challenges, TTL 30 Tage
+# chmod 600. Do not commit.
+PAPERCLIP_BOARD_API_KEY=${BOARD_TOKEN}
+EOF
+chmod 600 ~/.paperclip/instances/default/agent-learning.secret
+echo "Token gespeichert"
+```
+
+- [ ] **Step 4: Verify Bearer-Auth works**
 
 Run:
 ```bash
-curl -s http://127.0.0.1:3100/api/companies | jq -r '.[] | "\(.id)\t\(.name)"'
+source ~/.paperclip/instances/default/agent-learning.secret
+curl -s -H "Authorization: Bearer $PAPERCLIP_BOARD_API_KEY" \
+  http://127.0.0.1:3100/api/companies | jq -r '.[] | "\(.id)\t\(.name)"'
 ```
-Expected: drei Companies mit IDs. Notiere für jede den Namen:
-- `9cebf3cf-efe8-4597-a400-f06488900a87` → erwartet "WHITESTAG"
-- `158c4959-4973-4cb0-8066-55ec0f35625e` → erwartet "Health Insights" o.ä.
-- `0e426844-309c-4528-9aa5-90ff76790a51` → erwartet "Clara Sound"
+Expected: drei Zeilen mit den Companies. Mappings:
+- `9cebf3cf-efe8-4597-a400-f06488900a87` → "WHITESTAG"
+- `158c4959-4973-4cb0-8066-55ec0f35625e` → "Health Insights"
+- `0e426844-309c-4528-9aa5-90ff76790a51` → "Clara Sound" (ausgeschlossen)
+
+Wenn 403 → Token-Format prüfen oder Token abgelaufen → Step 3 wiederholen.
 
 **Wenn ein Mapping nicht passt:** Pause, Spec-Konstanten-Tabelle korrigieren und Plan-Konstanten unten anpassen, bevor weiter.
 
-- [ ] **Step 4: Verify Online-Recherche and Vault-Maintainer agent IDs**
+- [ ] **Step 5: Verify Online-Recherche and Vault-Maintainer agent IDs**
 
 Run:
 ```bash
-curl -s http://127.0.0.1:3100/api/companies/9cebf3cf-efe8-4597-a400-f06488900a87/agents | jq -r '.[] | select(.name | test("Online-Recherche|Vault-Maintainer")) | "\(.id)\t\(.name)\t\(.adapterType)"'
+source ~/.paperclip/instances/default/agent-learning.secret
+curl -s -H "Authorization: Bearer $PAPERCLIP_BOARD_API_KEY" \
+  http://127.0.0.1:3100/api/companies/9cebf3cf-efe8-4597-a400-f06488900a87/agents \
+  | jq -r '.[] | select(.name | test("Online-Recherche|Vault-Maintainer")) | "\(.id)\t\(.name)\t\(.adapterType)"'
 ```
 Expected: zwei Zeilen:
 ```
@@ -123,7 +174,7 @@ d80fe6b9-b2ac-4d58-8525-8bbbb1d0caf7  Online-Recherche   claude_local
 
 Beide aktuell auf `claude_local`. Vault-Maintainer wird in Task 1 zurück auf `lmstudio_local` gestellt.
 
-- [ ] **Step 5: Verify vault is mounted**
+- [ ] **Step 6: Verify vault is mounted**
 
 Run:
 ```bash
@@ -140,11 +191,17 @@ Wenn `No such file or directory`: Vault einbinden, dann nochmal.
 **Files:**
 - Modify (via API): Agent `3067ea1d-5050-4032-aff5-1f759f544160` (Vault-Maintainer)
 
+All API calls in this task need the Board-API-Key. Source it once at the top:
+```bash
+source ~/.paperclip/instances/default/agent-learning.secret
+AUTH="Authorization: Bearer $PAPERCLIP_BOARD_API_KEY"
+```
+
 - [ ] **Step 1: Snapshot current Vault-Maintainer config**
 
 Run:
 ```bash
-curl -s http://127.0.0.1:3100/api/agents/3067ea1d-5050-4032-aff5-1f759f544160 > /tmp/vm-before.json
+curl -s -H "$AUTH" http://127.0.0.1:3100/api/agents/3067ea1d-5050-4032-aff5-1f759f544160 > /tmp/vm-before.json
 jq '{adapterType, adapterConfig}' /tmp/vm-before.json
 ```
 Expected: `adapterType: "claude_local"` und ein `adapterConfig` mit `model: "claude-sonnet-..."` o.ä.
@@ -155,7 +212,7 @@ Snapshot bleibt unter `/tmp/vm-before.json` als Rollback-Referenz.
 
 Run:
 ```bash
-curl -s http://127.0.0.1:3100/api/companies/9cebf3cf-efe8-4597-a400-f06488900a87/agents \
+curl -s -H "$AUTH" http://127.0.0.1:3100/api/companies/9cebf3cf-efe8-4597-a400-f06488900a87/agents \
   | jq -r '.[] | select(.adapterType == "lmstudio_local") | {name, adapterConfig}' | head -40
 ```
 Expected: ein paar lmstudio-Agenten mit `model`, `endpoint`, `apiKey`, `graceSec`, `maxTurnsPerRun`-Felder. Notiere die Felder, die wir übernehmen.
@@ -188,7 +245,7 @@ Die `model`/`endpoint`/`apiKey`-Werte aus Step 2 nehmen. Die `instructions*`-Pfa
 
 Run:
 ```bash
-curl -s -X PATCH http://127.0.0.1:3100/api/agents/3067ea1d-5050-4032-aff5-1f759f544160 \
+curl -s -H "$AUTH" -X PATCH http://127.0.0.1:3100/api/agents/3067ea1d-5050-4032-aff5-1f759f544160 \
   -H "Content-Type: application/json" \
   -d @/tmp/vm-patch.json | jq '{adapterType, "model": .adapterConfig.model}'
 ```
@@ -198,7 +255,7 @@ Expected: `adapterType: "lmstudio_local"` und das erwartete `model`.
 
 Erzeuge ein leichtes Test-Issue in WHITESTAG, assigne es Vault-Maintainer:
 ```bash
-curl -s -X POST http://127.0.0.1:3100/api/companies/9cebf3cf-efe8-4597-a400-f06488900a87/issues \
+curl -s -H "$AUTH" -X POST http://127.0.0.1:3100/api/companies/9cebf3cf-efe8-4597-a400-f06488900a87/issues \
   -H "Content-Type: application/json" \
   -d '{"title":"Smoke-Test: lmstudio adapter","body":"Bitte antworte mit einem Satz: \"Ich laufe.\"","assignedAgentId":"3067ea1d-5050-4032-aff5-1f759f544160"}' \
   | jq '{id, status}'
@@ -291,19 +348,37 @@ set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 source "$HERE/../lib/config.sh"
 
-# Test 1: valid template parses
-CONFIG_FILE="$HERE/../templates/config.example.yaml" load_config
+# Sandbox: fake secret file so load_config doesn't bail
+SANDBOX=$(mktemp -d)
+trap "rm -rf $SANDBOX" EXIT
+cat > "$SANDBOX/agent-learning.secret" <<'EOF'
+PAPERCLIP_BOARD_API_KEY=pcp_board_testtesttesttesttesttesttesttesttesttesttest
+EOF
+
+# Test 1: valid template parses with sourced secret
+SECRET_FILE="$SANDBOX/agent-learning.secret" \
+CONFIG_FILE="$HERE/../templates/config.example.yaml" \
+  load_config
 [[ "$CONFIG_VAULT_ROOT" == "/Volumes/WHITESTAG-ARCHIV/Obsidian/WHITESTAG-Vault" ]] \
   || { echo "FAIL: vault root mismatch ($CONFIG_VAULT_ROOT)"; exit 1; }
 [[ "$CONFIG_COMPANIES_WHITESTAG_ID" == "9cebf3cf-efe8-4597-a400-f06488900a87" ]] \
   || { echo "FAIL: whitestag id mismatch"; exit 1; }
+[[ -n "${PAPERCLIP_BOARD_API_KEY:-}" ]] \
+  || { echo "FAIL: bearer token not exported"; exit 1; }
 
-# Test 2: missing file errors clearly
-if CONFIG_FILE=/tmp/does-not-exist.yaml load_config 2>/dev/null; then
-  echo "FAIL: load_config should fail on missing file"; exit 1
+# Test 2: missing config file errors clearly
+if SECRET_FILE="$SANDBOX/agent-learning.secret" \
+   CONFIG_FILE=/tmp/does-not-exist.yaml load_config 2>/dev/null; then
+  echo "FAIL: load_config should fail on missing config file"; exit 1
 fi
 
-# Test 3: weekday rotation accessible
+# Test 3: missing secret file errors clearly
+if SECRET_FILE=/tmp/does-not-exist.secret \
+   CONFIG_FILE="$HERE/../templates/config.example.yaml" load_config 2>/dev/null; then
+  echo "FAIL: load_config should fail on missing secret file"; exit 1
+fi
+
+# Test 4: weekday rotation accessible
 domains=$(weekday_domains "mon")
 [[ "$domains" == *"n8n"* ]] || { echo "FAIL: monday should include n8n ($domains)"; exit 1; }
 
@@ -444,13 +519,28 @@ Create `scripts/agent-learning/lib/config.sh`:
 # Loaded via `source`. Exports CONFIG_* environment variables.
 # Default config path: ~/.paperclip/instances/default/agent-learning.config.yaml
 # Override via env var CONFIG_FILE.
+# Also sources the Board-API-Key secret-file (chmod 600).
 
 load_config() {
   local config_file="${CONFIG_FILE:-$HOME/.paperclip/instances/default/agent-learning.config.yaml}"
+  local secret_file="${SECRET_FILE:-$HOME/.paperclip/instances/default/agent-learning.secret}"
+
   if [[ ! -f "$config_file" ]]; then
     echo "ERROR: config file not found: $config_file" >&2
     return 1
   fi
+  if [[ ! -f "$secret_file" ]]; then
+    echo "ERROR: secret file not found: $secret_file (run Task 0 Step 3 to create)" >&2
+    return 1
+  fi
+  # Source the secret (exports PAPERCLIP_BOARD_API_KEY)
+  # shellcheck disable=SC1090
+  source "$secret_file"
+  if [[ -z "${PAPERCLIP_BOARD_API_KEY:-}" ]]; then
+    echo "ERROR: PAPERCLIP_BOARD_API_KEY not set after sourcing $secret_file" >&2
+    return 1
+  fi
+  export PAPERCLIP_BOARD_API_KEY
 
   export CONFIG_FILE="$config_file"
   export CONFIG_VAULT_ROOT=$(yq '.vault.root' "$config_file")
@@ -590,22 +680,26 @@ git commit -m "feat(agent-learning): slug helper"
 Create `scripts/agent-learning/lib/paperclip_api.sh`:
 ```bash
 # Wrapper around curl + jq for Paperclip REST API.
-# Requires CONFIG_PAPERCLIP_API_BASE to be set (via load_config).
+# Requires CONFIG_PAPERCLIP_API_BASE and PAPERCLIP_BOARD_API_KEY to be set
+# (both done by load_config in lib/config.sh).
 
 paperclip_get() {
   # $1 = path (e.g. /api/companies)
-  curl -sS -f "${CONFIG_PAPERCLIP_API_BASE}$1"
+  curl -sS -f -H "Authorization: Bearer ${PAPERCLIP_BOARD_API_KEY}" \
+    "${CONFIG_PAPERCLIP_API_BASE}$1"
 }
 
 paperclip_post_json() {
   # $1 = path, $2 = JSON body string
   curl -sS -f -X POST "${CONFIG_PAPERCLIP_API_BASE}$1" \
+    -H "Authorization: Bearer ${PAPERCLIP_BOARD_API_KEY}" \
     -H "Content-Type: application/json" \
     -d "$2"
 }
 
 paperclip_patch_json() {
   curl -sS -f -X PATCH "${CONFIG_PAPERCLIP_API_BASE}$1" \
+    -H "Authorization: Bearer ${PAPERCLIP_BOARD_API_KEY}" \
     -H "Content-Type: application/json" \
     -d "$2"
 }

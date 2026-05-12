@@ -37,12 +37,14 @@ paperclip_list_issues() {
   paperclip_get "/api/companies/$1/issues${2:-}"
 }
 
-paperclip_list_runs() {
-  paperclip_get "/api/runs${1:-}"
+paperclip_list_company_heartbeat_runs() {
+  # $1 = company id, $2 = optional limit (default 200)
+  local limit="${2:-200}"
+  paperclip_get "/api/companies/$1/heartbeat-runs?limit=${limit}"
 }
 
 paperclip_get_run_activity() {
-  paperclip_get "/api/runs/$1/activity"
+  paperclip_get "/api/heartbeat-runs/$1/log"
 }
 
 paperclip_get_issue_comments() {

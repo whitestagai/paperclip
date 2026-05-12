@@ -16,3 +16,28 @@ slug_from_name() {
   name=$(echo "$name" | sed 's/^-//' | sed 's/-$//')
   echo "$name"
 }
+
+# Write _index.md mapping (slug ↔ uuid ↔ company)
+# Variadic: write_slug_index <output-file> <company-slug-1> <agents-json-1> <company-slug-2> <agents-json-2> ...
+write_slug_index() {
+  local out="$1"; shift
+  {
+    echo "# Agent Slug-Index"
+    echo
+    echo "Auto-generiert vom \`agent-learning-trigger.sh\`. Bitte nicht von Hand editieren —"
+    echo "wird beim nächsten Lauf überschrieben."
+    echo
+    echo "| Slug | UUID | Company |"
+    echo "|---|---|---|"
+    while [[ $# -gt 0 ]]; do
+      local company_slug="$1"; shift
+      local agents_json="$1"; shift
+      echo "$agents_json" | jq -r '.[] | [.name, .id] | @tsv' \
+        | while IFS=$'\t' read -r name id; do
+          local slug
+          slug=$(slug_from_name "$name")
+          echo "| ${slug} | \`${id}\` | ${company_slug} |"
+        done
+    done
+  } > "$out"
+}

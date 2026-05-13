@@ -27,11 +27,13 @@ paperclip_list_agents() {
 
 paperclip_create_issue() {
   # $1 = company id, $2 = title, $3 = description, $4 = assigneeAgentId
-  # NOTE: schema uses `description` (NOT body) and `assigneeAgentId` (NOT assignedAgentId)
+  # NOTE: schema uses `description` (NOT body) and `assigneeAgentId` (NOT assignedAgentId).
+  # status: "todo" — agent's inbox filter is "todo,in_progress,in_review,blocked";
+  # "backlog" is invisible to the heartbeat scan.
   local payload
   payload=$(jq -n \
     --arg t "$2" --arg d "$3" --arg a "$4" \
-    '{title:$t, description:$d, assigneeAgentId:$a, status:"backlog"}')
+    '{title:$t, description:$d, assigneeAgentId:$a, status:"todo"}')
   paperclip_post_json "/api/companies/$1/issues" "$payload"
 }
 

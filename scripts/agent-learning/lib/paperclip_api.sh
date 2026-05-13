@@ -52,3 +52,10 @@ paperclip_get_run_activity() {
 paperclip_get_issue_comments() {
   paperclip_get "/api/issues/$1/comments"
 }
+
+paperclip_wake_agent() {
+  # $1 = agent id, $2 = reason (free text)
+  local payload
+  payload=$(jq -n --arg r "$2" '{source:"assignment", triggerDetail:"manual", reason:$r}')
+  paperclip_post_json "/api/agents/$1/wakeup" "$payload"
+}

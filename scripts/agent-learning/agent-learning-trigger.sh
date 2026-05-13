@@ -85,6 +85,8 @@ case "$MODE" in
           "$issue_title" "$body" "$CONFIG_ONLINE_RECHERCHE_ID")
         issue_id=$(echo "$result" | jq -r '.id')
         log "Created knowledge issue: $issue_id ($domain)"
+        paperclip_wake_agent "$CONFIG_ONLINE_RECHERCHE_ID" "knowledge issue $issue_id" >/dev/null \
+          || log "WARN: wakeup failed for online-recherche"
       fi
     done
 
@@ -159,6 +161,8 @@ EOF
         "$issue_title" "$body" "$CONFIG_VAULT_MAINTAINER_ID")
       issue_id=$(echo "$result" | jq -r '.id')
       log "Created lessons issue: $issue_id (${run_count} friction runs)"
+      paperclip_wake_agent "$CONFIG_VAULT_MAINTAINER_ID" "lessons issue $issue_id" >/dev/null \
+        || log "WARN: wakeup failed for vault-maintainer"
       vault_status_append "## $(date +"%Y-%m-%d %H:%M") — Reibungs-Sweep" <<EOF
 - ${run_count} friction runs handed to Vault-Maintainer (issue ${issue_id})
 EOF

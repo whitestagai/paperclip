@@ -26,10 +26,12 @@ paperclip_list_agents() {
 }
 
 paperclip_create_issue() {
+  # $1 = company id, $2 = title, $3 = description, $4 = assigneeAgentId
+  # NOTE: schema uses `description` (NOT body) and `assigneeAgentId` (NOT assignedAgentId)
   local payload
   payload=$(jq -n \
-    --arg t "$2" --arg b "$3" --arg a "$4" \
-    '{title:$t, body:$b, assignedAgentId:$a}')
+    --arg t "$2" --arg d "$3" --arg a "$4" \
+    '{title:$t, description:$d, assigneeAgentId:$a, status:"backlog"}')
   paperclip_post_json "/api/companies/$1/issues" "$payload"
 }
 

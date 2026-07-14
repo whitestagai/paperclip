@@ -28,6 +28,7 @@ import {
 } from "./server-utils.js";
 import { sanitizeRemoteExecutionEnv } from "./remote-execution-env.js";
 import { preferredShellForSandbox } from "./sandbox-shell.js";
+import type { LocalProcessSandboxOptions } from "./local-process-sandbox.js";
 
 export interface AdapterLocalExecutionTarget {
   kind: "local";
@@ -82,6 +83,7 @@ export interface AdapterExecutionTargetProcessOptions {
   onLog: (stream: "stdout" | "stderr", chunk: string) => Promise<void>;
   onSpawn?: (meta: { pid: number; processGroupId: number | null; startedAt: string }) => Promise<void>;
   terminalResultCleanup?: TerminalResultCleanupOptions;
+  localProcessSandbox?: LocalProcessSandboxOptions | null;
 }
 
 export interface AdapterExecutionTargetShellOptions {
@@ -400,6 +402,7 @@ export async function runAdapterExecutionTargetProcess(
     onLog: options.onLog,
     onSpawn: options.onSpawn,
     terminalResultCleanup: options.terminalResultCleanup,
+    localProcessSandbox: target?.kind === "local" || !target ? options.localProcessSandbox : null,
     remoteExecution: adapterExecutionTargetToRemoteSpec(target),
   });
 }

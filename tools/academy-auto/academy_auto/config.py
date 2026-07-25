@@ -21,6 +21,11 @@ class Config:
     secret_read_paths: tuple[str, ...]
     sandbox_write_paths: tuple[str, ...]
     protected_write_paths: tuple[str, ...]
+    notify_mode: str
+    pending_path: Path
+    intent_path: Path
+    milestone_delta_threshold: int
+    github_repo: str
 
     @classmethod
     def default(cls) -> "Config":
@@ -81,4 +86,9 @@ class Config:
                 str(home / ".claude/commands"), str(home / ".claude/agents"),
                 str(home / ".claude/keybindings.json"),
             ),
+            notify_mode="daily",
+            pending_path=base / "pending.json",
+            intent_path=base / "intent.json",
+            milestone_delta_threshold=50,
+            github_repo="whitestagai/ki-kompass",
         )

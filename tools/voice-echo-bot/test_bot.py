@@ -397,4 +397,71 @@ class TestDoLookupUnknownVault(unittest.TestCase):
         lc.assert_not_called()
 
 
+class TestAcademyBridgeIntegration(unittest.TestCase):
+    def test_academy_callback_writes_intent_and_triggers_executor(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        update = {"callback_query": {"id": "cbq1", "data": "academy:approve:2026-07-25T02:00:03"}}
+        with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf, \
+             mock.patch.object(bot.academy_bridge, "trigger_executor") as te:
+            app.handle_update(update)
+        wf.assert_called_once()
+        path_arg, dict_arg = wf.call_args.args
+        self.assertEqual(path_arg, bot.DEFAULT_ACADEMY_INTENT_PATH)
+        self.assertEqual(dict_arg["kind"], "approve")
+        self.assertEqual(dict_arg["ref_run_ts"], "2026-07-25T02:00:03")
+        te.assert_called_once_with(bot.DEFAULT_ACADEMY_AUTO_DIR)
+        tg.answer_callback_query.assert_called_once_with("cbq1", text="Verstanden — läuft.")
+
+    def test_academy_callback_uses_configured_paths_when_present(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        app.cfg["academy_intent_path"] = "/tmp/custom-intent.json"
+        app.cfg["academy_auto_dir"] = "/tmp/custom-academy-auto"
+        update = {"callback_query": {"id": "cbq2", "data": "academy:reject:R1"}}
+        with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf, \
+             mock.patch.object(bot.academy_bridge, "trigger_executor") as te:
+            app.handle_update(update)
+        self.assertEqual(wf.call_args.args[0], "/tmp/custom-intent.json")
+        te.assert_called_once_with("/tmp/custom-academy-auto")
+
+    def test_academy_callback_foreign_data_is_ignored(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        update = {"callback_query": {"id": "cbq3", "data": "issue:confirm:WHI-1"}}
+        with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf:
+            app.handle_update(update)
+        wf.assert_not_called()
+        tg.answer_callback_query.assert_not_called()
+
+    def test_academy_reply_writes_intent_and_does_not_hit_issue_path(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf, \
+             mock.patch.object(bot.academy_bridge, "trigger_executor") as te, \
+             mock.patch.object(bot, "find_issue_by_identifier") as fi:
+            app.handle_update(msg(8311805232, text="Login-Seite responsiver machen.",
+                                  reply_text="🎓 Academy-Auto — Tagesstand\nWHI-1: Login"))
+        fi.assert_not_called()
+        wf.assert_called_once()
+        dict_arg = wf.call_args.args[1]
+        self.assertEqual(dict_arg["kind"], "direction")
+        self.assertEqual(dict_arg["text"], "Login-Seite responsiver machen.")
+        te.assert_called_once()
+        tg.send_message.assert_called_once_with(8311805232, "✍️ Als Nachtaufgabe notiert.")
+
+    def test_academy_reply_empty_text_skips_write(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf:
+            app.handle_update(msg(8311805232, text="",
+                                  reply_text="🎓 Academy-Auto — Tagesstand\nWHI-1: Login"))
+        wf.assert_not_called()
+
+    def test_non_academy_reply_still_uses_ident_path(self):
+        # Regressions-Schutz: normale WHI-Reply-Erkennung bleibt unverändert.
+        tg = mock.MagicMock(); app = make_app(tg)
+        with mock.patch.object(bot, "find_issue_by_identifier", return_value={"id": "iss-9", "identifier": "WHI-2857"}) as fi, \
+             mock.patch.object(bot, "add_comment", return_value={"id": "c1"}), \
+             mock.patch.object(bot.academy_bridge, "write_intent_file") as wf:
+            app.handle_update(msg(8311805232, text="Ja, mach DMARC so.", reply_text="🟠 Entscheidung benötigt — WHI-2857: DMARC"))
+        fi.assert_called_once()
+        wf.assert_not_called()
+
+
 if __name__ == "__main__": unittest.main()

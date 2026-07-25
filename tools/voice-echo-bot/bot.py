@@ -16,6 +16,9 @@ import tempfile
 import time
 import traceback
 
+from datetime import datetime, timezone
+
+import academy_bridge
 import config
 import state
 import tenants as tenants_mod
@@ -30,6 +33,10 @@ from paperclip_client import (create_issue, derive_title, add_comment,
                               find_issue_by_identifier, list_issues, resolve_label_id)
 
 IDENT_RE = re.compile(r"([A-Z]{2,5}-\d+)")
+
+# Defaults, falls die Config (Task 11) die Academy-Pfade noch nicht setzt.
+DEFAULT_ACADEMY_INTENT_PATH = os.path.expanduser("~/.paperclip/academy-auto/intent.json")
+DEFAULT_ACADEMY_AUTO_DIR = os.path.expanduser("~/.paperclip/scripts/academy-auto")
 
 # Steuer-Token nur am Zeilenanfang, case-insensitive.
 LOOKUP_RE = re.compile(r"^\s*LOOKUP\s+(kontakt|termin|mail|wissen|dokument)\s*:\s*(.+)$",
@@ -125,13 +132,37 @@ class BotApp:
 
     # ---- Eingang / Dispatcher ----
     def handle_update(self, update):
-        # Der Chat legt Issues jetzt direkt per ISSUE-Token an — es gibt keine
-        # Bestätigungs-Buttons mehr, also auch keine callback_query zu bedienen.
+        # Das Issue-System legt Issues direkt per ISSUE-Token an — dafür gibt
+        # es keine Bestätigungs-Buttons/callback_query. Academy-Auto-Callbacks
+        # (Approve/Reject-Buttons unterm Tagesstand) sind neu und laufen hier
+        # getrennt rein.
+        if "callback_query" in update:
+            self._handle_academy_callback(update["callback_query"])
+            return
         if "message" in update:
             msg = update["message"]
             tenant = tenants_mod.resolve_tenant(self.cfg["tenants"], msg.get("from", {}).get("id"))
             if tenant:
                 self._handle_message(tenant, msg)
+
+    def _now_ts(self):
+        return datetime.now(timezone.utc).isoformat()
+
+    def _academy_intent_path(self):
+        return self.cfg.get("academy_intent_path", DEFAULT_ACADEMY_INTENT_PATH)
+
+    def _academy_auto_dir(self):
+        return self.cfg.get("academy_auto_dir", DEFAULT_ACADEMY_AUTO_DIR)
+
+    def _handle_academy_callback(self, cq):
+        parsed = academy_bridge.parse_callback(cq.get("data") or "")
+        if parsed is None:
+            return
+        kind, ref = parsed
+        d = academy_bridge.build_intent_dict(kind, "", ref, self._now_ts())
+        academy_bridge.write_intent_file(self._academy_intent_path(), d)
+        academy_bridge.trigger_executor(self._academy_auto_dir())
+        self.tg.answer_callback_query(cq["id"], text="Verstanden — läuft.")
 
     def _extract_text(self, msg):
         """Voice -> Whisper (mit Cleanup) oder Textnachricht; None bei Transkriptionsfehler."""
@@ -166,6 +197,14 @@ class BotApp:
                 return
         reply_to = msg.get("reply_to_message")
         if reply_to:
+            if academy_bridge.is_academy_reply(reply_to.get("text") or ""):
+                text = self._extract_text(msg)
+                if text:
+                    d = academy_bridge.build_intent_dict("direction", text, "", self._now_ts())
+                    academy_bridge.write_intent_file(self._academy_intent_path(), d)
+                    academy_bridge.trigger_executor(self._academy_auto_dir())
+                    self.tg.send_message(msg["chat"]["id"], "✍️ Als Nachtaufgabe notiert.")
+                return
             m = IDENT_RE.search(reply_to.get("text") or "")
             if m:
                 self._handle_reply(tenant, msg, m.group(1))

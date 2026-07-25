@@ -39,6 +39,10 @@ DECISION_LABEL = "entscheidung-noetig"
 POLL_INTERVAL_SEC = 60
 LONGPOLL_TIMEOUT_SEC = 25
 
+# --- Academy-Auto-Brücke (Task 11) ---
+ACADEMY_INTENT_PATH = os.path.expanduser("~/.paperclip/academy-auto/intent.json")
+ACADEMY_AUTO_DIR = os.path.expanduser("~/.paperclip/scripts/academy-auto")
+
 # --- Antwort-Modus (Text/Voice) + ElevenLabs-TTS ---
 REPLY_MODE_PATH = os.path.expanduser("~/.paperclip/voice-echo-reply-mode.json")
 ELEVEN_VOICE_ID = "VBhW9TV6mNHCxbcqSl17"

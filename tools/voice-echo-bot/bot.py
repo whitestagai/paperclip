@@ -155,6 +155,12 @@ class BotApp:
         return self.cfg.get("academy_auto_dir", DEFAULT_ACADEMY_AUTO_DIR)
 
     def _handle_academy_callback(self, cq):
+        # Gleiches Fail-Closed-Muster wie im Message-Pfad: nur bekannte
+        # Mandanten dürfen intent.json schreiben/den Executor anstoßen.
+        sender_id = cq.get("from", {}).get("id")
+        tenant = tenants_mod.resolve_tenant(self.cfg["tenants"], sender_id)
+        if not tenant:
+            return
         parsed = academy_bridge.parse_callback(cq.get("data") or "")
         if parsed is None:
             return

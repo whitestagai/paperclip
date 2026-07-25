@@ -400,7 +400,8 @@ class TestDoLookupUnknownVault(unittest.TestCase):
 class TestAcademyBridgeIntegration(unittest.TestCase):
     def test_academy_callback_writes_intent_and_triggers_executor(self):
         tg = mock.MagicMock(); app = make_app(tg)
-        update = {"callback_query": {"id": "cbq1", "data": "academy:approve:2026-07-25T02:00:03"}}
+        update = {"callback_query": {"id": "cbq1", "from": {"id": 8311805232},
+                                     "data": "academy:approve:2026-07-25T02:00:03"}}
         with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf, \
              mock.patch.object(bot.academy_bridge, "trigger_executor") as te:
             app.handle_update(update)
@@ -416,7 +417,8 @@ class TestAcademyBridgeIntegration(unittest.TestCase):
         tg = mock.MagicMock(); app = make_app(tg)
         app.cfg["academy_intent_path"] = "/tmp/custom-intent.json"
         app.cfg["academy_auto_dir"] = "/tmp/custom-academy-auto"
-        update = {"callback_query": {"id": "cbq2", "data": "academy:reject:R1"}}
+        update = {"callback_query": {"id": "cbq2", "from": {"id": 1220010628},
+                                     "data": "academy:reject:R1"}}
         with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf, \
              mock.patch.object(bot.academy_bridge, "trigger_executor") as te:
             app.handle_update(update)
@@ -425,10 +427,25 @@ class TestAcademyBridgeIntegration(unittest.TestCase):
 
     def test_academy_callback_foreign_data_is_ignored(self):
         tg = mock.MagicMock(); app = make_app(tg)
-        update = {"callback_query": {"id": "cbq3", "data": "issue:confirm:WHI-1"}}
+        update = {"callback_query": {"id": "cbq3", "from": {"id": 8311805232},
+                                     "data": "issue:confirm:WHI-1"}}
         with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf:
             app.handle_update(update)
         wf.assert_not_called()
+        tg.answer_callback_query.assert_not_called()
+
+    def test_academy_callback_unknown_sender_is_dropped(self):
+        # Fail-closed wie im Message-Pfad: ein Callback ohne aufgelösten
+        # Mandanten darf weder intent.json schreiben noch den Executor
+        # anstoßen noch bestätigt werden.
+        tg = mock.MagicMock(); app = make_app(tg)
+        update = {"callback_query": {"id": "cbq-unknown", "from": {"id": 999},
+                                     "data": "academy:approve:2026-07-25T02:00:03"}}
+        with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf, \
+             mock.patch.object(bot.academy_bridge, "trigger_executor") as te:
+            app.handle_update(update)
+        wf.assert_not_called()
+        te.assert_not_called()
         tg.answer_callback_query.assert_not_called()
 
     def test_academy_reply_writes_intent_and_does_not_hit_issue_path(self):

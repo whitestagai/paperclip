@@ -57,3 +57,22 @@ def test_send_digest_fail_soft_without_config(tmp_path):
     # weder env noch tenants vorhanden -> False, aber KEINE Exception
     assert send_digest("text", env_path=tmp_path / "a.env",
                        tenants_path=tmp_path / "b.json") is False
+
+
+def test_send_telegram_includes_reply_markup():
+    from academy_auto import notify
+    captured = {}
+
+    class FakeResp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def fake_opener(req, timeout=0):
+        captured["data"] = req.data.decode()
+        return FakeResp()
+
+    ok = notify.send_telegram("hallo", "TOK", "123",
+                              reply_markup={"inline_keyboard": [[{"text": "✅", "callback_data": "x"}]]},
+                              opener=fake_opener)
+    assert ok is True
+    assert "reply_markup" in captured["data"]

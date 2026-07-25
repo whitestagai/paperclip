@@ -30,5 +30,11 @@ class TestLoadToken(unittest.TestCase):
         self.assertEqual(config.load_paperclip_token(path), "tok-xyz")
 
 
+class TestAcademyDefaults(unittest.TestCase):
+    def test_academy_defaults_present(self):
+        self.assertTrue(config.ACADEMY_INTENT_PATH.endswith("academy-auto/intent.json"))
+        self.assertTrue(config.ACADEMY_AUTO_DIR.endswith("scripts/academy-auto"))
+
+
 if __name__ == "__main__":
     unittest.main()

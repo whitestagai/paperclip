@@ -1,7 +1,8 @@
 from types import SimpleNamespace
+from academy_auto.config import Config
 from academy_auto.intent import Intent
 from academy_auto.pending import PendingRecord
-from academy_auto.executor import process_intent
+from academy_auto.executor import process_intent, _pr_create_argv
 
 
 def _cfg():
@@ -57,3 +58,15 @@ def test_direction_creates_issue():
     assert process_intent(_cfg(), _deps(it, _rec("R"), notes, calls)) == "direction"
     assert "issue:Login responsive" in calls
     assert any("#42" in n for n in notes)
+
+
+def test_pr_create_argv_uses_full_branch_as_head():
+    # Regression: gh muss --head mit dem tatsächlich gepushten Branch
+    # (cfg.branch, z.B. "agents/academy-auto") aufrufen, nicht nur dem
+    # letzten Pfad-Teil ("academy-auto") — sonst findet gh den Head nicht.
+    cfg = Config.default()
+    argv = _pr_create_argv(cfg)
+    assert "--head" in argv
+    idx = argv.index("--head")
+    assert argv[idx + 1] == cfg.branch
+    assert argv[idx + 1] == "agents/academy-auto"

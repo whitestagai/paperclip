@@ -35,13 +35,20 @@ def process_intent(cfg, deps) -> str:
     return result
 
 
+def _pr_create_argv(cfg):
+    """Reines argv-Bauen für `gh pr create` — --head MUSS der gepushte
+    Branch (cfg.branch, z.B. "agents/academy-auto") sein, nicht nur der
+    letzte Pfad-Teil, sonst findet gh den Head-Branch nicht."""
+    return ["gh", "pr", "create", "--repo", cfg.github_repo,
+            "--head", cfg.branch, "--base", cfg.base_branch, "--fill"]
+
+
 def _open_pr_default(cfg):  # pragma: no cover - echter gh-Aufruf beim Deploy
     import subprocess
     wt = str(cfg.worktree_path)
     subprocess.run(["git", "-C", wt, "push", "-f", "origin", cfg.branch], check=True)
     proc = subprocess.run(
-        ["gh", "pr", "create", "--repo", cfg.github_repo, "--head", cfg.branch.split("/")[-1],
-         "--base", cfg.base_branch, "--fill"],
+        _pr_create_argv(cfg),
         capture_output=True, text=True, check=True,
     )
     return proc.stdout.strip()

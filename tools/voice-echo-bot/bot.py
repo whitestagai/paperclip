@@ -434,6 +434,8 @@ def build_app():
         "reply_mode_path": config.REPLY_MODE_PATH,
         "eleven_api_key": env.get("ELEVENLABS_API_KEY"),
         "chat_model": env.get("CHAT_MODEL") or llm.DEFAULT_MODEL,
+        "academy_intent_path": config.ACADEMY_INTENT_PATH,
+        "academy_auto_dir": config.ACADEMY_AUTO_DIR,
     }
     app = BotApp(Telegram(env["TELEGRAM_BOT_TOKEN"]), cfg)
     loaded = state.load_state(config.STATE_PATH)

@@ -18,7 +18,11 @@ def read_env_value(path, key: str):
                 continue
             k, _, v = line.partition("=")
             if k.strip() == key:
-                return v.strip()
+                v = v.strip()
+                # Umschließende Quotes strippen (die .env schreibt TOKEN="...")
+                if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+                    v = v[1:-1]
+                return v
     except OSError:
         return None
     return None
@@ -49,8 +53,10 @@ def send_telegram(text: str, token: str, chat_id: str, reply_markup=None,
         req = urllib.request.Request(
             f"https://api.telegram.org/bot{token}/sendMessage", data=data
         )
-        with opener(req, timeout=30):
-            return True
+        with opener(req, timeout=30) as resp:
+            body = json.loads(resp.read().decode())
+            # Telegram antwortet HTTP 200 auch bei {"ok":false} -> Body prüfen
+            return bool(body.get("ok"))
     except Exception:
         return False
 

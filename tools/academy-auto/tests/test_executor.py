@@ -37,6 +37,22 @@ def test_approve_opens_pr():
     assert any("PR" in n for n in notes)
 
 
+def test_approve_error_surfaces_stderr():
+    # Regression: CalledProcessError verschluckte gh's stderr -> Meldung war
+    # nutzlos ("exit status 1"). Der stderr-Grund muss in der Notify stehen.
+    import subprocess
+    calls, notes = [], []
+    deps = _deps(Intent(ts="t", kind="approve", text="", ref_run_ts="R"),
+                 _rec("R"), notes, calls)
+    def boom(cfg):
+        raise subprocess.CalledProcessError(
+            1, ["gh"], stderr="not a git repository")
+    deps.open_pr = boom
+    process_intent(_cfg(), deps)
+    assert any("not a git repository" in n for n in notes)
+    assert "clear" in calls  # Intent bleibt trotz Fehler NICHT stehen
+
+
 def test_stale_ref_no_action():
     calls, notes = [], []
     it = Intent(ts="t", kind="approve", text="", ref_run_ts="OLD")

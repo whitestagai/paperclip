@@ -20,8 +20,9 @@ def deliver(cfg, deps) -> str:
         return "skipped"
     text = build_digest_from_pending(rec)
     markup = build_reply_markup(rec.run_ts) if rec.has_change else None
-    deps.send(text, markup)
-    return "sent"
+    ok = deps.send(text, markup)
+    # send gibt True/False zurück; None (Alt-Fakes) als Erfolg werten
+    return "sent" if ok or ok is None else "send_failed"
 
 
 def main() -> None:  # pragma: no cover - CLI/launchd

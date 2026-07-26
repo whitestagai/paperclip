@@ -30,7 +30,8 @@ def process_intent(cfg, deps) -> str:
             deps.notify(f"✍️ Als Nachtaufgabe notiert (Issue #{num}).")
             result = "direction"
     except Exception as exc:  # fail-soft: Fehler melden, Intent bleibt NICHT stehen
-        deps.notify(f"⚠️ Konnte Aktion nicht ausführen: {exc}")
+        detail = (getattr(exc, "stderr", "") or "").strip()
+        deps.notify(f"⚠️ Konnte Aktion nicht ausführen: {exc}" + (f"\n{detail}" if detail else ""))
     deps.clear_intent(cfg.intent_path)
     return result
 
@@ -47,9 +48,11 @@ def _open_pr_default(cfg):  # pragma: no cover - echter gh-Aufruf beim Deploy
     import subprocess
     wt = str(cfg.worktree_path)
     subprocess.run(["git", "-C", wt, "push", "-f", "origin", cfg.branch], check=True)
+    # cwd=wt ist Pflicht: `gh pr create --fill` liest Titel/Body aus dem
+    # lokalen Git-Log; ohne cwd läuft gh im Deploy-Ordner (kein .git) -> Fehler.
     proc = subprocess.run(
         _pr_create_argv(cfg),
-        capture_output=True, text=True, check=True,
+        cwd=wt, capture_output=True, text=True, check=True,
     )
     return proc.stdout.strip()
 

@@ -78,6 +78,13 @@ class Config:
                 "/private/tmp", "/private/var/folders",
                 str(home / ".npm"), str(home / "Library/Caches"),
                 str(home / ".cache"), str(home / ".expo"), str(home / ".claude"),
+                # Pflicht: Claude Code schreibt seinen Zustand in die DATEI
+                # ~/.claude.json neben dem Ordner ~/.claude. Die subpath-Regel
+                # auf den Ordner deckt sie NICHT ab — ohne diese beiden Eintraege
+                # bricht die CLI mitten in der Umsetzung mit
+                # "API Error: EPERM ... open '~/.claude.json'" ab (live belegt
+                # am 30.07.: Datei halb geaendert, Lauf tot, Gate rot).
+                str(home / ".claude.json"), str(home / ".claude.json.backup"),
             ),
             protected_write_paths=(
                 str(home / ".claude/settings.json"), str(home / ".claude/settings.local.json"),

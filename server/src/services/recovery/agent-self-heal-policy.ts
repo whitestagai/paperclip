@@ -91,3 +91,38 @@ export function decideSelfHeal(input: {
       return { kind: "escalate_human", reason: "unclassified_error" };
   }
 }
+
+/** Statuswerte, in denen ein Agent keine Eskalation mehr annehmen kann. */
+const UNRELIABLE_STATUSES = new Set(["error", "terminated", "paused", "pending_approval"]);
+
+/**
+ * Sucht den naechsten tragfaehigen Vorgesetzten in der Berichtskette.
+ *
+ * Manager-tot-Schutz: der haeufigste Eskalationsempfaenger (CTO) ist selbst ein
+ * haeufiges max_iterations-Opfer — ohne dieses Ueberspringen stirbt die Rettung
+ * mit dem Retter. Der Zyklusschutz ueber `seen` ist Pflicht, weil `reports_to`
+ * nicht garantiert azyklisch ist.
+ */
+export function resolveEscalationTarget(input: {
+  agentId: string;
+  agents: Array<{ id: string; reportsTo: string | null; status: string }>;
+}): { kind: "agent"; agentId: string } | { kind: "human"; reason: string } {
+  const byId = new Map(input.agents.map((a) => [a.id, a]));
+  const start = byId.get(input.agentId);
+  if (!start?.reportsTo) return { kind: "human", reason: "no_manager" };
+
+  const seen = new Set<string>([input.agentId]);
+  let cursor = start.reportsTo;
+
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor);
+    const candidate = byId.get(cursor);
+    if (!candidate) break;
+    if (!UNRELIABLE_STATUSES.has(candidate.status)) {
+      return { kind: "agent", agentId: candidate.id };
+    }
+    cursor = candidate.reportsTo ?? "";
+  }
+
+  return { kind: "human", reason: "chain_exhausted" };
+}

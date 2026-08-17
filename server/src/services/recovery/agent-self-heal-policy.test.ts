@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildErrorFingerprint, computeNextEligibleAt, decideSelfHeal } from "./agent-self-heal-policy.js";
+import {
+  buildErrorFingerprint,
+  computeNextEligibleAt,
+  decideSelfHeal,
+  resolveEscalationTarget,
+} from "./agent-self-heal-policy.js";
 
 describe("buildErrorFingerprint", () => {
   it("nimmt den error_code, wenn vorhanden", () => {
@@ -116,5 +121,50 @@ describe("decideSelfHeal — uebrige Klassen", () => {
   it("eskaliert deterministic auch bei gesundem Endpoint nicht in ein revive", () => {
     const action = decideSelfHeal({ ...base, errorClass: "deterministic", endpointHealthy: true });
     expect(action.kind).not.toBe("revive");
+  });
+});
+
+const fleet = [
+  { id: "spezialist", reportsTo: "cto", status: "error" },
+  { id: "cto", reportsTo: "ceo", status: "idle" },
+  { id: "ceo", reportsTo: null, status: "idle" },
+];
+
+describe("resolveEscalationTarget", () => {
+  it("nimmt den direkten Vorgesetzten, wenn er lebt", () => {
+    expect(resolveEscalationTarget({ agentId: "spezialist", agents: fleet }))
+      .toEqual({ kind: "agent", agentId: "cto" });
+  });
+
+  it("ueberspringt einen toten Vorgesetzten", () => {
+    const withDeadCto = fleet.map((a) => (a.id === "cto" ? { ...a, status: "error" } : a));
+    expect(resolveEscalationTarget({ agentId: "spezialist", agents: withDeadCto }))
+      .toEqual({ kind: "agent", agentId: "ceo" });
+  });
+
+  it.each(["error", "terminated", "paused"])("wertet Status %s als nicht tragfaehig", (status) => {
+    const broken = fleet.map((a) => (a.id === "cto" ? { ...a, status } : a));
+    expect(resolveEscalationTarget({ agentId: "spezialist", agents: broken }))
+      .toEqual({ kind: "agent", agentId: "ceo" });
+  });
+
+  it("gibt an den Menschen ab, wenn die ganze Kette tot ist", () => {
+    const allDead = fleet.map((a) => (a.id === "spezialist" ? a : { ...a, status: "error" }));
+    expect(resolveEscalationTarget({ agentId: "spezialist", agents: allDead }))
+      .toEqual({ kind: "human", reason: "chain_exhausted" });
+  });
+
+  it("gibt an den Menschen ab, wenn es keinen Vorgesetzten gibt", () => {
+    expect(resolveEscalationTarget({ agentId: "ceo", agents: fleet }))
+      .toEqual({ kind: "human", reason: "no_manager" });
+  });
+
+  it("laeuft bei einem Zyklus in der Kette nicht endlos", () => {
+    const cyclic = [
+      { id: "a", reportsTo: "b", status: "error" },
+      { id: "b", reportsTo: "a", status: "error" },
+    ];
+    expect(resolveEscalationTarget({ agentId: "a", agents: cyclic }))
+      .toEqual({ kind: "human", reason: "chain_exhausted" });
   });
 });

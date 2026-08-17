@@ -35,6 +35,11 @@ import {
   reconcilePersistedRuntimeServicesOnStartup,
   routineService,
 } from "./services/index.js";
+import {
+  createSelfHealDeps,
+  selfHealTickIsNoteworthy,
+  tickAgentSelfHeal,
+} from "./services/recovery/agent-self-heal.js";
 import { createFeedbackTraceShareClientFromConfig } from "./services/feedback-share-client.js";
 import { buildRuntimeApiCandidateUrls, choosePrimaryRuntimeApiUrl } from "./runtime-api.js";
 import { createPluginWorkerManager } from "./services/plugin-worker-manager.js";
@@ -675,7 +680,10 @@ export async function startServer(): Promise<StartedServer> {
     // broadcaster option is needed (master wires pluginWorkerManager directly).
     const heartbeat = heartbeatService(db as any, { pluginWorkerManager });
     const routines = routineService(db as any, { pluginWorkerManager });
-  
+    // Einmalig erzeugen statt pro Tick: der Wächter braucht nur `heartbeat.wakeup`
+    // und baut sich seinen Agenten-Service selbst (siehe agent-self-heal.ts).
+    const selfHealDeps = createSelfHealDeps(db as any, { heartbeat });
+
     // Reap orphaned running runs at startup while in-memory execution state is empty,
     // then resume any persisted queued runs that were waiting on the previous process.
     void heartbeat
@@ -741,7 +749,23 @@ export async function startServer(): Promise<StartedServer> {
         .catch((err) => {
           logger.error({ err }, "routine scheduler tick failed");
         });
-  
+
+      void tickAgentSelfHeal(selfHealDeps, {
+        enabled: config.agentSelfHeal.enabled,
+        minIntervalMs: 120_000,
+        maxInfraRevives: config.agentSelfHeal.maxInfraRevives,
+        cooldownMs: config.agentSelfHeal.cooldownMs,
+        maxConcurrentRevives: config.agentSelfHeal.maxConcurrentRevives,
+      })
+        .then((result) => {
+          if (result && selfHealTickIsNoteworthy(result)) {
+            logger.warn({ ...result }, "agent self-heal handelte");
+          }
+        })
+        .catch((err) => {
+          logger.error({ err }, "agent self-heal tick failed");
+        });
+
       // Periodically reap orphaned runs (5-min staleness threshold) and make sure
       // persisted queued work is still being driven forward.
       void heartbeat

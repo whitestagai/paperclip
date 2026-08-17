@@ -50,7 +50,7 @@ class FakeMic:
 
 def test_single_turn_speaks_answer(monkeypatch):
     spoken = []
-    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "Wie spät?")
+    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "Wie spät ist es?")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
                         lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True: {"kind": "chat", "answer": "Kurz nach drei."})
     monkeypatch.setattr(satellite, "_speak", lambda text, deps: spoken.append(text))
@@ -66,7 +66,7 @@ def test_single_turn_speaks_answer(monkeypatch):
 def test_followup_window_triggers_second_turn(monkeypatch):
     answers = iter([{"kind": "chat", "answer": "A1"}, {"kind": "chat", "answer": "A2"}])
     calls = []
-    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "frage")
+    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "was ist mit dem Termin")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
                         lambda *a, **k: (calls.append(1) or next(answers)))
     spoken = []
@@ -87,7 +87,7 @@ def test_followup_window_triggers_second_turn(monkeypatch):
 def test_followup_rounds_are_capped(monkeypatch):
     # Ein Dauergespräch im Raum darf die Nachfrage-Schleife nicht endlos am
     # Leben halten — sonst beantwortet Jarvis nach einem Wake-Wort alles.
-    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "frage")
+    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "was ist mit dem Termin")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
                         lambda *a, **k: {"kind": "chat", "answer": "A"})
     spoken = []
@@ -102,7 +102,7 @@ def test_own_playback_backlog_does_not_trigger_followup(monkeypatch):
     # Jarvis' eigene Stimme (HomePod, AirPlay-Latenz). Der darf keine
     # Folgerunde auslösen.
     calls = []
-    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "frage")
+    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "was ist mit dem Termin")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
                         lambda *a, **k: calls.append(1) or {"kind": "chat", "answer": "A"})
     monkeypatch.setattr(satellite, "_speak", lambda text, deps: None)
@@ -128,7 +128,7 @@ def test_empty_transcript_ends_without_speaking(monkeypatch):
 
 
 def test_non_remembered_kind_not_added_to_history(monkeypatch):
-    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "mach xyz")
+    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "mach mal bitte xyz")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
                         lambda *a, **k: {"kind": "unparsed_ok",
                                          "answer": "⚠️ …an den CEO weitergegeben: WHI-10"})
@@ -146,7 +146,7 @@ def test_non_remembered_kind_not_added_to_history(monkeypatch):
 
 def test_token_callable_is_resolved(monkeypatch):
     seen = {}
-    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "hi")
+    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "wie geht es dir")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
                         lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True: seen.update(token=token) or {"kind": "chat", "answer": "ok"})
     monkeypatch.setattr(satellite, "_speak", lambda text, deps: None)
@@ -159,7 +159,7 @@ def test_token_callable_is_resolved(monkeypatch):
 
 def test_web_answer_is_remembered(monkeypatch):
     # Suchantworten gehören ins Gedächtnis, sonst laufen Nachfragen ins Leere.
-    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "wetter?")
+    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "wie wird das Wetter")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
                         lambda *a, **k: {"kind": "web", "answer": "Morgen 24 Grad."})
     monkeypatch.setattr(satellite, "_speak", lambda text, deps: None)
@@ -170,7 +170,7 @@ def test_web_answer_is_remembered(monkeypatch):
 
 def test_web_key_is_passed_to_brain(monkeypatch):
     seen = {}
-    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "wetter?")
+    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "wie wird das Wetter")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
                         lambda *a, **k: seen.update(k) or {"kind": "chat", "answer": "ok"})
     monkeypatch.setattr(satellite, "_speak", lambda text, deps: None)
@@ -193,7 +193,7 @@ def test_web_is_locked_after_vault_lookup_for_rest_of_chain(monkeypatch):
     calls = []
     answers = iter([{"kind": "lookup", "answer": "Blumenweg 7"},
                      {"kind": "chat", "answer": "22 Grad."}])
-    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "frage")
+    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "was ist mit dem Termin")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
                         lambda *a, **k: calls.append(k) or next(answers))
     monkeypatch.setattr(satellite, "_speak", lambda text, deps: None)
@@ -212,7 +212,7 @@ def test_web_stays_allowed_in_turns_without_vault_lookup(monkeypatch):
     # Merker nicht versehentlich immer sperren — Suche und Schlüssel bleiben
     # über mehrere Runden erhalten.
     calls = []
-    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "frage")
+    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "was ist mit dem Termin")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
                         lambda *a, **k: calls.append(k) or {"kind": "chat", "answer": "ok"})
     monkeypatch.setattr(satellite, "_speak", lambda text, deps: None)
@@ -307,3 +307,28 @@ def test_frage_in_einem_zug_wird_nicht_quittiert(monkeypatch):
     satellite.handle_interaction(frames, _deps())
     assert m["quittiert"] == []
     assert m["gefragt"] == ["Hey Jarvis, wie spät ist es?"]
+
+
+def test_kurze_nachfrage_wird_nicht_als_anrede_missverstanden(monkeypatch):
+    # Die Kürze-Regel gilt NUR für Runde 1, wo das Wake-Wort beweisbar im Audio
+    # steckt. In einer Nachfrage-Runde ist „Termine heute" eine vollständige
+    # Frage — würde sie quittiert, käme Walter nie zu einer Antwort.
+    m = _quittungs_umgebung(monkeypatch,
+                            ["Wie wird das Wetter morgen?", "Termine heute"])
+    frames = iter(_turn() + _sustained_turn()
+                  + _stille(sat_config.FOLLOWUP_START_FENSTER_FRAMES))
+    satellite.handle_interaction(frames, _deps())
+    assert m["quittiert"] == []
+    assert m["gefragt"] == ["Wie wird das Wetter morgen?", "Termine heute"]
+
+
+def test_verunstaltetes_wakeword_wird_quittiert(monkeypatch):
+    # Live-Befund 17.08.: Whisper machte aus „Hey Jarvis" ein „Chavez." — das
+    # ging als echte Frage ans Modell, das daraufhin im Vault nach einem
+    # Kontakt „Chavez" suchte (12 s Wartezeit, Fehlantwort).
+    m = _quittungs_umgebung(monkeypatch, ["Chavez.", "Wie spät ist es?"])
+    frames = iter(_turn() + _sustained_turn()
+                  + _stille(sat_config.FOLLOWUP_START_FENSTER_FRAMES))
+    satellite.handle_interaction(frames, _deps())
+    assert len(m["quittiert"]) == 1
+    assert m["gefragt"] == ["Wie spät ist es?"]

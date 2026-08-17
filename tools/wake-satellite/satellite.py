@@ -72,10 +72,6 @@ def _quittiere(deps):
     quittung.spiele(deps.get("eleven_key"), device=sat_config.HOMEPOD_DEVICE)
 
 
-def _ist_bloße_anrede(text):
-    """Anrede allein ODER nichts Verstandenes — beides heisst: er wollte etwas,
-    hat es aber noch nicht gesagt."""
-    return anrede.ist_nur_anrede(text) or not (text or "").strip()
 
 
 def handle_interaction(frames, deps, tenant=None, history=None):
@@ -104,13 +100,16 @@ def handle_interaction(frames, deps, tenant=None, history=None):
         t0 = time.monotonic()
         text = _transcribe(recorded, deps)
         t1 = time.monotonic()
-        if not quittiert and _ist_bloße_anrede(text):
+        if runden == 0 and not quittiert and anrede.ist_nur_wakeword(text):
             # „Hey Jarvis", absetzen, dann erst die Frage: die Aufnahme endet in
             # der Pause, beim Modell kommt nur die Anrede an und es antwortet
             # „Hallo Walter". Statt dessen kurz quittieren und länger zuhören.
             # Kostet KEINE der Runden — Zögern soll nicht bestraft werden.
             # Nur EINMAL je Kette: sonst hielte ein wiederholtes „Jarvis" die
             # Kette endlos offen, weil die Quittung nicht mitzählt.
+            # Und nur in Runde 1: nur dort steckt das Wake-Wort beweisbar mit
+            # im Audio, worauf die Kürze-Regel in anrede.py beruht. In einer
+            # Nachfrage-Runde ist „Termine heute" eine vollständige Frage.
             quittiert = True
             _quittiere(deps)
             if flush_mic:

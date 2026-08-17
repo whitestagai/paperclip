@@ -55,6 +55,44 @@ export function pickSelfHealErrorSource(input: {
   };
 }
 
+/** Modell-Liste beider LM-Studio-Endpunkte; `null`, wenn die Antwort unbrauchbar ist. */
+function toModelEntries(body: unknown): Array<Record<string, unknown>> | null {
+  if (typeof body !== "object" || body === null) return null;
+  const data = (body as { data?: unknown }).data;
+  if (!Array.isArray(data)) return null;
+  return data.filter(
+    (entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null,
+  );
+}
+
+/**
+ * IDs der GELADENEN Modelle aus `/api/v0/models`.
+ *
+ * `null` heisst „diese Antwort taugt nicht als Ladezustands-Quelle" — kein
+ * `data`-Array oder keine einzige Zeile mit `state`. Das trennt LM Studio von
+ * fremden OpenAI-kompatiblen Servern und ist das Signal fuer den Rueckfall auf
+ * `/v1/models`.
+ */
+export function extractLoadedModelIds(body: unknown): Set<string> | null {
+  const entries = toModelEntries(body);
+  if (!entries) return null;
+  if (!entries.some((entry) => typeof entry.state === "string")) return null;
+  return new Set(
+    entries
+      .filter((entry) => entry.state === "loaded" && typeof entry.id === "string")
+      .map((entry) => entry.id as string),
+  );
+}
+
+/** IDs aus `/v1/models` — reine Existenz, der Ladezustand fehlt dort. */
+export function extractModelIds(body: unknown): Set<string> | null {
+  const entries = toModelEntries(body);
+  if (!entries) return null;
+  return new Set(
+    entries.filter((entry) => typeof entry.id === "string").map((entry) => entry.id as string),
+  );
+}
+
 export interface SelfHealDeps {
   loadErroredAgents(): Promise<SelfHealAgentRow[]>;
   loadFleet(): Promise<Array<{ id: string; reportsTo: string | null; status: string }>>;
@@ -305,7 +343,8 @@ export async function runAgentSelfHeal(
  *
  * `probeEndpoint` liefert absichtlich `null` fuer alles, was kein LM Studio
  * ist: fuer claude_local gibt es kein Modell-Listing, dort schuetzt allein
- * der Cooldown.
+ * der Cooldown. Bei LM Studio wird der Ladezustand geprueft (`/api/v0/models`),
+ * mit Rueckfall auf reine Existenz (`/v1/models`).
  */
 export function createSelfHealDeps(
   db: Db,
@@ -428,23 +467,43 @@ export function createSelfHealDeps(
 
     async probeEndpoint(agent) {
       if (agent.adapterType !== "lmstudio_local") return null;
-      const base = typeof agent.adapterConfig.url === "string" ? agent.adapterConfig.url : "http://localhost:1234";
+      const base = (
+        typeof agent.adapterConfig.url === "string" ? agent.adapterConfig.url : "http://localhost:1234"
+      ).replace(/\/+$/, "");
       const wanted = typeof agent.adapterConfig.model === "string" ? agent.adapterConfig.model : null;
       const fallback = typeof agent.adapterConfig.fallbackModel === "string" ? agent.adapterConfig.fallbackModel : null;
-      try {
-        const res = await fetch(`${base.replace(/\/+$/, "")}/v1/models`, {
-          signal: AbortSignal.timeout(8000),
-        });
-        if (!res.ok) return false;
-        const body = (await res.json()) as { data?: Array<{ id?: string }> };
-        const ids = new Set((body.data ?? []).map((m) => m.id).filter(Boolean) as string[]);
-        // Erreichbar genuegt nicht — das konfigurierte Modell (oder der
-        // Fallback) muss auch geladen sein, sonst scheitert der Run erneut.
+
+      const hit = (ids: Set<string>) => {
         if (!wanted && !fallback) return ids.size > 0;
         return (wanted !== null && ids.has(wanted)) || (fallback !== null && ids.has(fallback));
-      } catch {
-        return false;
-      }
+      };
+
+      const fetchJson = async (path: string): Promise<unknown> => {
+        try {
+          const res = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(8000) });
+          if (!res.ok) return null;
+          return await res.json();
+        } catch {
+          return null;
+        }
+      };
+
+      // Erreichbar genuegt nicht — das konfigurierte Modell (oder der Fallback)
+      // muss GELADEN sein. Nur LM Studios eigene API (`/api/v0/models`) fuehrt
+      // dafuer `state`; `/v1/models` listet auch entladene Modelle (live
+      // gemessen: 18 IDs, 9 davon nicht geladen). Ohne diese Unterscheidung
+      // sieht der Waechter nach einer RAM-Verdraengung "gesund", belebt wieder,
+      // der Lauf scheitert erneut — und nach drei Runden ist der Agent
+      // endgueltig als Menschenfall abgestempelt, obwohl das Endpoint eine
+      // halbe Stunde spaeter von selbst gesund gewesen waere.
+      const loadedIds = extractLoadedModelIds(await fetchJson("/api/v0/models"));
+      if (loadedIds) return hit(loadedIds);
+
+      // Rueckfall fuer alles, was `/api/v0/models` nicht bedient (anderer
+      // OpenAI-kompatibler Server, Fehlerantwort): dort ist NUR Existenz
+      // pruefbar, „geladen" bleibt unbekannt. Bewusst schwaecher als oben.
+      const ids = extractModelIds(await fetchJson("/v1/models"));
+      return ids ? hit(ids) : false;
     },
 
     async reviveAgent(agentId) {

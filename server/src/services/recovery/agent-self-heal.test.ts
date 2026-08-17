@@ -1,5 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
-import { pickSelfHealErrorSource, runAgentSelfHeal } from "./agent-self-heal.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  createSelfHealDeps,
+  extractLoadedModelIds,
+  extractModelIds,
+  pickSelfHealErrorSource,
+  runAgentSelfHeal,
+} from "./agent-self-heal.js";
 
 const NOW = new Date("2026-08-17T12:00:00.000Z");
 const OPTS = { maxInfraRevives: 3, cooldownMs: 300_000, maxConcurrentRevives: 5 };
@@ -63,6 +69,114 @@ describe("pickSelfHealErrorSource", () => {
         runtimeLastError: LIVE_RUNTIME_ERROR,
       }),
     ).toEqual({ lastErrorCode: null, lastErrorText: LIVE_RUNTIME_ERROR });
+  });
+});
+
+describe("Modell-Listen auswerten", () => {
+  it("v0: nur `state: loaded` zaehlt", () => {
+    const ids = extractLoadedModelIds({
+      data: [
+        { id: "qwen3.6-35b-a3b-mlx", state: "loaded" },
+        { id: "google/gemma-4-31b", state: "not-loaded" },
+      ],
+    });
+    expect(ids && [...ids]).toEqual(["qwen3.6-35b-a3b-mlx"]);
+  });
+
+  it("v0 ohne `state` gilt als unbrauchbar (Signal fuer den Rueckfall)", () => {
+    expect(extractLoadedModelIds({ data: [{ id: "a" }] })).toBeNull();
+    expect(extractLoadedModelIds({ object: "list" })).toBeNull();
+    expect(extractLoadedModelIds(null)).toBeNull();
+  });
+
+  it("v1 kennt nur Existenz", () => {
+    const ids = extractModelIds({ data: [{ id: "a" }, { id: "b" }] });
+    expect(ids && [...ids]).toEqual(["a", "b"]);
+    expect(extractModelIds("kaputt")).toBeNull();
+  });
+});
+
+describe("probeEndpoint", () => {
+  const probe = (adapterConfig: Record<string, unknown>, adapterType = "lmstudio_local") =>
+    createSelfHealDeps({} as never, { heartbeat: { wakeup: async () => undefined } }).probeEndpoint({
+      adapterType,
+      adapterConfig,
+    });
+
+  const jsonResponse = (body: unknown) =>
+    ({ ok: true, json: async () => body }) as unknown as Response;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("meldet krank, wenn das Modell existiert aber NICHT geladen ist", async () => {
+    // Genau der I1-Befund: /v1/models listet 18 IDs, davon 9 entladen.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.includes("/api/v0/models")
+          ? jsonResponse({ data: [{ id: "qwen3.6-35b-a3b-mlx", state: "not-loaded" }] })
+          : jsonResponse({ data: [{ id: "qwen3.6-35b-a3b-mlx" }] }),
+      ),
+    );
+
+    await expect(probe({ url: "http://host:1234", model: "qwen3.6-35b-a3b-mlx" })).resolves.toBe(
+      false,
+    );
+  });
+
+  it("meldet gesund, wenn das Modell geladen ist", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ data: [{ id: "qwen3.6-35b-a3b-mlx", state: "loaded" }] })),
+    );
+
+    await expect(probe({ url: "http://host:1234/", model: "qwen3.6-35b-a3b-mlx" })).resolves.toBe(
+      true,
+    );
+  });
+
+  it("nimmt auch den fallbackModel, wenn nur der geladen ist", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ data: [{ id: "google/gemma-4-12b", state: "loaded" }] })),
+    );
+
+    await expect(
+      probe({ model: "qwen3.6-35b-a3b-mlx", fallbackModel: "google/gemma-4-12b" }),
+    ).resolves.toBe(true);
+  });
+
+  it("faellt auf /v1/models zurueck, wenn /api/v0/models nichts Brauchbares liefert", async () => {
+    const fetchMock = vi.fn(async (url: string) =>
+      url.includes("/api/v0/models")
+        ? ({ ok: false, json: async () => ({}) } as unknown as Response)
+        : jsonResponse({ data: [{ id: "qwen3.6-35b-a3b-mlx" }] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(probe({ model: "qwen3.6-35b-a3b-mlx" })).resolves.toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("meldet krank, wenn das Endpoint gar nicht antwortet", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("fetch failed");
+      }),
+    );
+
+    await expect(probe({ model: "qwen3.6-35b-a3b-mlx" })).resolves.toBe(false);
+  });
+
+  it("liefert null fuer Nicht-LM-Studio-Adapter, ohne zu netzen", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(probe({}, "claude_local")).resolves.toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

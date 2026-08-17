@@ -1,13 +1,15 @@
 # tools/voice-echo-bot/bot.py
-"""Jarvis-Bot: Chat-Agent mit Vault-Lookup + CEO-Task-Anlage (stdlib only).
+"""Jarvis-Bot: Chat-Agent mit Vault-Lookup, Websuche + CEO-Task-Anlage (stdlib only).
 
-Jede Nachricht ist ein normaler Chat: das lokale LLM (LM Studio) antwortet
-direkt. Braucht es echte Daten, gibt es in der ersten Zeile ein Steuer-Token
-aus (`LOOKUP <modus>: …` bzw. `ISSUE: <titel> :: <beschreibung>`), das der Bot
-prompt-gesteuert auflöst — Vault-Nachschlagen bzw. Issue beim CEO anlegen.
-Reply→Kommentar, Antwort-Modus (Text/Voice) und der CEO-Event-Poll bleiben.
+Jede Nachricht ist ein normaler Chat: das Denken steckt in `jarvis_brain`, das
+sich der Bot mit dem Wake-Satelliten teilt — Vault-Nachschlagen, Websuche und
+Issue-Anlage kommen damit aus derselben Quelle, und Aenderungen am Gehirn
+erreichen beide Wege.
+
+Der Bot selbst bleibt die Telegram-Seite: Transkription, Antwort-Modus
+(Text/Voice), Reply->Kommentar, der CEO-Event-Poll und die beiden
+Freigabe-Rueckkanaele (academy-auto, SEO/GEO).
 """
-import json
 import os
 import re
 import shutil
@@ -16,6 +18,9 @@ import tempfile
 import time
 import traceback
 
+from datetime import datetime, timezone
+
+import academy_bridge
 import config
 import state
 import tenants as tenants_mod
@@ -32,6 +37,11 @@ import jarvis_brain
 from jarvis_brain import LOOKUP_RE, ISSUE_RE, parse_control
 
 IDENT_RE = re.compile(r"([A-Z]{2,5}-\d+)")
+SEO_TOKEN_RE = re.compile(r"Token (\w+)")
+
+# Defaults, falls die Config die Academy-Pfade noch nicht setzt.
+DEFAULT_ACADEMY_INTENT_PATH = os.path.expanduser("~/.paperclip/academy-auto/intent.json")
+DEFAULT_ACADEMY_AUTO_DIR = os.path.expanduser("~/.paperclip/scripts/academy-auto")
 
 # Konversations-Historie pro Chat: max. 8 Turns (= 16 Messages) in-memory.
 MAX_HISTORY_MESSAGES = 16
@@ -42,6 +52,9 @@ class BotApp:
         self.tg = tg
         self.cfg = cfg
         self.history = {}  # chat_id -> [{"role","content"}, …] (max 8 Turns)
+        # Parallel zur History, ein Eintrag je Turn: hat diese Runde Vault-Daten
+        # geliefert? Steuert den Websuche-Notaus, siehe _web_erlaubt().
+        self.vault_flags = {}  # chat_id -> [bool, …]
         self.seen = set()
         self._seeded = True
 
@@ -81,12 +94,76 @@ class BotApp:
     # ---- Eingang / Dispatcher ----
     def handle_update(self, update):
         # Der Chat legt Issues jetzt direkt per ISSUE-Token an — es gibt keine
-        # Bestätigungs-Buttons mehr, also auch keine callback_query zu bedienen.
+        # Bestätigungs-Buttons mehr für den regulären Chat-Flow. callback_query
+        # bedienen zwei getrennte Rückkanäle: Academy-Auto-Freigabe
+        # (academy:approve|reject:<ts>) und die SEO/GEO-Freigabe (seo:ok/no:<token>).
+        # Getrennt nach data-Präfix, damit beide nebeneinander funktionieren.
+        if "callback_query" in update:
+            cq = update["callback_query"]
+            if (cq.get("data") or "").startswith("academy:"):
+                self._handle_academy_callback(cq)
+            else:
+                self._handle_seo_callback(cq)
+            return
         if "message" in update:
             msg = update["message"]
             tenant = tenants_mod.resolve_tenant(self.cfg["tenants"], msg.get("from", {}).get("id"))
             if tenant:
                 self._handle_message(tenant, msg)
+
+    def _now_ts(self):
+        return datetime.now(timezone.utc).isoformat()
+
+    def _academy_intent_path(self):
+        return self.cfg.get("academy_intent_path", DEFAULT_ACADEMY_INTENT_PATH)
+
+    def _academy_auto_dir(self):
+        return self.cfg.get("academy_auto_dir", DEFAULT_ACADEMY_AUTO_DIR)
+
+    def _handle_academy_callback(self, cq):
+        # Gleiches Fail-Closed-Muster wie im Message-Pfad: nur bekannte
+        # Mandanten dürfen intent.json schreiben/den Executor anstoßen.
+        sender_id = cq.get("from", {}).get("id")
+        tenant = tenants_mod.resolve_tenant(self.cfg["tenants"], sender_id)
+        if not tenant:
+            return
+        parsed = academy_bridge.parse_callback(cq.get("data") or "")
+        if parsed is None:
+            return
+        kind, ref = parsed
+        d = academy_bridge.build_intent_dict(kind, "", ref, self._now_ts())
+        academy_bridge.write_intent_file(self._academy_intent_path(), d)
+        academy_bridge.trigger_executor(self._academy_auto_dir())
+        self.tg.answer_callback_query(cq["id"], text="Verstanden — läuft.")
+
+    def _seo_cfg(self):
+        return {"approvals_dir": config.SEO_APPROVALS_DIR,
+                "seo_geo_venv": config.SEO_GEO_VENV, "seo_geo_cli": config.SEO_GEO_CLI,
+                "seo_geo_root": config.SEO_GEO_ROOT, "seo_geo_sites": config.SEO_GEO_SITES,
+                "wp_env": config.load_env(config.WHITESTAG_ENV)
+                if os.path.exists(config.WHITESTAG_ENV) else {}}
+
+    def _handle_seo_callback(self, cq):
+        import seo_gate
+        parsed = seo_gate.parse_callback(cq.get("data"))
+        if not parsed:
+            return
+        chat_id = cq.get("message", {}).get("chat", {}).get("id")
+        if cq.get("from", {}).get("id") != config.WALTER_CHAT_ID:
+            self.tg.answer_callback_query(cq["id"], "nicht berechtigt")
+            return
+        self.tg.answer_callback_query(cq["id"])
+        action, token = parsed
+        rec = seo_gate.load_token(config.SEO_APPROVALS_DIR, token)
+        if rec is None:
+            self.tg.send_message(chat_id, "⚠️ Freigabe nicht mehr gefunden (abgelaufen?).")
+            return
+        if action == "ok":
+            self.tg.send_message(chat_id, "⏳ Wende an …")
+            result = seo_gate.apply_token(self._seo_cfg(), rec)
+        else:
+            result = seo_gate.reject_token(self._seo_cfg(), rec)
+        self.tg.send_message(chat_id, result + "\n\n(Token {})".format(token))
 
     def _extract_text(self, msg):
         """Voice -> Whisper (mit Cleanup) oder Textnachricht; None bei Transkriptionsfehler."""
@@ -121,6 +198,22 @@ class BotApp:
                 return
         reply_to = msg.get("reply_to_message")
         if reply_to:
+            if academy_bridge.is_academy_reply(reply_to.get("text") or ""):
+                text = self._extract_text(msg)
+                if text:
+                    d = academy_bridge.build_intent_dict("direction", text, "", self._now_ts())
+                    academy_bridge.write_intent_file(self._academy_intent_path(), d)
+                    academy_bridge.trigger_executor(self._academy_auto_dir())
+                    self.tg.send_message(msg["chat"]["id"], "✍️ Als Nachtaufgabe notiert.")
+                return
+            seo_m = SEO_TOKEN_RE.search(reply_to.get("text") or "")
+            # Gleicher Chat-Guard wie beim Button-Callback (_handle_seo_callback):
+            # nur Walter darf SEO-Freigaben per Freitext-Notiz beschreiben
+            # (Multi-Tenant-Bot). Bei fremdem Absender NICHT noten, sondern
+            # normal weiterbehandeln.
+            if seo_m and msg.get("from", {}).get("id") == config.WALTER_CHAT_ID:
+                self._handle_seo_note(tenant, msg, seo_m.group(1))
+                return
             m = IDENT_RE.search(reply_to.get("text") or "")
             if m:
                 self._handle_reply(tenant, msg, m.group(1))
@@ -131,9 +224,22 @@ class BotApp:
         if isinstance(text, str) and text.startswith("/"):
             self.tg.send_message(msg["chat"]["id"],
                                  "Schreib oder sprich mir einfach — ich antworte, schlage bei "
-                                 "Bedarf im Vault nach und lege auf Wunsch Aufgaben beim CEO an.")
+                                 "Bedarf im Vault nach, suche im Netz und lege auf Wunsch "
+                                 "Aufgaben beim CEO an.")
             return
         self._handle_chat(tenant, msg, text)
+
+    # ---- Reply -> SEO-Freigabe-Notiz (kein Auto-Apply) ----
+    def _handle_seo_note(self, tenant, msg, token):
+        import seo_gate
+        chat_id = msg["chat"]["id"]
+        text = self._extract_text(msg)
+        if text is None:
+            return
+        seo_gate.note_token(self._seo_cfg(), token, text)
+        self.tg.send_message(
+            chat_id,
+            "📝 Notiz zur Freigabe {} gespeichert — ich ziehe das manuell nach.".format(token))
 
     # ---- Reply -> Kommentar ----
     def _handle_reply(self, tenant, msg, identifier):
@@ -155,13 +261,39 @@ class BotApp:
             traceback.print_exc()
             self.tg.send_message(chat_id, "⚠️ Konnte die Antwort nicht senden, bitte erneut.")
 
-    # ---- Chat-Agent (LLM + prompt-gesteuerte Werkzeuge) ----
-    def _remember(self, chat_id, user_text, assistant_text):
+    # ---- Chat-Agent (jarvis_brain: LLM + prompt-gesteuerte Werkzeuge) ----
+    def _remember(self, chat_id, user_text, assistant_text, vault_treffer=False):
         hist = self.history.setdefault(chat_id, [])
         hist.append({"role": "user", "content": user_text})
         hist.append({"role": "assistant", "content": assistant_text})
+        flags = self.vault_flags.setdefault(chat_id, [])
+        flags.append(bool(vault_treffer))
         if len(hist) > MAX_HISTORY_MESSAGES:
             del hist[:len(hist) - MAX_HISTORY_MESSAGES]
+        # Merker exakt auf die behaltenen Turns kuerzen — laufen die beiden
+        # Listen auseinander, zeigt die Sperre auf die falsche Runde.
+        turns = len(hist) // 2
+        if len(flags) > turns:
+            del flags[:len(flags) - turns]
+
+    def _web_erlaubt(self, chat_id):
+        """PII-Notaus: keine Websuche, solange Vault-Daten im Kontext stehen.
+
+        `web_erlaubt=False` sperrt in `jarvis_brain.respond()` das WEB-Werkzeug,
+        nachdem ein Lookup private Daten in die History gelegt hat — sonst
+        koennte das Modell daraus einen Suchbegriff bilden und Adresse oder
+        Telefonnummer nach draussen tragen. Gesperrt wird ueber das Flag, nicht
+        ueber einen entzogenen `web_key`: der lokale Websuche-Dienst braucht gar
+        keinen Schluessel, ein web_key=None wuerde die Suche also nicht aufhalten.
+
+        Die Sperre haengt am History-FENSTER, nicht an der Gespraechskette wie
+        beim Wake-Satelliten: der startet jede Kette ohne History, ein
+        Telegram-Chat traegt seine ueber die gesamte Bot-Laufzeit. Sie faellt
+        also, sobald die Vault-Runde aus den behaltenen Turns gerutscht ist —
+        dauerhaft sperren waere kein Schutz, sondern haette dem Chat nach der
+        ersten Kontaktabfrage fuer immer die Websuche genommen.
+        """
+        return not any(self.vault_flags.get(chat_id, []))
 
     def _handle_chat(self, tenant, msg, text):
         chat_id = msg["chat"]["id"]
@@ -169,12 +301,13 @@ class BotApp:
         hist = self.history.get(chat_id, [])
         result = jarvis_brain.respond(text, tenant, self._token(),
                                       self._chat_model(), history=hist,
-                                      web_key=self.cfg.get("web_key"))
+                                      web_key=self.cfg.get("web_key"),
+                                      web_erlaubt=self._web_erlaubt(chat_id))
         kind, answer = result["kind"], result["answer"]
         if kind in ("empty", "unparsed_ok", "unparsed_fail"):
             self.tg.send_message(chat_id, answer)
             return
-        self._remember(chat_id, text, answer)
+        self._remember(chat_id, text, answer, vault_treffer=(kind == "lookup"))
         self._reply(chat_id, answer, reply_to_message_id=msg["message_id"])
 
     # ---- Rückkanal-Poll ----
@@ -258,6 +391,10 @@ def build_app():
         "reply_mode_path": config.REPLY_MODE_PATH,
         "eleven_api_key": env.get("ELEVENLABS_API_KEY"),
         "chat_model": env.get("CHAT_MODEL") or llm.DEFAULT_MODEL,
+        "academy_intent_path": config.ACADEMY_INTENT_PATH,
+        "academy_auto_dir": config.ACADEMY_AUTO_DIR,
+        # Nur der Tavily-Fallback braucht den Schluessel; der lokale
+        # Websuche-Dienst laeuft ohne. Fehlt er, sucht Jarvis trotzdem.
         "web_key": env.get("TAVILY_API_KEY"),
     }
     app = BotApp(Telegram(env["TELEGRAM_BOT_TOKEN"]), cfg)

@@ -8,37 +8,43 @@ Telegram-Bot `@whitestag_jarvis_bot`: Sprachnachricht → lokales Whisper → Be
 - `~/.paperclip/auth.json` (Paperclip-Board-Token, auto-renewt)
 - Homebrew: `whisper-cli`, `ffmpeg`
 
-## ⚠️ VOR DEM DEPLOY LESEN — Live-Stand weicht ab
+## Repo und Live sind zusammengeführt (2026-08-17)
 
-**Der laufende `bot.py` ist NICHT die Repo-Version.** Stand 2026-07-29:
-Live ~23 KB, Repo ~12 KB. Der Live-Bot importiert `jarvis_brain` gar nicht
-(er trägt `SYSTEM_PROMPT`, `LOOKUP_RE`, `ISSUE_RE` und `parse_control` inline)
-und enthält zusätzlich einen Präfix-Dispatcher für `academy_bridge` und
-`seo_gate` — beides gibt es im Repo nicht.
+Bis dahin waren `tools/voice-echo-bot/` und `~/.paperclip/scripts/voice-echo-bot/`
+**zwei verschiedene Programme** mit einer Zwei-Wege-Divergenz: der Live-`bot.py`
+(504 Zeilen) trug `academy_bridge` + `seo_gate` und die Werkzeuge inline, der
+Repo-`bot.py` (272 Zeilen) dafür `jarvis_brain`. Das `rsync` unten hätte in
+dieser Lage academy-auto und die seo-geo-Freigabe **still** abgeschaltet — keine
+Fehlermeldung, die Module wären als verwaiste Dateien liegengeblieben.
 
-**Das `rsync` unten überschreibt diesen Stand.** Folge: academy-auto und die
-seo-geo-Freigabe fallen still aus (keine Fehlermeldung, die Module bleiben als
-verwaiste Dateien liegen, weil ohne `--delete` kopiert wird).
+Das ist behoben: das Repo trägt jetzt beides. Der Bot denkt über `jarvis_brain`
+(damit hat er auch die **Websuche**, die er vorher gar nicht kannte) und
+bedient weiterhin beide Freigabe-Rückkanäle. **Das `rsync` unten ist damit
+wieder der richtige Weg** — Repo ist die Quelle, live ist die Kopie.
 
-Vor jedem Deploy deshalb prüfen:
+Trotzdem vor jedem Deploy prüfen, ob live unbemerkt wieder vorausgelaufen ist:
 
 ```bash
 diff -rq tools/voice-echo-bot ~/.paperclip/scripts/voice-echo-bot \
-  --exclude=venv --exclude=__pycache__ --exclude='test_*'
+  --exclude=venv --exclude=__pycache__ --exclude=.pytest_cache
 ```
 
 Erscheinen Unterschiede, die nicht von der eigenen aktuellen Änderung stammen:
-**stoppen** und die beiden Versionen erst zusammenführen. Einzelne geteilte
-Module (`llm.py`, `vault_client.py`, `web_search.py`, …) lassen sich gezielt
-per `cp` nachziehen, ohne `bot.py` anzutasten.
+**stoppen** und erst zusammenführen — nicht drüberkopieren. Die Tests werden
+bewusst **mit** deployed (siehe unten), damit dieser `diff` vollständig ist und
+sich der Live-Stand jederzeit selbst nachprüfen lässt.
 
 ## Deploy / Update
 ```bash
 mkdir -p ~/.paperclip/scripts/voice-echo-bot ~/.paperclip/logs
-# Alle Module ausser den Tests — llm/tts/vault_client etc. gehoeren dazu.
-# ACHTUNG: ueberschreibt den abweichenden Live-bot.py, siehe Warnung oben.
-rsync -a --exclude 'test_*.py' --exclude '__pycache__' \
+# Alle Module INKLUSIVE Tests. Die Tests kosten im Betrieb nichts, machen den
+# diff oben aber vollstaendig und erlauben den Rauchtest nach dem Deploy —
+# genau ihr Fehlen hat 2026-07 den Fork entstehen lassen (die Live-Tests
+# test_academy_bridge.py/test_seo_gate.py kannte das Repo nie).
+rsync -a --exclude '__pycache__' --exclude '.pytest_cache' \
    tools/voice-echo-bot/*.py ~/.paperclip/scripts/voice-echo-bot/
+# Rauchtest im Live-Verzeichnis, VOR dem Neustart:
+( cd ~/.paperclip/scripts/voice-echo-bot && python3 -m pytest -q )
 sed "s|__HOME__|$HOME|g" tools/voice-echo-bot/de.whitestag.voice-echo-bot.plist \
    > ~/Library/LaunchAgents/de.whitestag.voice-echo-bot.plist
 launchctl bootout gui/$(id -u)/de.whitestag.voice-echo-bot 2>/dev/null || true
@@ -53,13 +59,16 @@ tail -f ~/.paperclip/logs/voice-echo-bot.log
 ```
 
 ## Bedienung
-In Telegram an `@whitestag_jarvis_bot` eine Sprach- oder Textnachricht senden → Bot zeigt das Transkript + Buttons **[✅ An CEO senden] [❌ Verwerfen]** → ✅ legt das Issue beim CEO an. Nur die in `TELEGRAM_ALLOWED_USER_ID` hinterlegte Person wird bedient; alle anderen werden ignoriert.
+In Telegram an `@whitestag_jarvis_bot` eine Sprach- oder Textnachricht senden — das ist ein normaler Chat. Das Denken steckt in `jarvis_brain` (geteilt mit dem Wake-Satelliten): Jarvis antwortet direkt, schlägt bei Bedarf im **Vault** nach, **sucht im Netz** (lokaler Websuche-Dienst `:7789`, Tavily nur als Fallback) und legt auf ausdrückliche Bitte eine **Aufgabe beim CEO** an. Keine Bestätigungs-Buttons mehr — der frühere `[✅ An CEO senden]`-Ablauf ist seit dem Chat-Umbau weg. `/voice` und `/text` schalten den Antwortkanal um. Bedient werden nur die in `voice-echo-tenants.json` hinterlegten Personen; alle anderen werden ignoriert.
+
+**PII-Notaus:** Nach einer Vault-Abfrage ist die Websuche für diesen Chat gesperrt, solange der Treffer im behaltenen History-Fenster (8 Turns) steht — sonst könnten private Daten als Suchbegriff nach draußen wandern. Danach löst sich die Sperre von selbst. Sie hängt am Flag `web_erlaubt`, **nicht** am `TAVILY_API_KEY`: der lokale Dienst braucht keinen Schlüssel, ein entzogener Key würde die Suche also nicht mehr aufhalten.
 
 ## Hinweise
 - **Nur EIN Long-Poll-Consumer je Bot-Token.** Nicht parallel woanders `getUpdates`/Webhook auf denselben Token laufen lassen (Luna ist ein anderer Bot/Token — kein Konflikt).
 - Whisper läuft on-demand (Modell wird pro Aufnahme geladen, RAM danach frei) — bewusst kein Dauer-Server wegen RAM-Contention mit LM Studio.
 - **Chat-Modell:** `google/gemma-4-12b` (klein, lokal auf der Studio resident), Fallback `gemma-4-31b-it-mlx`. Bewusst NICHT das grosse 31b als Primärmodell: es lag per LM Link auf dem MacBook und riss beim JIT-Kaltstart (33,8 GB) regelmässig den Timeout → HTTP 400 am RAM-Guardrail. Überschreibbar per `CHAT_MODEL` in der env.
-- **Kein Auftragsverlust:** Scheitert das LLM endgültig (2 Versuche Primärmodell + 1 Fallback), legt der Bot den Wortlaut trotzdem als Issue beim CEO an (`_file_unparsed`) und nennt dir die Nummer. Nur wenn auch die Issue-Anlage scheitert, meldet er „NICHT angekommen".
+- **Kein Auftragsverlust:** Scheitert das LLM endgültig (2 Versuche Primärmodell + 1 Fallback), legt der Bot den Wortlaut trotzdem als Issue beim CEO an und nennt dir die Nummer. Nur wenn auch die Issue-Anlage scheitert, meldet er „NICHT angekommen". Liegt seit der Zusammenführung in `jarvis_brain._unparsed` (vorher `bot._file_unparsed`), Rückgabe-`kind` = `unparsed_ok` bzw. `unparsed_fail`.
+- **Freigabe-Rückkanäle:** `academy:approve|reject:<ts>` (academy-auto) und `seo:ok/no:<token>` (SEO/GEO) laufen über `handle_update` → Präfix-Dispatcher. Kein Unit-Test deckt den echten Knopfdruck ab, deshalb prüft `test_freigabe_pfade_e2e.py` beide Ketten gegen die *echten* Brücken bis auf die Platte. Diese Datei vor jedem Deploy grün sehen — ein Ausfall hier wäre still.
 
 ## Rückkanal + Mehrmandanten (Feature 2)
 

@@ -35,3 +35,59 @@ export function computeNextEligibleAt(
 }
 
 export type { SelfHealErrorClass };
+
+export type SelfHealAction =
+  | { kind: "revive" }
+  | { kind: "wait_endpoint_down" }
+  | { kind: "wait_cooldown" }
+  | { kind: "escalate_manager" }
+  | { kind: "escalate_human"; reason: string }
+  | { kind: "skip"; reason: string };
+
+/**
+ * Politik der Selbstheilung — bewusst frei von IO, damit jeder Zweig ohne
+ * Datenbank und ohne Netz pruefbar ist.
+ *
+ * `endpointHealthy === null` heisst „nicht pruefbar" (claude_local hat kein
+ * Modell-Listing). Das wird als gesund gewertet; gegen Stuerme schuetzt dort
+ * allein der Cooldown.
+ */
+export function decideSelfHeal(input: {
+  errorClass: SelfHealErrorClass;
+  agentStatus: string;
+  endpointHealthy: boolean | null;
+  attemptCount: number;
+  nextEligibleAt: Date | null;
+  now: Date;
+  maxInfraRevives: number;
+}): SelfHealAction {
+  if (input.agentStatus !== "error") {
+    return { kind: "skip", reason: `agent_status_${input.agentStatus}` };
+  }
+  if (input.nextEligibleAt && input.nextEligibleAt.getTime() > input.now.getTime()) {
+    return { kind: "wait_cooldown" };
+  }
+
+  switch (input.errorClass) {
+    case "infra_transient":
+      if (input.attemptCount >= input.maxInfraRevives) {
+        return { kind: "escalate_human", reason: "max_infra_revives_exhausted" };
+      }
+      if (input.endpointHealthy === false) {
+        return { kind: "wait_endpoint_down" };
+      }
+      return { kind: "revive" };
+
+    case "convergence":
+      if (input.attemptCount >= 1) {
+        return { kind: "escalate_human", reason: "convergence_manager_exhausted" };
+      }
+      return { kind: "escalate_manager" };
+
+    case "deterministic":
+      return { kind: "escalate_human", reason: "deterministic_error" };
+
+    case "unknown":
+      return { kind: "escalate_human", reason: "unclassified_error" };
+  }
+}

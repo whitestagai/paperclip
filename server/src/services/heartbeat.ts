@@ -49,6 +49,10 @@ import {
 import { conflict, HttpError, notFound } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { publishLiveEvent } from "./live-events.js";
+import {
+  decideLedgerResolution,
+  resolveSelfHealLedgerForAgent,
+} from "./recovery/agent-self-heal.js";
 import { getRunLogStore, type RunLogHandle } from "./run-log-store.js";
 import { getServerAdapter, listAdapterModelProfiles, runningProcesses } from "../adapters/index.js";
 import type {
@@ -6180,6 +6184,18 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       .where(eq(agents.id, agentId))
       .returning()
       .then((rows) => rows[0] ?? null);
+
+    // Selbstheilung: eine ueberstandene Stoerung schliesst ihre Ledger-Zeile,
+    // damit der Versuchszaehler nicht ueber Wochen mitwaechst. try/catch ist
+    // Absicht — das Schliessen des Ledgers darf finalizeAgentStatus nie zum
+    // Scheitern bringen, sonst haengt der Agenten-Status an einer Nebensache.
+    if (decideLedgerResolution(outcome)) {
+      try {
+        await resolveSelfHealLedgerForAgent(db, agentId, new Date());
+      } catch (err) {
+        logger.warn({ err, agentId }, "self-heal ledger konnte nicht geschlossen werden");
+      }
+    }
 
     if (isFirstHeartbeat && updated) {
       const tc = getTelemetryClient();

@@ -452,3 +452,29 @@ export async function tickAgentSelfHeal(
   lastTickAt = now;
   return runAgentSelfHeal(deps, options);
 }
+
+/**
+ * Ein erfolgreicher (oder abgebrochener) Run beendet die Stoerung — die offene
+ * Ledger-Zeile wird geschlossen, damit ein spaeterer Ausfall wieder bei
+ * attempt_count 0 anfaengt. `cancelled` zaehlt mit, weil `finalizeAgentStatus`
+ * es genauso wie `succeeded` als „nicht kaputt" behandelt.
+ */
+export function decideLedgerResolution(
+  outcome: "succeeded" | "failed" | "cancelled" | "timed_out",
+): boolean {
+  return outcome === "succeeded" || outcome === "cancelled";
+}
+
+/** Schliesst alle offenen Ledger-Zeilen eines Agenten. Gibt die Anzahl zurueck. */
+export async function resolveSelfHealLedgerForAgent(
+  db: Db,
+  agentId: string,
+  now: Date,
+): Promise<number> {
+  const rows = await db
+    .update(agentSelfHealLedger)
+    .set({ resolvedAt: now, updatedAt: now })
+    .where(and(eq(agentSelfHealLedger.agentId, agentId), isNull(agentSelfHealLedger.resolvedAt)))
+    .returning({ id: agentSelfHealLedger.id });
+  return rows.length;
+}

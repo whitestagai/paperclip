@@ -47,6 +47,17 @@ class WebsucheError(Exception):
     """Dienst nicht erreichbar, blockiert oder Antwort unbrauchbar."""
 
 
+class KeineQuelleError(WebsucheError):
+    """Der Dienst hat GEANTWORTET, aber keine lesbare Quelle geliefert.
+
+    Fachlich das Gegenteil von „Dienst tot": Suche und Abruf liefen, die
+    Treffer geben nur keinen Text her (robots.txt, reine Bilderseiten) oder es
+    gab keine. Der Aufrufer muss das unterscheiden koennen — sonst meldet er
+    Walter einen Netzausfall, obwohl schlicht nichts zu finden war
+    (Live-Befund 17.08.).
+    """
+
+
 def _ohne_urls(text):
     """Entfernt URLs aus dem Fliesstext und raeumt die Luecken auf."""
     ohne = _URL_MUSTER.sub(" ", text)
@@ -97,5 +108,5 @@ def suche(query, quellen=DEFAULT_QUELLEN, zeichen=DEFAULT_ZEICHEN,
         # Der Dienst hat geantwortet, aber nichts gelesen. Als Erfolg
         # durchgereicht wuerde das den Tavily-Fallback verhindern und dem
         # Modell eine Antwort ohne Grundlage abverlangen.
-        raise WebsucheError("Websuche lieferte keine brauchbare Quelle")
+        raise KeineQuelleError("Websuche lieferte keine brauchbare Quelle")
     return {"query": query, "quellen": gefunden}

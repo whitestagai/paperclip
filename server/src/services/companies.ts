@@ -7,6 +7,7 @@ import {
   agents,
   agentApiKeys,
   agentRuntimeState,
+  agentSelfHealLedger,
   agentTaskSessions,
   agentWakeupRequests,
   issues,
@@ -272,6 +273,9 @@ export function companyService(db: Db) {
         await tx.delete(agentWakeupRequests).where(eq(agentWakeupRequests.companyId, id));
         await tx.delete(agentApiKeys).where(eq(agentApiKeys.companyId, id));
         await tx.delete(agentRuntimeState).where(eq(agentRuntimeState.companyId, id));
+        // Beide FKs des Ledgers sind `no action` — bleibt es stehen, scheitert
+        // spaeter das `delete(agents)` bzw. `delete(companies)` mit 23503.
+        await tx.delete(agentSelfHealLedger).where(eq(agentSelfHealLedger.companyId, id));
         await tx.delete(issueComments).where(eq(issueComments.companyId, id));
         await tx.delete(costEvents).where(eq(costEvents.companyId, id));
         await tx.delete(financeEvents).where(eq(financeEvents.companyId, id));

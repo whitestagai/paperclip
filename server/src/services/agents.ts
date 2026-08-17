@@ -6,6 +6,7 @@ import {
   agentConfigRevisions,
   agentApiKeys,
   agentRuntimeState,
+  agentSelfHealLedger,
   agentTaskSessions,
   agentWakeupRequests,
   activityLog,
@@ -524,6 +525,10 @@ export function agentService(db: Db) {
         await tx.delete(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, id));
         await tx.delete(agentApiKeys).where(eq(agentApiKeys.agentId, id));
         await tx.delete(agentRuntimeState).where(eq(agentRuntimeState.agentId, id));
+        // Ohne diese Zeile blockiert eine Selbstheilungs-Ledger-Zeile das
+        // Loeschen komplett (FK ist `no action`, Postgres 23503 kippt die
+        // ganze Transaktion) — genau wie bei `agent_runtime_state` darueber.
+        await tx.delete(agentSelfHealLedger).where(eq(agentSelfHealLedger.agentId, id));
         await tx
           .delete(budgetIncidents)
           .where(and(eq(budgetIncidents.scopeType, "agent"), eq(budgetIncidents.scopeId, id)));

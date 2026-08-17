@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   activityLog,
   agents,
+  agentSelfHealLedger,
   companies,
   companySkills,
   createDb,
@@ -42,6 +43,7 @@ describeEmbeddedPostgres("cleanup removal services", () => {
   }, 20_000);
 
   afterEach(async () => {
+    await db.delete(agentSelfHealLedger);
     await db.delete(activityLog);
     await db.delete(issueReadStates);
     await db.delete(issueComments);
@@ -149,6 +151,54 @@ describeEmbeddedPostgres("cleanup removal services", () => {
     await expect(db.select().from(heartbeatRuns).where(eq(heartbeatRuns.id, runId))).resolves.toHaveLength(0);
     await expect(db.select().from(issueComments).where(eq(issueComments.issueId, issueId))).resolves.toHaveLength(0);
     await expect(db.select().from(activityLog).where(eq(activityLog.companyId, companyId))).resolves.toHaveLength(0);
+  });
+
+  it("removes self-heal ledger rows before deleting the agent", async () => {
+    // Ohne die Kaskade blockiert der `no action`-FK des Ledgers das Loeschen
+    // (Postgres 23503) und `DELETE /api/agents/:id` schlaegt fehl.
+    const { agentId, companyId } = await seedFixture();
+
+    await db.insert(agentSelfHealLedger).values({
+      id: randomUUID(),
+      agentId,
+      companyId,
+      errorClass: "infra_transient",
+      errorFingerprint: "code:llm_unreachable",
+      attemptCount: 1,
+      lastAction: "revived",
+    });
+
+    const removed = await agentService(db).remove(agentId);
+
+    expect(removed?.id).toBe(agentId);
+    await expect(db.select().from(agents).where(eq(agents.id, agentId))).resolves.toHaveLength(0);
+    await expect(
+      db.select().from(agentSelfHealLedger).where(eq(agentSelfHealLedger.agentId, agentId)),
+    ).resolves.toHaveLength(0);
+  });
+
+  it("removes self-heal ledger rows before deleting the company", async () => {
+    const { agentId, companyId } = await seedFixture();
+
+    await db.insert(agentSelfHealLedger).values({
+      id: randomUUID(),
+      agentId,
+      companyId,
+      errorClass: "convergence",
+      errorFingerprint: "code:max_iterations",
+      attemptCount: 1,
+      lastAction: "escalated_manager",
+    });
+
+    const removed = await companyService(db).remove(companyId);
+
+    expect(removed?.id).toBe(companyId);
+    await expect(
+      db.select().from(companies).where(eq(companies.id, companyId)),
+    ).resolves.toHaveLength(0);
+    await expect(
+      db.select().from(agentSelfHealLedger).where(eq(agentSelfHealLedger.companyId, companyId)),
+    ).resolves.toHaveLength(0);
   });
 
   it("removes issue read states and activity rows before deleting the company", async () => {

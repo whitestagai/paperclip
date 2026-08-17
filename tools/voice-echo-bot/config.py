@@ -5,6 +5,7 @@ import os
 API_BASE = "http://127.0.0.1:3100/api"
 AUTH_JSON = os.path.expanduser("~/.paperclip/auth.json")
 ENV_PATH = os.path.expanduser("~/.paperclip/voice-echo-bot.env")
+WHITESTAG_ENV = os.path.expanduser("~/.whitestag.env")
 
 
 def load_env(path):
@@ -39,6 +40,10 @@ DECISION_LABEL = "entscheidung-noetig"
 POLL_INTERVAL_SEC = 60
 LONGPOLL_TIMEOUT_SEC = 25
 
+# --- Academy-Auto-Brücke ---
+ACADEMY_INTENT_PATH = os.path.expanduser("~/.paperclip/academy-auto/intent.json")
+ACADEMY_AUTO_DIR = os.path.expanduser("~/.paperclip/scripts/academy-auto")
+
 # --- Antwort-Modus (Text/Voice) + ElevenLabs-TTS ---
 REPLY_MODE_PATH = os.path.expanduser("~/.paperclip/voice-echo-reply-mode.json")
 ELEVEN_VOICE_ID = "fzqS9sNPYJhLlhsfDm0l"
@@ -50,3 +55,11 @@ ELEVEN_TTS_BASE = (
 ELEVEN_OUTPUT_FORMAT_DEFAULT = "opus_48000_64"
 # Rückwärtskompatibel: bestehender Voll-URL-Name bleibt erhalten.
 ELEVEN_TTS_URL = ELEVEN_TTS_BASE + "?output_format=" + ELEVEN_OUTPUT_FORMAT_DEFAULT
+
+# --- SEO/GEO-Freigaben ---
+SEO_APPROVALS_DIR = os.path.expanduser("~/.paperclip/state/seo-approvals")
+SEO_GEO_VENV = os.path.expanduser("~/.paperclip/scripts/seo-geo/venv/bin/python")
+SEO_GEO_CLI = os.path.expanduser("~/.paperclip/scripts/seo-geo/cli.py")
+SEO_GEO_ROOT = "~/.paperclip/seo-geo"
+SEO_GEO_SITES = os.path.expanduser("~/.paperclip/scripts/seo-geo/sites.json")
+WALTER_CHAT_ID = 8311805232

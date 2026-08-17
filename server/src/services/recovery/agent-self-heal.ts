@@ -1,6 +1,12 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { agents, agentSelfHealLedger, heartbeatRuns, activityLog } from "@paperclipai/db";
+import {
+  agents,
+  agentRuntimeState,
+  agentSelfHealLedger,
+  heartbeatRuns,
+  activityLog,
+} from "@paperclipai/db";
 import { agentService } from "../agents.js";
 import { logger } from "../../middleware/logger.js";
 import { classifySelfHealError } from "./agent-self-heal-classify.js";
@@ -21,6 +27,32 @@ export interface SelfHealAgentRow {
   adapterConfig: Record<string, unknown>;
   lastErrorCode: string | null;
   lastErrorText: string | null;
+  /** Es liegt schon ein geplanter oder wartender Lauf vor (siehe Runner-Kommentar). */
+  hasPendingRun: boolean;
+}
+
+/**
+ * Waehlt aus, welcher Fehler die Klassifikation fuettert.
+ *
+ * Warum es diese Funktion braucht: die Zeile in `heartbeat_runs` mit dem
+ * hoechsten `created_at` ist oft eine `scheduled_retry`- oder `queued`-Zeile
+ * OHNE `error_code`/`error`. Wer die nimmt, klassifiziert `unknown` und schickt
+ * genau die Agenten an den Menschen, die eine Wiederbelebung retten wuerde. Der
+ * wahre Fehlertext steht dann in `agent_runtime_state.last_error` und wird hier
+ * als Rueckfall gezogen. Leerstrings gelten dabei als „kein Text" — ein `??`
+ * allein wuerde sie durchlassen und den Rueckfall blockieren.
+ */
+export function pickSelfHealErrorSource(input: {
+  run: { errorCode: string | null; error: string | null } | null;
+  runtimeLastError: string | null;
+}): { lastErrorCode: string | null; lastErrorText: string | null } {
+  const nonEmpty = (value: string | null | undefined) =>
+    typeof value === "string" && value.trim().length > 0 ? value : null;
+
+  return {
+    lastErrorCode: nonEmpty(input.run?.errorCode),
+    lastErrorText: nonEmpty(input.run?.error) ?? nonEmpty(input.runtimeLastError),
+  };
 }
 
 export interface SelfHealDeps {
@@ -98,6 +130,15 @@ export async function runAgentSelfHeal(
   let fleet: Array<{ id: string; reportsTo: string | null; status: string }> | null = null;
 
   for (const agent of agents) {
+    // Fuer diesen Agenten hat das System schon einen Plan: ein `scheduled_retry`
+    // oder `queued` Lauf steht an. Parallel wiederbeleben und wecken wuerde
+    // gegen diesen Plan arbeiten (zwei Laeufe, verdoppelte Kosten) — der
+    // Waechter haelt sich raus, bis der geplante Weg gescheitert ist.
+    if (agent.hasPendingRun) {
+      result.skipped += 1;
+      continue;
+    }
+
     // errorClass/fingerprint sind reine, synchrone Funktionen (kein IO) —
     // ausserhalb des try berechnet, damit sie im catch-Zweig zur Verfuegung
     // stehen, falls ein spaeterer await (Ledger, Revive, ...) wirft.
@@ -291,17 +332,47 @@ export function createSelfHealDeps(
 
       return Promise.all(
         rows.map(async (row) => {
+          // Nur echte Fehlausgaenge tragen `error_code`/`error`. Ohne diesen
+          // Statusfilter greift der Waechter die neueste `scheduled_retry`- oder
+          // `queued`-Zeile mit leeren Fehlerfeldern ab und klassifiziert alles
+          // als `unknown` (live an zwei Agenten nachgewiesen).
           const [lastRun] = await db
             .select({ errorCode: heartbeatRuns.errorCode, error: heartbeatRuns.error })
             .from(heartbeatRuns)
-            .where(eq(heartbeatRuns.agentId, row.id))
+            .where(
+              and(
+                eq(heartbeatRuns.agentId, row.id),
+                inArray(heartbeatRuns.status, ["failed", "timed_out"]),
+              ),
+            )
             .orderBy(desc(heartbeatRuns.createdAt))
             .limit(1);
+
+          const [pendingRun] = await db
+            .select({ id: heartbeatRuns.id })
+            .from(heartbeatRuns)
+            .where(
+              and(
+                eq(heartbeatRuns.agentId, row.id),
+                inArray(heartbeatRuns.status, ["scheduled_retry", "queued"]),
+              ),
+            )
+            .limit(1);
+
+          const [runtime] = await db
+            .select({ lastError: agentRuntimeState.lastError })
+            .from(agentRuntimeState)
+            .where(eq(agentRuntimeState.agentId, row.id))
+            .limit(1);
+
           return {
             ...row,
             adapterConfig: (row.adapterConfig ?? {}) as Record<string, unknown>,
-            lastErrorCode: lastRun?.errorCode ?? null,
-            lastErrorText: lastRun?.error ?? null,
+            ...pickSelfHealErrorSource({
+              run: lastRun ?? null,
+              runtimeLastError: runtime?.lastError ?? null,
+            }),
+            hasPendingRun: !!pendingRun,
           };
         }),
       );

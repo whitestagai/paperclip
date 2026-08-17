@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { runAgentSelfHeal } from "./agent-self-heal.js";
+import { pickSelfHealErrorSource, runAgentSelfHeal } from "./agent-self-heal.js";
 
 const NOW = new Date("2026-08-17T12:00:00.000Z");
 const OPTS = { maxInfraRevives: 3, cooldownMs: 300_000, maxConcurrentRevives: 5 };
@@ -32,7 +32,38 @@ const erroredAgent = (over: Record<string, unknown> = {}) => ({
   adapterConfig: { url: "http://localhost:1234", model: "qwen3.6-35b-a3b-mlx" },
   lastErrorCode: "llm_unreachable",
   lastErrorText: null,
+  hasPendingRun: false,
   ...over,
+});
+
+const LIVE_RUNTIME_ERROR =
+  "Claude run failed: subtype=success: API Error: Server is temporarily limiting requests";
+
+describe("pickSelfHealErrorSource", () => {
+  it("faellt auf agent_runtime_state.last_error zurueck, wenn der Lauf keinen Text hat", () => {
+    // Live-Fall: neuester Fehllauf ohne Fehlerfelder, Wahrheit im Runtime-State.
+    expect(
+      pickSelfHealErrorSource({ run: null, runtimeLastError: LIVE_RUNTIME_ERROR }),
+    ).toEqual({ lastErrorCode: null, lastErrorText: LIVE_RUNTIME_ERROR });
+  });
+
+  it("bevorzugt den Lauf, wenn er selbst Code und Text traegt", () => {
+    expect(
+      pickSelfHealErrorSource({
+        run: { errorCode: "llm_unreachable", error: "fetch failed" },
+        runtimeLastError: LIVE_RUNTIME_ERROR,
+      }),
+    ).toEqual({ lastErrorCode: "llm_unreachable", lastErrorText: "fetch failed" });
+  });
+
+  it("behandelt Leerstrings als fehlend, sonst blockiert '' den Rueckfall", () => {
+    expect(
+      pickSelfHealErrorSource({
+        run: { errorCode: "  ", error: "" },
+        runtimeLastError: LIVE_RUNTIME_ERROR,
+      }),
+    ).toEqual({ lastErrorCode: null, lastErrorText: LIVE_RUNTIME_ERROR });
+  });
 });
 
 describe("runAgentSelfHeal", () => {
@@ -50,6 +81,37 @@ describe("runAgentSelfHeal", () => {
     expect(deps.reviveAgent).toHaveBeenCalledWith("agent-1");
     expect(deps.wakeAgent).toHaveBeenCalledWith("agent-1", expect.stringContaining("self_heal"));
     expect(result.revived).toBe(1);
+  });
+
+  it("belebt den Live-Fall: Fehlertext nur im Runtime-State, kein error_code", async () => {
+    // Ohne den Rueckfall auf agent_runtime_state.last_error waere lastErrorText
+    // null → Klasse `unknown` → escalate_human. Genau der C1-Befund.
+    const deps = makeDeps({
+      loadErroredAgents: vi.fn().mockResolvedValue([
+        erroredAgent({ lastErrorCode: null, lastErrorText: LIVE_RUNTIME_ERROR }),
+      ]),
+    });
+    const result = await runAgentSelfHeal(deps, OPTS);
+
+    expect(deps.escalateToHuman).not.toHaveBeenCalled();
+    expect(deps.reviveAgent).toHaveBeenCalledWith("agent-1");
+    expect(result.revived).toBe(1);
+    expect(deps.saveLedger).toHaveBeenCalledWith(
+      expect.objectContaining({ errorClass: "infra_transient", lastAction: "revived" }),
+    );
+  });
+
+  it("haelt sich raus, wenn schon ein Lauf ansteht (scheduled_retry/queued)", async () => {
+    const deps = makeDeps({
+      loadErroredAgents: vi.fn().mockResolvedValue([erroredAgent({ hasPendingRun: true })]),
+    });
+    const result = await runAgentSelfHeal(deps, OPTS);
+
+    expect(result.skipped).toBe(1);
+    expect(deps.reviveAgent).not.toHaveBeenCalled();
+    expect(deps.wakeAgent).not.toHaveBeenCalled();
+    expect(deps.probeEndpoint).not.toHaveBeenCalled();
+    expect(deps.loadLedger).not.toHaveBeenCalled();
   });
 
   it("belebt NICHT, wenn das Endpoint down ist", async () => {

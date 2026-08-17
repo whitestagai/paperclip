@@ -5,6 +5,7 @@ import {
   extractModelIds,
   pickSelfHealErrorSource,
   runAgentSelfHeal,
+  selfHealTickIsNoteworthy,
   tickAgentSelfHeal,
 } from "./agent-self-heal.js";
 
@@ -240,6 +241,58 @@ describe("runAgentSelfHeal", () => {
     expect(result.waited).toBe(1);
   });
 
+  it("hinterlaesst beim Endpoint-Ausfall eine Spur — ohne Versuchszaehler zu erhoehen", async () => {
+    const deps = makeDeps({
+      loadErroredAgents: vi.fn().mockResolvedValue([erroredAgent()]),
+      probeEndpoint: vi.fn().mockResolvedValue(false),
+    });
+    await runAgentSelfHeal(deps, OPTS);
+
+    expect(deps.saveLedger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "agent-1",
+        errorClass: "infra_transient",
+        lastAction: "waited_endpoint_down",
+        // Warten ist kein Versuch, und ohne Ledger-Zeile bleibt es bei null:
+        // der Agent soll beim naechsten Tick sofort wieder dran sein.
+        attemptCount: 0,
+        nextEligibleAt: null,
+      }),
+    );
+    expect(deps.logAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "agent.self_heal.waited_endpoint_down" }),
+    );
+  });
+
+  it("verlaengert beim Endpoint-Ausfall einen bestehenden Cooldown nicht", async () => {
+    const abgelaufen = new Date("2026-08-17T11:50:00.000Z");
+    const deps = makeDeps({
+      loadErroredAgents: vi.fn().mockResolvedValue([erroredAgent()]),
+      probeEndpoint: vi.fn().mockResolvedValue(false),
+      loadLedger: vi.fn().mockResolvedValue({ attemptCount: 2, nextEligibleAt: abgelaufen }),
+    });
+    await runAgentSelfHeal(deps, OPTS);
+
+    expect(deps.saveLedger).toHaveBeenCalledWith(
+      expect.objectContaining({ attemptCount: 2, nextEligibleAt: abgelaufen }),
+    );
+  });
+
+  it("schreibt beim Cooldown-Warten nichts — der Grund steht schon im Ledger", async () => {
+    const deps = makeDeps({
+      loadErroredAgents: vi.fn().mockResolvedValue([erroredAgent()]),
+      loadLedger: vi.fn().mockResolvedValue({
+        attemptCount: 1,
+        nextEligibleAt: new Date("2026-08-17T12:10:00.000Z"),
+      }),
+    });
+    const result = await runAgentSelfHeal(deps, OPTS);
+
+    expect(result.waited).toBe(1);
+    expect(deps.saveLedger).not.toHaveBeenCalled();
+    expect(deps.logAction).not.toHaveBeenCalled();
+  });
+
   it("respektiert den Cooldown aus dem Ledger", async () => {
     const deps = makeDeps({
       loadErroredAgents: vi.fn().mockResolvedValue([erroredAgent()]),
@@ -410,6 +463,26 @@ describe("runAgentSelfHeal", () => {
 
     expect(result.revived).toBe(1);
     expect(deps.wakeAgent).toHaveBeenCalledWith("agent-ok", expect.any(String));
+  });
+});
+
+describe("selfHealTickIsNoteworthy", () => {
+  const leer = {
+    scanned: 0,
+    revived: 0,
+    escalatedManager: 0,
+    escalatedHuman: 0,
+    waited: 0,
+    skipped: 0,
+    failed: 0,
+  };
+
+  it("meldet einen reinen Warte-Durchlauf — sonst bleibt ein Ausfall unsichtbar", () => {
+    expect(selfHealTickIsNoteworthy({ ...leer, scanned: 38, waited: 38 })).toBe(true);
+  });
+
+  it("schweigt bei einem ereignislosen Durchlauf", () => {
+    expect(selfHealTickIsNoteworthy({ ...leer, scanned: 3, skipped: 3 })).toBe(false);
   });
 });
 

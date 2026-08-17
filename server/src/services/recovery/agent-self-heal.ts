@@ -254,7 +254,11 @@ export async function runAgentSelfHeal(
         continue;
       }
 
-      const persist = async (lastAction: string, bumpAttempt: boolean) => {
+      const persist = async (
+        lastAction: string,
+        bumpAttempt: boolean,
+        nextEligibleAt: Date | null = computeNextEligibleAt(attemptCount, now, options.cooldownMs),
+      ) => {
         await deps.saveLedger({
           agentId: agent.id,
           companyId: agent.companyId,
@@ -262,7 +266,7 @@ export async function runAgentSelfHeal(
           fingerprint,
           attemptCount: bumpAttempt ? attemptCount + 1 : attemptCount,
           lastAction,
-          nextEligibleAt: computeNextEligibleAt(attemptCount, now, options.cooldownMs),
+          nextEligibleAt,
         });
         await deps.logAction({
           companyId: agent.companyId,
@@ -280,8 +284,21 @@ export async function runAgentSelfHeal(
           await persist("revived", true);
           break;
         }
-        case "wait_endpoint_down":
+        case "wait_endpoint_down": {
+          result.waited += 1;
+          // Spec §3 A.5 und §4 verlangen die Spur: ohne sie ist ein
+          // dreistuendiger Endpoint-Ausfall mit 38 toten Agenten hinterher
+          // nicht rekonstruierbar. Warten ist KEIN Versuch — `attempt_count`
+          // bleibt stehen (sonst brennt ein Ausfall den Deckel von drei
+          // Wiederbelebungen ab, ohne dass je eine stattfand) und der
+          // bestehende Cooldown wird nicht verlaengert (sonst schiebt sich der
+          // Agent bei jedem Tick weiter nach hinten).
+          await persist("waited_endpoint_down", false, ledger?.nextEligibleAt ?? null);
+          break;
+        }
         case "wait_cooldown": {
+          // Bewusst ohne Schreiben: warum gewartet wird, steht schon als
+          // `nextEligibleAt` samt `last_action` in derselben Ledger-Zeile.
           result.waited += 1;
           break;
         }
@@ -581,6 +598,23 @@ export function createSelfHealDeps(
 
     now: () => new Date(),
   };
+}
+
+/**
+ * Ob ein Durchlauf eine Log-Zeile verdient.
+ *
+ * `waited` gehoert dazu: ein Endpoint-Ausfall besteht ausschliesslich aus
+ * Wartezyklen. Ohne diesen Anteil bleibt genau der Stoerfall unsichtbar, den
+ * der Waechter ueberbruecken soll.
+ */
+export function selfHealTickIsNoteworthy(result: SelfHealResult): boolean {
+  return (
+    result.revived > 0 ||
+    result.escalatedManager > 0 ||
+    result.escalatedHuman > 0 ||
+    result.waited > 0 ||
+    result.failed > 0
+  );
 }
 
 let lastTickAt = 0;

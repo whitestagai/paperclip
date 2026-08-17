@@ -35,7 +35,11 @@ import {
   reconcilePersistedRuntimeServicesOnStartup,
   routineService,
 } from "./services/index.js";
-import { createSelfHealDeps, tickAgentSelfHeal } from "./services/recovery/agent-self-heal.js";
+import {
+  createSelfHealDeps,
+  selfHealTickIsNoteworthy,
+  tickAgentSelfHeal,
+} from "./services/recovery/agent-self-heal.js";
 import { createFeedbackTraceShareClientFromConfig } from "./services/feedback-share-client.js";
 import { buildRuntimeApiCandidateUrls, choosePrimaryRuntimeApiUrl } from "./runtime-api.js";
 import { createPluginWorkerManager } from "./services/plugin-worker-manager.js";
@@ -754,13 +758,7 @@ export async function startServer(): Promise<StartedServer> {
         maxConcurrentRevives: config.agentSelfHeal.maxConcurrentRevives,
       })
         .then((result) => {
-          if (
-            result &&
-            (result.revived > 0 ||
-              result.escalatedManager > 0 ||
-              result.escalatedHuman > 0 ||
-              result.failed > 0)
-          ) {
+          if (result && selfHealTickIsNoteworthy(result)) {
             logger.warn({ ...result }, "agent self-heal handelte");
           }
         })

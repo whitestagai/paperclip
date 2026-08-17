@@ -167,6 +167,29 @@ export async function runAgentSelfHeal(
   const now = deps.now();
   let fleet: Array<{ id: string; reportsTo: string | null; status: string }> | null = null;
 
+  // Eine Probe je Endpoint-Konfiguration statt je Agent: 38 Agenten teilen
+  // dieselbe `url`. Haengt der Host (Timeout statt Connection-Refused), waeren
+  // das 38 × 8 s = 304 s — mehr als das 120-s-Tick-Intervall, also garantierte
+  // Ueberlappung. Der Cache lebt bewusst NUR fuer diesen Durchlauf: ein
+  // Endpoint, das zwischen zwei Ticks gesund wird, muss neu geprueft werden.
+  // `adapterType` steckt im Schluessel, weil ein Adapter ohne url/model sonst
+  // mit einem fremden Adaptertyp kollidieren wuerde.
+  const probeCache = new Map<string, Promise<boolean | null>>();
+  const probe = (agent: SelfHealAgentRow): Promise<boolean | null> => {
+    const part = (value: unknown) => (typeof value === "string" ? value : "");
+    const key = [
+      agent.adapterType,
+      part(agent.adapterConfig.url),
+      part(agent.adapterConfig.model),
+      part(agent.adapterConfig.fallbackModel),
+    ].join("|");
+    const cached = probeCache.get(key);
+    if (cached) return cached;
+    const pending = deps.probeEndpoint(agent);
+    probeCache.set(key, pending);
+    return pending;
+  };
+
   for (const agent of agents) {
     // Fuer diesen Agenten hat das System schon einen Plan: ein `scheduled_retry`
     // oder `queued` Lauf steht an. Parallel wiederbeleben und wecken wuerde
@@ -213,7 +236,7 @@ export async function runAgentSelfHeal(
         !capReached &&
         errorClass === "infra_transient" &&
         attemptCount < options.maxInfraRevives
-          ? await deps.probeEndpoint(agent)
+          ? await probe(agent)
           : null;
 
       const action = decideSelfHeal({
@@ -561,10 +584,17 @@ export function createSelfHealDeps(
 }
 
 let lastTickAt = 0;
+let running = false;
 
 /**
  * Scheduler-Einstieg. Der 30-s-Tick ruft das oft; gescannt wird nur, wenn der
  * eigene Mindestabstand abgelaufen ist.
+ *
+ * `index.ts` ruft mit `void`, wartet also nicht ab. Laeuft ein Durchlauf laenger
+ * als das Intervall, wuerde ein zweiter parallel starten — mit eigenem `result`,
+ * womit `maxConcurrentRevives` faktisch pro Durchlauf statt global gilt. Das
+ * `running`-Flag verhindert das; `lastTickAt` bleibt dabei unberuehrt, damit der
+ * abgewiesene Tick nicht auch noch das Zeitfenster des laufenden verschiebt.
  */
 export async function tickAgentSelfHeal(
   deps: SelfHealDeps,
@@ -577,10 +607,16 @@ export async function tickAgentSelfHeal(
   },
 ): Promise<SelfHealResult | null> {
   if (!options.enabled) return null;
+  if (running) return null;
   const now = deps.now().getTime();
   if (now - lastTickAt < options.minIntervalMs) return null;
   lastTickAt = now;
-  return runAgentSelfHeal(deps, options);
+  running = true;
+  try {
+    return await runAgentSelfHeal(deps, options);
+  } finally {
+    running = false;
+  }
 }
 
 /**

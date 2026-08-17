@@ -5,6 +5,7 @@ import {
   extractModelIds,
   pickSelfHealErrorSource,
   runAgentSelfHeal,
+  tickAgentSelfHeal,
 } from "./agent-self-heal.js";
 
 const NOW = new Date("2026-08-17T12:00:00.000Z");
@@ -310,9 +311,10 @@ describe("runAgentSelfHeal", () => {
 
     expect(deps.reviveAgent).toHaveBeenCalledTimes(2);
     expect(result.revived).toBe(2);
-    // Die gedeckelten 7 Agenten duerfen weder proben noch eine Strafe kassieren —
-    // sie sollen beim naechsten Durchlauf ohne Bremse wieder drankommen.
-    expect(deps.probeEndpoint).toHaveBeenCalledTimes(2);
+    // Die gedeckelten 7 Agenten duerfen keine Strafe kassieren — sie sollen beim
+    // naechsten Durchlauf ohne Bremse wieder drankommen. Geprobt wird ohnehin nur
+    // einmal, weil alle 9 dieselbe Endpoint-Konfiguration teilen.
+    expect(deps.probeEndpoint).toHaveBeenCalledTimes(1);
     expect(deps.saveLedger).toHaveBeenCalledTimes(2);
     expect(deps.logAction).toHaveBeenCalledTimes(2);
   });
@@ -365,6 +367,34 @@ describe("runAgentSelfHeal", () => {
     );
   });
 
+  it("probt jedes Endpoint nur EINMAL pro Durchlauf", async () => {
+    // 38 Agenten teilen live dieselbe url — ohne Memoisierung 38 Anfragen.
+    const many = Array.from({ length: 6 }, (_, i) => erroredAgent({ id: `agent-${i}` }));
+    const deps = makeDeps({ loadErroredAgents: vi.fn().mockResolvedValue(many) });
+
+    const result = await runAgentSelfHeal(deps, { ...OPTS, maxConcurrentRevives: 99 });
+
+    expect(result.revived).toBe(6);
+    expect(deps.probeEndpoint).toHaveBeenCalledTimes(1);
+  });
+
+  it("probt getrennt, wenn Endpoint oder Modell abweichen", async () => {
+    const deps = makeDeps({
+      loadErroredAgents: vi.fn().mockResolvedValue([
+        erroredAgent({ id: "a" }),
+        erroredAgent({ id: "b", adapterConfig: { url: "http://mbp:1234", model: "qwen3.6-35b-a3b-mlx" } }),
+        erroredAgent({ id: "c", adapterConfig: { url: "http://localhost:1234", model: "google/gemma-4-31b" } }),
+        // Gleiche (leere) Konfiguration, aber anderer Adaptertyp — darf nicht
+        // mit den lmstudio_local-Agenten in einen Cache-Eintrag fallen.
+        erroredAgent({ id: "d", adapterType: "claude_local", adapterConfig: {} }),
+      ]),
+    });
+
+    await runAgentSelfHeal(deps, { ...OPTS, maxConcurrentRevives: 99 });
+
+    expect(deps.probeEndpoint).toHaveBeenCalledTimes(4);
+  });
+
   it("laesst ein Scheitern an einem Agenten die uebrigen nicht mitreissen", async () => {
     const deps = makeDeps({
       loadErroredAgents: vi.fn().mockResolvedValue([
@@ -380,5 +410,56 @@ describe("runAgentSelfHeal", () => {
 
     expect(result.revived).toBe(1);
     expect(deps.wakeAgent).toHaveBeenCalledWith("agent-ok", expect.any(String));
+  });
+});
+
+describe("tickAgentSelfHeal", () => {
+  const TICK_OPTS = { ...OPTS, enabled: true, minIntervalMs: 0 };
+
+  it("startet keinen zweiten Durchlauf, solange der erste laeuft", async () => {
+    // index.ts ruft mit `void`. Ohne die Sperre laufen bei einem haengenden
+    // Endpoint zwei Durchlaeufe parallel und maxConcurrentRevives gilt je
+    // Durchlauf statt global.
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const deps = makeDeps({
+      loadErroredAgents: vi.fn().mockImplementation(async () => {
+        await blocked;
+        return [];
+      }),
+    });
+
+    const first = tickAgentSelfHeal(deps, TICK_OPTS);
+    await expect(tickAgentSelfHeal(deps, TICK_OPTS)).resolves.toBeNull();
+    expect(deps.loadErroredAgents).toHaveBeenCalledTimes(1);
+
+    release();
+    await expect(first).resolves.toMatchObject({ scanned: 0 });
+
+    // Nach dem Ende ist die Sperre wieder offen.
+    await expect(tickAgentSelfHeal(deps, TICK_OPTS)).resolves.toMatchObject({ scanned: 0 });
+    expect(deps.loadErroredAgents).toHaveBeenCalledTimes(2);
+  });
+
+  it("gibt die Sperre auch frei, wenn der Durchlauf wirft", async () => {
+    const deps = makeDeps({
+      loadErroredAgents: vi.fn().mockRejectedValue(new Error("DB weg")),
+    });
+
+    await expect(tickAgentSelfHeal(deps, TICK_OPTS)).rejects.toThrow("DB weg");
+    // Waere `running` haengen geblieben, kaeme hier null statt eines Ergebnisses.
+    await expect(
+      tickAgentSelfHeal(makeDeps(), TICK_OPTS),
+    ).resolves.toMatchObject({ scanned: 0 });
+  });
+
+  it("laeuft nicht, wenn abgeschaltet", async () => {
+    const deps = makeDeps();
+    await expect(
+      tickAgentSelfHeal(deps, { ...TICK_OPTS, enabled: false }),
+    ).resolves.toBeNull();
+    expect(deps.loadErroredAgents).not.toHaveBeenCalled();
   });
 });

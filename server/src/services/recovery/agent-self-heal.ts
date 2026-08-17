@@ -1,3 +1,7 @@
+import { and, desc, eq, isNull } from "drizzle-orm";
+import type { Db } from "@paperclipai/db";
+import { agents, agentSelfHealLedger, heartbeatRuns, activityLog } from "@paperclipai/db";
+import { agentService } from "../agents.js";
 import { logger } from "../../middleware/logger.js";
 import { classifySelfHealError } from "./agent-self-heal-classify.js";
 import {
@@ -247,4 +251,204 @@ export async function runAgentSelfHeal(
   }
 
   return result;
+}
+
+/**
+ * Verdrahtet den Runner mit der Datenbank und den Diensten.
+ *
+ * Abweichung vom Brief: die Fabrik nimmt bewusst NUR `db` und `heartbeat`
+ * entgegen — `server/src/index.ts` hat keinen fertigen Agenten-Service im
+ * Zugriff, deshalb erzeugt sich die Fabrik `agentService(db)` selbst. Fuer
+ * die Wiederbelebung gilt: `resume()` setzt status=idle und raeumt
+ * pauseReason auf, es wird NIE direkt per `UPDATE agents SET status` gepatcht.
+ *
+ * `probeEndpoint` liefert absichtlich `null` fuer alles, was kein LM Studio
+ * ist: fuer claude_local gibt es kein Modell-Listing, dort schuetzt allein
+ * der Cooldown.
+ */
+export function createSelfHealDeps(
+  db: Db,
+  svc: {
+    heartbeat: { wakeup(agentId: string, opts: Record<string, unknown>): Promise<unknown> };
+  },
+): SelfHealDeps {
+  const agentSvc = agentService(db);
+
+  return {
+    async loadErroredAgents() {
+      const rows = await db
+        .select({
+          id: agents.id,
+          companyId: agents.companyId,
+          name: agents.name,
+          status: agents.status,
+          reportsTo: agents.reportsTo,
+          adapterType: agents.adapterType,
+          adapterConfig: agents.adapterConfig,
+        })
+        .from(agents)
+        .where(eq(agents.status, "error"));
+
+      return Promise.all(
+        rows.map(async (row) => {
+          const [lastRun] = await db
+            .select({ errorCode: heartbeatRuns.errorCode, error: heartbeatRuns.error })
+            .from(heartbeatRuns)
+            .where(eq(heartbeatRuns.agentId, row.id))
+            .orderBy(desc(heartbeatRuns.createdAt))
+            .limit(1);
+          return {
+            ...row,
+            adapterConfig: (row.adapterConfig ?? {}) as Record<string, unknown>,
+            lastErrorCode: lastRun?.errorCode ?? null,
+            lastErrorText: lastRun?.error ?? null,
+          };
+        }),
+      );
+    },
+
+    async loadFleet() {
+      return db
+        .select({ id: agents.id, reportsTo: agents.reportsTo, status: agents.status })
+        .from(agents);
+    },
+
+    async loadLedger(agentId, fingerprint) {
+      const [row] = await db
+        .select({
+          attemptCount: agentSelfHealLedger.attemptCount,
+          nextEligibleAt: agentSelfHealLedger.nextEligibleAt,
+        })
+        .from(agentSelfHealLedger)
+        .where(
+          and(
+            eq(agentSelfHealLedger.agentId, agentId),
+            eq(agentSelfHealLedger.errorFingerprint, fingerprint),
+            isNull(agentSelfHealLedger.resolvedAt),
+          ),
+        )
+        .limit(1);
+      return row ?? null;
+    },
+
+    async saveLedger(input) {
+      await db
+        .insert(agentSelfHealLedger)
+        .values({
+          agentId: input.agentId,
+          companyId: input.companyId,
+          errorClass: input.errorClass,
+          errorFingerprint: input.fingerprint,
+          attemptCount: input.attemptCount,
+          lastAction: input.lastAction,
+          nextEligibleAt: input.nextEligibleAt,
+        })
+        .onConflictDoUpdate({
+          target: [agentSelfHealLedger.agentId, agentSelfHealLedger.errorFingerprint],
+          targetWhere: isNull(agentSelfHealLedger.resolvedAt),
+          set: {
+            attemptCount: input.attemptCount,
+            lastAction: input.lastAction,
+            nextEligibleAt: input.nextEligibleAt,
+            updatedAt: new Date(),
+          },
+        });
+    },
+
+    async probeEndpoint(agent) {
+      if (agent.adapterType !== "lmstudio_local") return null;
+      const base = typeof agent.adapterConfig.url === "string" ? agent.adapterConfig.url : "http://localhost:1234";
+      const wanted = typeof agent.adapterConfig.model === "string" ? agent.adapterConfig.model : null;
+      const fallback = typeof agent.adapterConfig.fallbackModel === "string" ? agent.adapterConfig.fallbackModel : null;
+      try {
+        const res = await fetch(`${base.replace(/\/+$/, "")}/v1/models`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (!res.ok) return false;
+        const body = (await res.json()) as { data?: Array<{ id?: string }> };
+        const ids = new Set((body.data ?? []).map((m) => m.id).filter(Boolean) as string[]);
+        // Erreichbar genuegt nicht — das konfigurierte Modell (oder der
+        // Fallback) muss auch geladen sein, sonst scheitert der Run erneut.
+        if (!wanted && !fallback) return ids.size > 0;
+        return (wanted !== null && ids.has(wanted)) || (fallback !== null && ids.has(fallback));
+      } catch {
+        return false;
+      }
+    },
+
+    async reviveAgent(agentId) {
+      // resume() setzt status=idle und raeumt pauseReason auf — nie direkt patchen.
+      await agentSvc.resume(agentId);
+    },
+
+    async wakeAgent(agentId, reason) {
+      await svc.heartbeat.wakeup(agentId, {
+        source: "automation",
+        triggerDetail: "system",
+        reason,
+        requestedByActorType: "system",
+        requestedByActorId: "agent-self-heal",
+      });
+    },
+
+    async escalateToManager({ agentId, managerAgentId, reason }) {
+      await svc.heartbeat.wakeup(managerAgentId, {
+        source: "automation",
+        triggerDetail: "system",
+        reason: `self_heal_escalation:${reason}`,
+        payload: { strandedAgentId: agentId, cause: reason },
+        requestedByActorType: "system",
+        requestedByActorId: "agent-self-heal",
+      });
+    },
+
+    async escalateToHuman({ agentId, reason }) {
+      // Bewusst nur protokollieren: die Mail-/Board-Strecke haengt an
+      // send-walter-deliverable und ist eigene Arbeit. Der activity_log-Eintrag
+      // ist die Spur, an der ein Mensch es findet.
+      logger.child({ service: "agent-self-heal" }).warn(
+        { agentId, reason },
+        "self-heal braucht einen Menschen",
+      );
+    },
+
+    async logAction({ companyId, agentId, action, detail }) {
+      // Drizzle-Feldname ist `details`, nicht `metadata` — siehe
+      // packages/db/src/schema/activity_log.ts.
+      await db.insert(activityLog).values({
+        companyId,
+        actorType: "system",
+        actorId: "agent-self-heal",
+        action,
+        entityType: "agent",
+        entityId: agentId,
+        details: detail,
+      });
+    },
+
+    now: () => new Date(),
+  };
+}
+
+let lastTickAt = 0;
+
+/**
+ * Scheduler-Einstieg. Der 30-s-Tick ruft das oft; gescannt wird nur, wenn der
+ * eigene Mindestabstand abgelaufen ist.
+ */
+export async function tickAgentSelfHeal(
+  deps: SelfHealDeps,
+  options: {
+    enabled: boolean;
+    minIntervalMs: number;
+    maxInfraRevives: number;
+    cooldownMs: number;
+    maxConcurrentRevives: number;
+  },
+): Promise<SelfHealResult | null> {
+  if (!options.enabled) return null;
+  const now = deps.now().getTime();
+  if (now - lastTickAt < options.minIntervalMs) return null;
+  lastTickAt = now;
+  return runAgentSelfHeal(deps, options);
 }

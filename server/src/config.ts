@@ -85,6 +85,13 @@ export interface Config {
   feedbackExportBackendToken: string | undefined;
   heartbeatSchedulerEnabled: boolean;
   heartbeatSchedulerIntervalMs: number;
+  agentSelfHeal: {
+    enabled: boolean;
+    maxInfraRevives: number;
+    cooldownMs: number;
+    endpointDownAlertMs: number;
+    maxConcurrentRevives: number;
+  };
   companyDeletionEnabled: boolean;
   telemetryEnabled: boolean;
 }
@@ -331,6 +338,19 @@ export function loadConfig(): Config {
     feedbackExportBackendToken,
     heartbeatSchedulerEnabled: process.env.HEARTBEAT_SCHEDULER_ENABLED !== "false",
     heartbeatSchedulerIntervalMs: Math.max(10000, Number(process.env.HEARTBEAT_SCHEDULER_INTERVAL_MS) || 30000),
+    agentSelfHeal: {
+      // Default an — der Waechter ruehrt ausschliesslich error-Agenten an.
+      enabled: process.env.AGENT_SELF_HEAL_ENABLED !== "false",
+      maxInfraRevives: Math.max(1, Number(process.env.AGENT_SELF_HEAL_MAX_INFRA_REVIVES) || 3),
+      cooldownMs: Math.max(60_000, Number(process.env.AGENT_SELF_HEAL_COOLDOWN_MS) || 300_000),
+      endpointDownAlertMs: Math.max(
+        60_000,
+        Number(process.env.AGENT_SELF_HEAL_ENDPOINT_DOWN_ALERT_MS) || 1_800_000,
+      ),
+      // Deckel pro Tick: verhindert, dass ein Endpoint-Ausfall mit 40 toten
+      // Agenten in einem Schlag 40 Runs erzeugt.
+      maxConcurrentRevives: Math.max(1, Number(process.env.AGENT_SELF_HEAL_MAX_CONCURRENT_REVIVES) || 5),
+    },
     companyDeletionEnabled,
     telemetryEnabled: fileConfig?.telemetry?.enabled ?? true,
   };

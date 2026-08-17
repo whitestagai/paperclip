@@ -63,6 +63,7 @@ export interface SelfHealResult {
   escalatedHuman: number;
   waited: number;
   skipped: number;
+  failed: number;
 }
 
 /**
@@ -85,6 +86,7 @@ export async function runAgentSelfHeal(
     escalatedHuman: 0,
     waited: 0,
     skipped: 0,
+    failed: 0,
   };
   if (agents.length === 0) return result;
 
@@ -92,21 +94,45 @@ export async function runAgentSelfHeal(
   let fleet: Array<{ id: string; reportsTo: string | null; status: string }> | null = null;
 
   for (const agent of agents) {
-    try {
-      const errorInput = { errorCode: agent.lastErrorCode, errorText: agent.lastErrorText };
-      const errorClass = classifySelfHealError(errorInput);
-      const fingerprint = buildErrorFingerprint(errorInput);
-      const ledger = await deps.loadLedger(agent.id, fingerprint);
-      const attemptCount = ledger?.attemptCount ?? 0;
+    // errorClass/fingerprint sind reine, synchrone Funktionen (kein IO) —
+    // ausserhalb des try berechnet, damit sie im catch-Zweig zur Verfuegung
+    // stehen, falls ein spaeterer await (Ledger, Revive, ...) wirft.
+    const errorInput = { errorCode: agent.lastErrorCode, errorText: agent.lastErrorText };
+    const errorClass = classifySelfHealError(errorInput);
+    const fingerprint = buildErrorFingerprint(errorInput);
+    let attemptCount = 0;
 
-      // Das Endpoint nur pruefen, wenn die Entscheidung davon abhaengen kann —
-      // deterministische Faelle sollen keinen Netzverkehr ausloesen.
+    try {
+      const ledger = await deps.loadLedger(agent.id, fingerprint);
+      attemptCount = ledger?.attemptCount ?? 0;
+
+      // Cooldown und Deckel muessen VOR dem Probe geprueft werden:
+      // decideSelfHeal prueft den Cooldown ohnehin vor der Klassen-Verzweigung,
+      // und ein erschoepfter Wiederbelebungs-Deckel verhindert "revive"
+      // unabhaengig vom Probe-Ergebnis. Ohne diese Vorprüfung würde das
+      // Endpoint bei jedem Tick fuer bereits gebremste oder gedeckelte
+      // Agenten sinnlos angepingt — genau der Sturm, den die Probe eigentlich
+      // verhindern soll (Zielszenario: Endpoint down, viele tote Agenten).
+      const cooldownActive =
+        agent.status === "error" &&
+        !!ledger?.nextEligibleAt &&
+        ledger.nextEligibleAt.getTime() > now.getTime();
+      const capReached =
+        errorClass === "infra_transient" && result.revived >= options.maxConcurrentRevives;
+
+      // Das Endpoint nur pruefen, wenn die Entscheidung tatsaechlich davon
+      // abhaengen kann: falscher Status, aktiver Cooldown, erschoepfter
+      // Deckel oder eine nicht-infra_transient-Klasse liefern ihr Ergebnis
+      // so oder so — dort waere der Netzaufruf reiner Leerlauf.
       const endpointHealthy =
-        errorClass === "infra_transient" && attemptCount < options.maxInfraRevives
+        agent.status === "error" &&
+        !cooldownActive &&
+        !capReached &&
+        errorClass === "infra_transient" &&
+        attemptCount < options.maxInfraRevives
           ? await deps.probeEndpoint(agent)
           : null;
 
-      const capReached = result.revived >= options.maxConcurrentRevives;
       const action = decideSelfHeal({
         errorClass,
         agentStatus: agent.status,
@@ -184,7 +210,39 @@ export async function runAgentSelfHeal(
       }
     } catch (err) {
       log.error({ err, agentId: agent.id }, "self-heal fuer einen Agenten fehlgeschlagen");
-      result.skipped += 1;
+      result.failed += 1;
+
+      // Ohne diesen Zweig waere ein dauerhaft werfender reviveAgent unsichtbar
+      // und ohne Bremse: kein Ledger-Eintrag heisst kein nextEligibleAt, also
+      // wuerde der Agent bei jedem Tick sofort erneut versucht. Das Loggen und
+      // Persistieren selbst wird gekapselt — scheitert schon das Protokoll,
+      // darf das den Durchlauf der uebrigen Agenten nicht kippen.
+      try {
+        await deps.logAction({
+          companyId: agent.companyId,
+          agentId: agent.id,
+          action: "agent.self_heal.failed",
+          detail: {
+            error: err instanceof Error ? err.message : String(err),
+            errorClass,
+            agentName: agent.name,
+          },
+        });
+        await deps.saveLedger({
+          agentId: agent.id,
+          companyId: agent.companyId,
+          errorClass,
+          fingerprint,
+          attemptCount: attemptCount + 1,
+          lastAction: "failed",
+          nextEligibleAt: computeNextEligibleAt(attemptCount, now, options.cooldownMs),
+        });
+      } catch (loggingErr) {
+        log.error(
+          { err: loggingErr, agentId: agent.id },
+          "Protokollieren des Fehlschlags schlug ebenfalls fehl",
+        );
+      }
     }
   }
 

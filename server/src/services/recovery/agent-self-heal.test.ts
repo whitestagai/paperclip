@@ -74,6 +74,7 @@ describe("runAgentSelfHeal", () => {
     const result = await runAgentSelfHeal(deps, OPTS);
 
     expect(deps.reviveAgent).not.toHaveBeenCalled();
+    expect(deps.probeEndpoint).not.toHaveBeenCalled();
     expect(result.waited).toBe(1);
   });
 
@@ -133,6 +134,11 @@ describe("runAgentSelfHeal", () => {
 
     expect(deps.reviveAgent).toHaveBeenCalledTimes(2);
     expect(result.revived).toBe(2);
+    // Die gedeckelten 7 Agenten duerfen weder proben noch eine Strafe kassieren —
+    // sie sollen beim naechsten Durchlauf ohne Bremse wieder drankommen.
+    expect(deps.probeEndpoint).toHaveBeenCalledTimes(2);
+    expect(deps.saveLedger).toHaveBeenCalledTimes(2);
+    expect(deps.logAction).toHaveBeenCalledTimes(2);
   });
 
   it("schreibt jede Aktion ins Ledger und ins Protokoll", async () => {
@@ -146,10 +152,40 @@ describe("runAgentSelfHeal", () => {
         fingerprint: "code:llm_unreachable",
         attemptCount: 1,
         lastAction: "revived",
+        // computeNextEligibleAt muss mit dem ALTEN attemptCount (0) rechnen,
+        // nicht mit dem neu gespeicherten (1) — sonst kippt die 5/15/60-Progression.
+        nextEligibleAt: new Date("2026-08-17T12:05:00.000Z"),
       }),
     );
     expect(deps.logAction).toHaveBeenCalledWith(
       expect.objectContaining({ action: "agent.self_heal.revived" }),
+    );
+  });
+
+  it("skip-Zweig: falscher Agenten-Status wird gezaehlt, ohne Probe oder Revive", async () => {
+    const deps = makeDeps({
+      loadErroredAgents: vi.fn().mockResolvedValue([erroredAgent({ status: "idle" })]),
+    });
+    const result = await runAgentSelfHeal(deps, OPTS);
+
+    expect(result.skipped).toBe(1);
+    expect(deps.reviveAgent).not.toHaveBeenCalled();
+    expect(deps.probeEndpoint).not.toHaveBeenCalled();
+  });
+
+  it("failed-Zweig: ein werfender reviveAgent bekommt Protokoll UND Ledger-Bremse", async () => {
+    const deps = makeDeps({
+      loadErroredAgents: vi.fn().mockResolvedValue([erroredAgent()]),
+      reviveAgent: vi.fn().mockRejectedValue(new Error("resume schlug fehl")),
+    });
+    const result = await runAgentSelfHeal(deps, OPTS);
+
+    expect(result.failed).toBe(1);
+    expect(deps.logAction).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "agent.self_heal.failed" }),
+    );
+    expect(deps.saveLedger).toHaveBeenCalledWith(
+      expect.objectContaining({ lastAction: "failed" }),
     );
   });
 

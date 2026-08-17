@@ -25,12 +25,23 @@ FRAME_SAMPLES = 1280
 # nicht am Anfang abgeschnitten wird (Wake-Erkennungs-Latenz + Bestätigungston).
 PREROLL_SEC = 1.2
 PREROLL_FRAMES = int(PREROLL_SEC * SAMPLE_RATE / FRAME_SAMPLES)  # ~15
-# Nachfrage-Fenster ohne Wake-Word: kurz + streng, damit am Schreibtisch nicht
-# jedes Nebengespräch aufgeschnappt wird. Nur eine zügige, kurz anhaltende
-# Anschlussfrage direkt nach Jarvis' Antwort löst eine weitere Runde aus.
-FOLLOWUP_WINDOW_SEC = 2.5
-FOLLOWUP_WINDOW_FRAMES = int(FOLLOWUP_WINDOW_SEC * SAMPLE_RATE / FRAME_SAMPLES)  # ~31
-FOLLOWUP_MIN_SPEECH_FRAMES = 3  # ~0,24 s zusammenhängende Sprache nötig (kein kurzer Knacks)
+# Nachfrage-Fenster ohne Wake-Word: wie lange nach Jarvis' Antwort auf einen
+# Sprachbeginn gewartet wird. Waren es 2,5 s, kam Walter fast nie hinterher —
+# seine Antwort spielt allein schon 4-7 s, und danach muss er den Satz erst
+# anfangen. 5 s ist der Kompromiss: lang genug zum Nachfassen, kurz genug,
+# dass am Schreibtisch nicht jedes Nebengespräch aufgeschnappt wird.
+FOLLOWUP_START_FENSTER_SEC = 5.0
+FOLLOWUP_START_FENSTER_FRAMES = int(FOLLOWUP_START_FENSTER_SEC * SAMPLE_RATE / FRAME_SAMPLES)  # ~62
+
+# Nach der Quittung („Ja?") darf es deutlich länger dauern: hier hat Walter das
+# Wake-Wort bewusst allein gesagt und formuliert seine Frage erst noch.
+ANREDE_START_FENSTER_SEC = 8.0
+ANREDE_START_FENSTER_FRAMES = int(ANREDE_START_FENSTER_SEC * SAMPLE_RATE / FRAME_SAMPLES)  # ~100
+
+# So viele zusammenhängende laute Frames müssen es sein, damit eine Aufnahme
+# OHNE Wake-Wort startet (~0,24 s) — sonst startet ein Türklappen die Aufnahme.
+# Gilt nicht für die erste Runde: die ist bereits durch das Wake-Wort gedeckt.
+MIN_START_RUN_FRAMES = 3
 # Deckel für die Nachfrage-Kette: nach so vielen Antworten ist ohne erneutes
 # Wake-Wort Schluss. Ohne Deckel hält ein Gespräch im Raum die Schleife
 # beliebig lange am Leben und Jarvis beantwortet alles Gesagte.

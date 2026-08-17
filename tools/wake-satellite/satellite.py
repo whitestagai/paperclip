@@ -17,9 +17,11 @@ import transcribe
 import tts
 
 import sat_config
+import anrede
 import capture
 import earcon
 import playback
+import quittung
 import wake
 
 
@@ -65,6 +67,17 @@ def _speak(text, deps):
         shutil.rmtree(workdir, ignore_errors=True)
 
 
+def _quittiere(deps):
+    """Kurzes „Ja?" — das Signal, dass jetzt zugehört wird."""
+    quittung.spiele(deps.get("eleven_key"), device=sat_config.HOMEPOD_DEVICE)
+
+
+def _ist_bloße_anrede(text):
+    """Anrede allein ODER nichts Verstandenes — beides heisst: er wollte etwas,
+    hat es aber noch nicht gesagt."""
+    return anrede.ist_nur_anrede(text) or not (text or "").strip()
+
+
 def handle_interaction(frames, deps, tenant=None, history=None):
     tenant = tenant or sat_config.TENANT
     history = list(history or [])
@@ -76,13 +89,38 @@ def handle_interaction(frames, deps, tenant=None, history=None):
     # Kette ohne History, die Sperre wirkt also nie über ein erneutes
     # "Hey Jarvis" hinaus.
     web_locked_after_lookup = False
-    for turn in range(sat_config.MAX_TURNS_PER_WAKE):
-        recorded = capture.record_until_silence(frames)
+    # Runde 1 folgt direkt auf das Wake-Wort: kurzes Startfenster, und kein
+    # Anlauf nötig — das Wake-Wort hat die Aufnahme bereits gerechtfertigt.
+    # Für alle späteren Runden gilt beides anders (siehe unten).
+    start_fenster = capture.MAX_START_FRAMES
+    anlauf = 1
+    quittiert = False
+    runden = 0
+    while runden < sat_config.MAX_TURNS_PER_WAKE:
+        recorded = capture.record_until_silence(frames, max_start_frames=start_fenster,
+                                                min_start_run=anlauf)
         if not recorded:
             break
         t0 = time.monotonic()
         text = _transcribe(recorded, deps)
         t1 = time.monotonic()
+        if not quittiert and _ist_bloße_anrede(text):
+            # „Hey Jarvis", absetzen, dann erst die Frage: die Aufnahme endet in
+            # der Pause, beim Modell kommt nur die Anrede an und es antwortet
+            # „Hallo Walter". Statt dessen kurz quittieren und länger zuhören.
+            # Kostet KEINE der Runden — Zögern soll nicht bestraft werden.
+            # Nur EINMAL je Kette: sonst hielte ein wiederholtes „Jarvis" die
+            # Kette endlos offen, weil die Quittung nicht mitzählt.
+            quittiert = True
+            _quittiere(deps)
+            if flush_mic:
+                flush_mic()      # eigene Quittung nicht als Frage hören
+            start_fenster = sat_config.ANREDE_START_FENSTER_FRAMES
+            anlauf = sat_config.MIN_START_RUN_FRAMES
+            print("[quittung] nur Anrede ('{}') -> hoere {:.0f}s zu".format(
+                (text or "").strip()[:40], sat_config.ANREDE_START_FENSTER_SEC),
+                flush=True)
+            continue
         # Gesperrt wird über das Flag, nicht über einen entzogenen Schlüssel:
         # der lokale Websuche-Dienst braucht gar keinen, ein web_key=None
         # würde die Suche also nicht mehr aufhalten.
@@ -101,15 +139,19 @@ def handle_interaction(frames, deps, tenant=None, history=None):
         if flush_mic:
             flush_mic()      # eigene Wiedergabe nicht als Nachfrage hören
         t3 = time.monotonic()
+        runden += 1
         print("[timing] runde={}/{} aufnahme={:.1f}s stt={:.1f}s llm({})={:.1f}s "
               "tts+play={:.1f}s | text='{}'".format(
-                  turn + 1, sat_config.MAX_TURNS_PER_WAKE,
+                  runden, sat_config.MAX_TURNS_PER_WAKE,
                   len(recorded) * sat_config.FRAME_SAMPLES / sat_config.SAMPLE_RATE,
                   t1 - t0, result["kind"], t2 - t1, t3 - t2, (text or "")[:50]),
               flush=True)
-        if not capture.wait_for_speech(frames, window_frames=sat_config.FOLLOWUP_WINDOW_FRAMES,
-                                       min_run=sat_config.FOLLOWUP_MIN_SPEECH_FRAMES):
-            break
+        # Die Nachfrage wird direkt aufgenommen, statt sie erst zu „erkennen"
+        # und dann aufzunehmen: das getrennte Horchen verbrauchte genau die
+        # Frames, an denen es die Sprache erkannte — im Transkript fehlten
+        # dadurch die ersten Wörter der Nachfrage.
+        start_fenster = sat_config.FOLLOWUP_START_FENSTER_FRAMES
+        anlauf = sat_config.MIN_START_RUN_FRAMES
     return history
 
 

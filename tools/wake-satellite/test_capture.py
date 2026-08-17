@@ -39,24 +39,36 @@ def test_record_still_starts_within_start_window():
     assert len(out) == 5     # 3 laute + 2 nachlaufende stille
 
 
-def test_wait_for_speech_true_on_first_loud():
-    assert capture.wait_for_speech(iter([quiet(), loud(), quiet()]), window_frames=5) is True
+def test_record_keeps_the_frames_that_triggered_the_start():
+    # Kernbefund 17.08.: die Frames, an denen der Sprachbeginn erkannt wird,
+    # gehören IN die Aufnahme. Wurden sie beim Erkennen verbraucht, fehlten im
+    # Transkript die ersten Wörter ('eines Windrads' statt des ganzen Satzes).
+    frames = [quiet(), loud(), loud(), loud(), loud(), quiet(), quiet()]
+    out = capture.record_until_silence(iter(frames), hang=2, min_start_run=3)
+    assert len(out) == 6                       # 4 laute + 2 nachlaufende stille
+    assert all(capture._rms(f) >= capture.SILENCE_RMS for f in out[:4])
 
 
-def test_wait_for_speech_false_after_window():
-    assert capture.wait_for_speech(iter([quiet(), quiet(), quiet()]), window_frames=3) is False
+def test_record_ignores_short_noise_burst():
+    # Ein einzelner lauter Frame (Knacks, Tastendruck) darf keine Aufnahme
+    # starten — dieselbe Absicherung, die vorher in wait_for_speech steckte.
+    frames = iter([quiet(), loud(), quiet(), quiet(), quiet()])
+    assert capture.record_until_silence(frames, hang=2, min_start_run=3) == []
 
 
-def test_wait_for_speech_min_run_ignores_single_blip():
-    # Ein einzelner lauter Frame (Knacks) reicht bei min_run=3 nicht.
-    assert capture.wait_for_speech(iter([quiet(), loud(), quiet(), quiet()]),
-                                   window_frames=10, min_run=3) is False
+def test_record_discards_noise_before_real_speech():
+    # Knacks, dann echte Sprache: der Knacks darf nicht vorne dranhängen.
+    frames = [loud(), quiet(), loud(), loud(), loud(), quiet(), quiet()]
+    out = capture.record_until_silence(iter(frames), hang=2, min_start_run=3)
+    assert len(out) == 5                       # 3 laute + 2 nachlaufende stille
 
 
-def test_wait_for_speech_min_run_true_on_sustained():
-    # Drei zusammenhängende laute Frames lösen aus.
-    assert capture.wait_for_speech(iter([quiet(), loud(), loud(), loud(), quiet()]),
-                                   window_frames=10, min_run=3) is True
+def test_record_start_window_also_counts_loud_frames():
+    # Dauergeräusch unter der Start-Schwelle darf die Aufnahme nicht ewig in
+    # der Warteschleife halten; der Deckel zählt jeden Frame, nicht nur stille.
+    frames = iter([loud(), quiet()] * 20)
+    assert capture.record_until_silence(frames, max_start_frames=5,
+                                        min_start_run=3) == []
 
 
 def test_frames_to_wav_roundtrip(tmp_path):

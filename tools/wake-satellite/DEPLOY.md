@@ -61,7 +61,17 @@ tail -f ~/.paperclip/logs/wake-satellite.log
 ## Bekannte Grenzen (Phase 1)
 
 - Nur Jarvis. Luna folgt in Phase 2 (eigener Zugang zu ihrem n8n-Gehirn).
-- Während der HomePod spricht, ist die Wake-Erkennung aus; das 6-s-Nachfrage-
-  Fenster startet erst nach der Wiedergabe. Restliches Echo dämpft der Cooldown.
+- Während der HomePod spricht, ist die Wake-Erkennung aus; das Nachfrage-Fenster
+  (`FOLLOWUP_START_FENSTER_SEC`, 5 s) startet erst nach der Wiedergabe.
+  Restliches Echo dämpft der Cooldown.
+- Kam nach dem Wake-Wort nur die Anrede („Hey Jarvis" und dann eine Pause),
+  quittiert der Satellit mit „Ja?" und hört `ANREDE_START_FENSTER_SEC` (8 s)
+  weiter zu, ohne das Sprachmodell zu fragen. Die Quittung wird beim ersten Mal
+  von ElevenLabs gerendert und liegt danach als
+  `~/.paperclip/wake-satellite/quittung.mp3`; zum Neu-Rendern (anderer Text oder
+  andere Stimme) die Datei löschen. Ohne ElevenLabs-Schlüssel kommt statt der
+  Stimme ein 520-Hz-Ton — hörbar anders als der 880-Hz-Wake-Ton.
+- Dazwischenreden (Barge-in) geht nicht: was während der Wiedergabe gesagt wird,
+  verwirft `flush_mic()` bewusst, sonst hörte sich Jarvis selbst zu.
 - Deploy-Lücke Repo <-> Live ist ansage-pflichtig: nach Code-Änderung erneut
   `./deploy.sh` + `kickstart -k`.

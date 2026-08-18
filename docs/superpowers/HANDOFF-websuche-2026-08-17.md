@@ -71,21 +71,27 @@ ab (`schon geladen`) und wendet sein `-c` nie an. Das Preload-Log
 `lade:`-Zeile — der als „Root-Cause-Fix 2026-07-18" kommentierte Block hat seine
 Kontextwerte vermutlich nie angewendet. Letzter Lauf: 29.07.
 
-**2. Kopfzeilen-Phase im Seitenabruf härten**
+**2. Kopfzeilen-Phase im Seitenabruf härten — ERLEDIGT am 2026-08-18**
 
-`abruf.py` hat einen Socket-Wächter, der aufgegebene Abrufe im Rumpf zuverlässig
-abbricht (gemessen: gzip-Leerblöcke 30,0 → 1,01 s, chunked-Größenzeile
-20,1 → 1,01 s). **Die Kopfzeilen-Phase ist ausgenommen**, weil sie in
-`requests.get` läuft und dort noch kein Socket zum Zuklappen existiert. Ein
-Server, der gültige Kopfzeilen tröpfelt, kommt auf **20,54 s bei 1,0 s Budget**
-(begrenzt nur durch `http.client._MAXHEADERS`).
+Behoben in `b4483ffac`. Der Kopf-Wächter greift die Verbindung eine Ebene
+tiefer ab, als der Socket-Wächter es konnte: urllib3 gibt sie in `_get_conn`
+heraus, ein eigener Pool legt sie in den Verbindungsschacht des abrufenden
+Fadens, eingehängt über einen eigenen HTTPAdapter in einer Sitzung je Abruf.
+Damit gibt es einen Griff an den Socket, **während** `requests` noch die
+Kopfzeilen liest. Gemessen bei 1,0 s Budget: 50 ms/Zeile 5,40 → 1,00 s,
+200 ms/Zeile 20,54 → 1,01 s; die fünf zuvor gedeckelten Formen unverändert
+bei 1,00–1,01 s. 151 Tests, deployt, Dienst neu gestartet.
 
-Messwerte und Grenze stehen im Modul-Docstring von `abruf.py` und im Kommentar in
-`websuche.py`. Solange das offen ist, trägt auch die Begründung nicht, warum es
-keinen Wächter über die Abruf-Threads gibt — im Dienst (nicht im CLI, dort räumt
-`os._exit` auf) kann ein hängender Thread bestehen bleiben. Sichtbarkeit ist
-hergestellt: Zähler, stderr-Meldung mit URL und Laufzeit, Ausweis unter
-`GET http://127.0.0.1:7789/`.
+Nebenbefund, ebenfalls behoben: `antwort.close()` stand **innerhalb** des
+Wächter-Blocks. Feuerte der Timer in dem Fenster zwischen Schließen und
+Abbestellen, beschuldigte die Meldung urllib3 — und `ausgeloest` machte aus
+einer fertig gelesenen Seite eine Zeitüberschreitung. Etwa jeder zwanzigste
+Abruf der Form „Server schweigt nach den Kopfzeilen" war betroffen; eine
+still verlorene Quelle. Behoben durch eine Sperre im gemeinsamen
+Wächter-Gerüst und das Schließen außerhalb des Blocks.
+
+Der Zähler für aufgegebene Abrufe **bleibt** — der Beleg stützt sich auf
+nachgebaute Formen und auf urllib3-Interna, die ein Update wegnehmen kann.
 
 **3. Lektorat: erstes echtes Prüf-Issue**
 

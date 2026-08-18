@@ -1,4 +1,5 @@
 import contextlib
+import itertools
 import socket
 import threading
 import time
@@ -383,7 +384,19 @@ def test_haengende_robots_txt_sprengt_die_gesamtzeit_nicht(monkeypatch):
             raise requests.exceptions.Timeout()
         raise AssertionError("Zielserver trotz verbrauchtem Budget angefragt")
 
-    monkeypatch.setattr(abruf.requests, "get", lahmes_get)
+    class LahmeSitzung:
+        get = staticmethod(lahmes_get)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+    # Angesetzt wird an der Sitzung, nicht mehr am Modul `requests`: der Abruf
+    # laeuft seit dem Kopf-Waechter ueber eine eigene Sitzung je Aufruf, damit
+    # die Verbindung waehrend der Kopfzeilen greifbar ist.
+    monkeypatch.setattr(abruf, "_sitzung", LahmeSitzung)
     start = time.monotonic()
     ergebnis = hole_text("https://a.de/seite", timeout=0.4)
     dauer = time.monotonic() - start
@@ -547,9 +560,17 @@ def _rinnsal(art):
                  zurueck — die Schleife sitzt in urllib3s Dekoder.
     - "chunked": die Groessenzeile eines Chunks, Ziffer fuer Ziffer. Die
                  Schleife sitzt in `http.client.readline()`.
+    - "kopfzeilen": gueltige, nie endende Kopfzeilen. Die Schleife sitzt in
+                 `http.client.parse_headers()` — also VOR dem Antwortobjekt
+                 und damit vor dem Socket, an dem `_Fristwaechter` haengt.
 
     Gibt (Kopfzeilen, Nachschub-Funktion) zurueck.
     """
+    if art == "kopfzeilen":
+        zaehler = itertools.count()
+        # Nur die Statuszeile — der Kopfblock wird nie geschlossen.
+        return b"HTTP/1.1 200 OK\r\n", lambda: b"X-Fuell-%d: x\r\n" % next(
+            zaehler)
     if art == "gzip":
         import zlib
         packer = zlib.compressobj(9, zlib.DEFLATED, 16 + zlib.MAX_WBITS)
@@ -744,6 +765,27 @@ def test_troepfelnde_chunked_groessenzeile_endet_im_zeitbudget(troepfel):
     assert ergebnis.text is None
 
 
+def test_troepfelnde_kopfzeilen_enden_im_zeitbudget(troepfel):
+    """Die letzte Phase, in der das Budget nur weich war.
+
+    Sie laeuft in `requests.get`, also bevor es ein Antwortobjekt gibt —
+    `_Fristwaechter` haengt an genau diesem Objekt und kommt deshalb zu spaet.
+    Jedes einzelne `recv` ist durch die Socket-Frist gedeckelt, ein Server,
+    der ununterbrochen gueltige Kopfzeilen troepfelt, laeuft in keins davon:
+    begrenzt hat ihn allein `http.client._MAXHEADERS`. Gemessen ohne
+    Kopf-Waechter: 20,54 s bei 1,0 s Budget und 200 ms je Zeile.
+    """
+    port = troepfel(["/kopf"], dauer=4.0, pause=0.2, art="kopfzeilen")
+    start = time.monotonic()
+    ergebnis = hole_text(f"http://127.0.0.1:{port}/kopf", timeout=0.3)
+    dauer = time.monotonic() - start
+    assert dauer < 1.5, f"lief {dauer:.2f}s trotz 0,3s Budget"
+    assert ergebnis.text is None
+    # Der Abbruch ist unsere eigene Wirkung. Ihn als Serverfehler zu melden
+    # waere eine Falschaussage im Ergebnis.
+    assert "Zeit" in ergebnis.fehler, ergebnis.fehler
+
+
 def test_troepfelnder_server_der_verstummt_zieht_die_frist_nach(troepfel,
                                                                monkeypatch):
     """Die Socket-Frist wurde einmal beim Anfragestart berechnet und nie
@@ -809,6 +851,125 @@ def test_socket_waechter_bricht_ab_wenn_kein_weg_greift():
     attrappe.raw = Nichts()
     assert abruf._socket_zuklappen(attrappe) is False
     assert abruf._socket_zuklappen(Nichts()) is False
+
+
+def test_waechter_ist_abbestellt_bevor_die_antwort_geschlossen_wird(
+        monkeypatch):
+    """`antwort.close()` lag INNERHALB des Waechter-Blocks.
+
+    Damit blieb ein Fenster zwischen dem regulaeren Schliessen des Sockets
+    und dem Abbestellen des Timers. Feuerte der Waechter darin, fand er einen
+    bereits geschlossenen Socket, beschuldigte urllib3 — und setzte
+    `ausgeloest`, was die Pruefung hinter dem Block aus einer fertig
+    gelesenen Seite eine Zeitueberschreitung machte. Beim Nachmessen trat das
+    in etwa jedem zwanzigsten Abruf der Form "Server schweigt" auf; die
+    Sperre allein reicht dagegen nicht, die Reihenfolge muss stimmen.
+    """
+    beobachtet = {}
+    echter = abruf._Fristwaechter
+
+    class Merkend(echter):
+        def __init__(self, antwort, frist):
+            super().__init__(antwort, frist)
+            zuvor = antwort.close
+
+            def schliessen(*args, **kwargs):
+                beobachtet["fertig"] = self._fertig
+                return zuvor(*args, **kwargs)
+
+            antwort.close = schliessen
+
+    monkeypatch.setattr(abruf, "_Fristwaechter", Merkend)
+    with requests_mock.Mocker() as m:
+        m.get("https://a.de/robots.txt", status_code=404)
+        m.get("https://a.de/seite", text=SEITE,
+              headers={"Content-Type": "text/html"})
+        ergebnis = hole_text("https://a.de/seite", timeout=5.0)
+
+    assert ergebnis.text is not None
+    assert beobachtet["fertig"] is True, (
+        "die Antwort wurde geschlossen, waehrend der Waechter noch scharf war")
+
+
+@pytest.mark.parametrize("bauen", [
+    lambda frist: abruf._Fristwaechter(type("Nichts", (), {"raw": None})(),
+                                       frist),
+    lambda frist: abruf._KopfWaechter(frist),
+])
+def test_waechter_der_zu_spaet_feuert_bleibt_wirkungslos(bauen, capsys):
+    """Der Timer ist beim Austritt laengst geplant — `cancel()` kommt gegen
+    ein bereits laufendes `_zuschlagen` nicht mehr an.
+
+    Feuert er in genau diesem Augenblick, hatte das zwei Folgen: die Meldung
+    "fand keinen Socket" beschuldigte urllib3, obwohl der Socket nur regulaer
+    geschlossen war — und `ausgeloest` stand danach auf True, was die
+    Pruefung hinter dem `with`-Block aus einer FERTIG gelesenen Seite eine
+    Zeitueberschreitung machte. Beobachtet beim Nachmessen der Form "Server
+    schweigt nach den Kopfzeilen", wo Lesetimeout und Frist zusammenfallen.
+    """
+    waechter = bauen(time.monotonic() + 10.0)
+    with waechter:
+        pass
+    waechter._zuschlagen()
+    assert waechter.ausgeloest is False, (
+        "ein nach dem Lesen gefeuerter Waechter deutet ein gutes Ergebnis "
+        "in eine Zeitueberschreitung um")
+    assert "fand keinen Socket" not in capsys.readouterr().err
+
+
+def test_kopf_waechter_bekommt_die_verbindung_ueber_get_conn(troepfel):
+    """Der Kopf-Waechter haengt an `_get_conn` — auch das ist urllib3-Internes.
+
+    Dieser Test wird rot, wenn die Verbindung dort nicht mehr durchgereicht
+    wird. Ohne ihn waere der Waechter nach einem urllib3-Update still
+    wirkungslos, und der Kopfzeilen-Test darueber wuerde es erst am
+    Zeitverbrauch merken.
+
+    Gemessen werden muss WAEHREND der Kopfzeilen: `_get_conn` gibt die
+    Verbindung unverbunden heraus (`sock` ist dann noch `None`, der Socket
+    entsteht erst beim Verbinden), und nach einem `Connection: close` ist er
+    wieder fort. Genau dazwischen schlaegt der Waechter zu.
+    """
+    port = troepfel(["/kopf"], dauer=4.0, pause=0.2, art="kopfzeilen")
+    # Frist weit weg: dieser Waechter soll nicht selbst zuschlagen, er dient
+    # hier nur als Schacht.
+    waechter = abruf._KopfWaechter(time.monotonic() + 30.0)
+
+    def abrufen():
+        with waechter, abruf._sitzung() as sitzung:
+            with contextlib.suppress(Exception):
+                sitzung.get(f"http://127.0.0.1:{port}/kopf",
+                            timeout=(3.0, 3.0), stream=True).close()
+
+    faden = threading.Thread(target=abrufen, daemon=True)
+    faden.start()
+    # Warten, bis die Verbindung steht — der Server troepfelt derweil.
+    ende = time.monotonic() + 2.0
+    while (getattr(waechter.schacht.verbindung, "sock", None) is None
+           and time.monotonic() < ende):
+        time.sleep(0.01)
+
+    verbindung = waechter.schacht.verbindung
+    assert verbindung is not None, (
+        "urllib3 reicht die Verbindung nicht mehr ueber _get_conn heraus — "
+        "der Kopf-Waechter greift ins Leere")
+    assert isinstance(getattr(verbindung, "sock", None), socket.socket), (
+        "die Verbindung haelt ihren Socket nicht mehr unter `sock`")
+    # Und er laesst sich auch wirklich zuklappen, nicht nur betrachten.
+    assert abruf._verbindung_zuklappen(verbindung) is True
+    faden.join(3.0)
+    assert not faden.is_alive(), "das Zuklappen beendete den Abruf nicht"
+
+
+def test_kopf_waechter_bricht_ab_wenn_keine_verbindung_steht():
+    """Steht die Verbindung noch nicht, gibt es nichts zuzuklappen — das ist
+    kein Fehler, sondern der durch die Socket-Frist gedeckelte Verbindungs-
+    aufbau. Es darf nur keine Ausnahme mitten im Abruf werden."""
+    class OhneStecker:
+        sock = None
+
+    assert abruf._verbindung_zuklappen(None) is False
+    assert abruf._verbindung_zuklappen(OhneStecker()) is False
 
 
 def test_waechter_bestellt_seinen_timer_ab():

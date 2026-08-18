@@ -161,21 +161,21 @@ def recherchiere(frage: str, *, quellen: int = 3, zeichen: int = 12000,
     # fuehre ein hartes Gesamtbudget je Seite, ein aufgegebener Thread ende
     # deshalb von selbst kurz nach `seiten_timeout`. Sie war zwischenzeitlich
     # widerlegt (leere gzip-Bloecke und eine troepfelnde chunked-Groessenzeile
-    # hielten den Thread 20 bis 30 s bei 1,0 s Budget fest) und traegt seit
-    # dem Socket-Waechter in abruf.py fuer alle Rumpf-Formen wieder: gemessen
-    # 1,00 bis 1,01 s bei 1,0 s Budget, quer durch troepfelnde Seite,
-    # troepfelnde robots.txt, Schweigen nach den Kopfzeilen, gzip-Leerbloecke
-    # und chunked-Groessenzeile.
+    # hielten den Thread 20 bis 30 s bei 1,0 s Budget fest, troepfelnde
+    # Kopfzeilen 20,54 s) und traegt seit dem Socket- und dem Kopf-Waechter in
+    # abruf.py wieder — jetzt fuer ALLE gemessenen Formen: 1,00 bis 1,01 s bei
+    # 1,0 s Budget, quer durch troepfelnde Seite, troepfelnde robots.txt,
+    # Schweigen nach den Kopfzeilen, gzip-Leerbloecke, chunked-Groessenzeile
+    # und troepfelnde Kopfzeilen. Die Messreihe steht im Modul-Docstring von
+    # abruf.py.
     #
-    # Lueckenlos ist sie damit NICHT. Ein Server, der die KOPFZEILEN
-    # troepfelt, laeuft in `requests.get` — dort gibt es noch keinen Socket
-    # zum Zuklappen; gemessen 20,54 s bei 1,0 s Budget und 200 ms je
-    # Kopfzeile. Siehe abruf.py, "WAS WEITERHIN NICHT GEDECKELT IST".
-    #
-    # Ein solcher Thread haelt weiterhin hoechstens MAX_RUMPF_BYTES. Solange
-    # die eine Luecke offen ist, bleibt es beim Zaehlen und Protokollieren —
-    # ein stiller Verlust von Threads und Sockets ist das, was in einem
-    # wochenlang laufenden Dienst niemand bemerkt.
+    # Gezaehlt und protokolliert wird trotzdem weiter. Der Beleg stuetzt sich
+    # auf sieben nachgebaute Formen und auf urllib3-Interna, die ein Update
+    # wegnehmen kann; ein stiller Verlust von Threads und Sockets ist genau
+    # das, was in einem wochenlang laufenden Dienst niemand bemerkt. Der
+    # Zaehler kostet nichts und ist die einzige Stelle, an der ein doch
+    # haengender Thread ueberhaupt sichtbar wuerde. Ein solcher Thread haelt
+    # weiterhin hoechstens MAX_RUMPF_BYTES.
     pool = ThreadPoolExecutor(max_workers=max(1, len(gewaehlt)))
     laeufe = [pool.submit(hole, k.url, domain) for k, domain in gewaehlt]
 

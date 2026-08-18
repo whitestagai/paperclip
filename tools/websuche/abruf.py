@@ -6,12 +6,13 @@ herausgeht, ist entweder Text oder eine Fehlermeldung — nie beides.
 WAS DAS ZEITBUDGET WIRKLICH LEISTET
 -----------------------------------
 `hole_text(timeout=T)` deckelt Namensaufloesung, robots.txt, alle
-Weiterleitungen und den Rumpf gemeinsam. Durchgesetzt wird das an vier
-Stellen, und jede deckt einen Abschnitt ab, den die anderen nicht erreichen:
+Weiterleitungen, die Kopfzeilen und den Rumpf gemeinsam. Durchgesetzt wird
+das an fuenf Stellen, und jede deckt einen Abschnitt ab, den die anderen
+nicht erreichen:
 
 1. eine eigene Frist fuer `getaddrinfo` (`_aufloesen_mit_frist`),
 2. `min(Restbudget, SOCKET_FRIST)` als Timeout je Socket-Operation — EINMAL
-   je Sprung berechnet, unmittelbar vor `requests.get`, und danach nicht
+   je Sprung berechnet, unmittelbar vor der Anfrage, und danach nicht
    nachgezogen (frueher stand hier "auf jeder einzelnen Socket-Operation";
    das war zu viel versprochen),
 3. eine Fristpruefung nach jedem Leseschritt (`read1`, nicht `iter_content`
@@ -20,14 +21,15 @@ Stellen, und jede deckt einen Abschnitt ab, den die anderen nicht erreichen:
    den Socket unter der laufenden Antwort zuklappt. Er ist der einzige
    Mechanismus, der auch dort greift, wo die wartende Schleife unterhalb von
    `read1` liegt — und er zieht die zu frueh berechnete Frist aus Punkt 2
-   nachtraeglich wieder gerade.
+   nachtraeglich wieder gerade,
+5. der Kopf-Waechter (`_KopfWaechter`): derselbe Griff, eine Phase frueher.
 
 Gemessen gegen echte Server bei 1,0 s Budget (Median aus drei Laeufen):
 
-    troepfelnde Seite (8 Bytes/20 ms)      1,01 s   (vor 3.: 30,0 s)
-    troepfelnde robots.txt                 1,00 s   (vor 3.: 30,0 s; in der
+    troepfelnde Seite (8 Bytes/20 ms)      1,00 s   (vor 3.: 30,0 s)
+    troepfelnde robots.txt                 1,01 s   (vor 3.: 30,0 s; in der
                                                      Praxis 81 s gemessen)
-    Server schweigt nach den Kopfzeilen     1,00 s
+    Server schweigt nach den Kopfzeilen     1,01 s
     troepfelt bis kurz vor die Frist,
       dann Schweigen                        1,01 s   (vor 4.: Budget + volle
                                                      SOCKET_FRIST — gemessen
@@ -36,40 +38,46 @@ Gemessen gegen echte Server bei 1,0 s Budget (Median aus drei Laeufen):
     gueltige, leer dekodierende
       gzip-Bloecke (Z_SYNC_FLUSH)           1,01 s   (vor 4.: 30,0 s)
     troepfelnde chunked-Groessenzeile       1,01 s   (vor 4.: 20,1 s)
+    troepfelnde Kopfzeilen, 50 ms/Zeile     1,00 s   (vor 5.:  5,40 s)
+    troepfelnde Kopfzeilen, 200 ms/Zeile    1,01 s   (vor 5.: 20,54 s)
 
-Die beiden letzten Formen galten als unbehebbar, weil ihre wartende Schleife
-in urllib3 bzw. `http.client` liegt — unterhalb jeder Stelle, an der dieser
+Die Formen 5 bis 7 galten als unbehebbar, weil ihre wartende Schleife in
+urllib3 bzw. `http.client` liegt — unterhalb jeder Stelle, an der dieser
 Code eine Frist pruefen koennte. Das stimmt und war trotzdem der falsche
 Schluss: es verwechselt Unterbrechen mit Schliessen. Der Lesevorgang laesst
 sich nicht unterbrechen, der Socket darunter aber aus einem zweiten Faden
 schliessen; danach kehrt jedes wartende `recv` sofort zurueck. Siehe
 `_socket_zuklappen`.
 
+Die Kopfzeilen-Form hielt sich dann noch eine Runde laenger, weil dort auch
+das nicht reichte: sie laeuft, bevor es ein Antwortobjekt und damit einen
+Socket zum Zuklappen gibt. Der Ausweg ist derselbe Gedanke, eine Ebene
+tiefer angesetzt — nicht den Socket spaeter greifen, sondern die Verbindung
+frueher. urllib3 gibt sie in `_get_conn` heraus; ein eigener Pool legt sie
+dort in den `_Verbindungsschacht` des abrufenden Fadens, und der Kopf-
+Waechter hat damit einen Griff, WAEHREND `requests` noch die Kopfzeilen
+liest. Ohne das war der Deckel 100 x Tropfabstand (`http.client._MAXHEADERS`),
+nach oben nur durch die Geduld des Angreifers begrenzt.
+
 WAS WEITERHIN NICHT GEDECKELT IST
 ---------------------------------
-Eine Luecke bleibt, und sie ist beim Nachmessen neu aufgefallen: die
-KOPFZEILEN-Phase. Sie laeuft in `requests.get`, also bevor es ein
-Antwortobjekt und damit einen Socket gibt, den der Waechter greifen koennte.
-`http.client` liest dort Zeile fuer Zeile; jedes einzelne `recv` ist durch
-Punkt 2 gedeckelt, aber ein Server, der ununterbrochen gueltige Kopfzeilen
-troepfelt, laeuft in keins davon. Begrenzt wird er allein durch
-`http.client._MAXHEADERS` (100 Zeilen). Gemessen bei 1,0 s Budget:
+Zwei Dinge, beide bewusst:
 
-    troepfelnde Kopfzeilen, 50 ms/Zeile     5,40 s
-    troepfelnde Kopfzeilen, 200 ms/Zeile   20,54 s
-
-Der Deckel ist also 100 x Tropfabstand, nach oben nur durch die Geduld des
-Angreifers begrenzt. Das ist bewusst nicht in dieser Runde behoben: die
-Abhilfe liegt nicht mehr im Socket-Waechter, sondern erforderte einen
-eigenen Weg an `requests.get` vorbei. Bis dahin gilt: das Budget ist fuer
-Verbindungsaufbau, Rumpf und alles danach hart; fuer die Kopfzeilen ist es
-weich.
+- Der Hilfsfaden der Namensaufloesung. `getaddrinfo` laesst sich nicht
+  unterbrechen; der Aufrufer bekommt seine Frist zurueck, die Aufloesung
+  laeuft im Daemon-Faden weiter, bis der System-Resolver aufgibt. Das kostet
+  keinen Socket und keine Zeit im Abruf, nur einen schlafenden Faden.
+- Der Zugriff auf urllib3-Interna (`_get_conn` und die Attributkette in
+  `_socket_zuklappen`). Beides kann ein Update wegnehmen. Deshalb haelt je
+  ein Test den Weg fest, und beide Waechter melden auf stderr, wenn sie ins
+  Leere greifen — ein wirkungsloser Waechter, von dem niemand weiss, ist
+  schlimmer als gar keiner.
 
 Folge fuer `websuche.recherchiere`: die Annahme "ein aufgegebener Thread
-endet von selbst kurz nach dem Seitenbudget" traegt fuer alle oben
-gemessenen Rumpf-Formen wieder — aber nicht fuer die Kopfzeilen-Form.
-Deshalb bleibt es beim Zaehlen und Melden aufgegebener Abrufe, statt den
-Waechter fuer die Abruf-Threads fuer erledigt zu erklaeren.
+endet von selbst kurz nach dem Seitenbudget" traegt jetzt fuer alle oben
+gemessenen Formen. Der Zaehler fuer aufgegebene Abrufe bleibt trotzdem — er
+kostet nichts und ist die einzige Stelle, an der ein doch haengender Thread
+ueberhaupt sichtbar wuerde.
 """
 from __future__ import annotations
 
@@ -136,9 +144,8 @@ LESE_STUECK = 16384
 # Sie wird je Sprung EINMAL berechnet und nicht nachgezogen — gegen einen
 # Server, der bis kurz vor die Frist troepfelt und dann verstummt, hing
 # dadurch eine volle SOCKET_FRIST hinten dran. Nachgezogen wird sie jetzt
-# nicht rechnerisch, sondern durch den Socket-Waechter, der bei Fristablauf
-# zuklappt. Fuer die Kopfzeilen-Phase gilt das nicht (siehe Modul-Docstring,
-# "WAS WEITERHIN NICHT GEDECKELT IST").
+# nicht rechnerisch, sondern durch die beiden Waechter, die bei Fristablauf
+# zuklappen — in der Kopfzeilen-Phase ebenso wie im Rumpf.
 SOCKET_FRIST = 5.0
 
 # Name der Waechter-Faeden. Er ist Teil der Zusicherung, nicht Kosmetik: der
@@ -408,22 +415,118 @@ def _socket_zuklappen(antwort) -> bool:
     return False
 
 
-class _Fristwaechter:
-    """Schliesst bei Fristablauf den Socket unter einem blockierten Lesevorgang.
+class _Verbindungsschacht:
+    """Ablage fuer die Verbindung des gerade laufenden Abrufs.
 
-    Damit wird das Seitenbudget fuer den Rumpf zu einer harten Grenze, statt
-    zu einer, die nur der gutwillige Server einhaelt. Der Timer laeuft ueber
-    die Restfrist und wird in JEDEM Fall abbestellt — sonst haelt jeder Abruf
-    bis zum Ende seines Budgets einen Faden am Leben.
+    Der Kopf-Waechter legt sie an, bevor er die Anfrage stellt; urllib3 legt
+    die Verbindung hinein, sobald es sie aus dem Pool nimmt. Damit gibt es
+    einen Griff an den Socket, WAEHREND `requests.get` noch die Kopfzeilen
+    liest — vorher gab es den erst danach.
     """
 
-    def __init__(self, antwort, frist: float):
-        self._antwort = antwort
+    def __init__(self):
+        self.verbindung = None
+
+
+# Je Faden einer: die Abrufe laufen parallel, teilen sich aber die Pools.
+# `_get_conn` laeuft immer im anfragenden Faden, deshalb traegt genau dieser
+# Faden den richtigen Schacht.
+_schacht = threading.local()
+
+
+def _melde_verbindung(verbindung):
+    schacht = getattr(_schacht, "aktuell", None)
+    if schacht is not None:
+        schacht.verbindung = verbindung
+    return verbindung
+
+
+class _MeldenderHTTPPool(urllib3.HTTPConnectionPool):
+    """`_get_conn` ist die einzige Stelle, an der urllib3 die Verbindung in
+    die Hand nimmt — fuer eine frische wie fuer eine wiederverwendete."""
+
+    def _get_conn(self, timeout=None):
+        return _melde_verbindung(super()._get_conn(timeout))
+
+
+class _MeldenderHTTPSPool(urllib3.HTTPSConnectionPool):
+    def _get_conn(self, timeout=None):
+        return _melde_verbindung(super()._get_conn(timeout))
+
+
+class _MeldenderAdapter(requests.adapters.HTTPAdapter):
+    """Haengt die meldenden Pools in EINE Sitzung ein.
+
+    `pool_classes_by_scheme` ist seit urllib3 2.x ein Instanzattribut des
+    PoolManagers (poolmanager.py, `__init__`). Deshalb wirkt der Eingriff nur
+    auf unsere eigene Sitzung — kein Monkeypatch, keine Fernwirkung auf
+    anderen Code im selben Prozess.
+    """
+
+    def init_poolmanager(self, *args, **kwargs):
+        super().init_poolmanager(*args, **kwargs)
+        self.poolmanager.pool_classes_by_scheme = {
+            "http": _MeldenderHTTPPool, "https": _MeldenderHTTPSPool}
+
+
+def _sitzung() -> requests.Session:
+    """Eine Sitzung je Abruf — genau wie `requests.get` es intern auch tut.
+
+    Damit stellt sich die Frage nach Faden-Sicherheit einer geteilten Sitzung
+    gar nicht erst, und die Verbindungen der parallelen Abrufe koennen sich
+    nicht gegenseitig in den Schacht legen.
+    """
+    sitzung = requests.Session()
+    adapter = _MeldenderAdapter()
+    sitzung.mount("http://", adapter)
+    sitzung.mount("https://", adapter)
+    return sitzung
+
+
+def _verbindung_zuklappen(verbindung) -> bool:
+    """Klappt den Socket einer noch nicht beantworteten Verbindung zu.
+
+    Einfacher als `_socket_zuklappen`: hier halten wir das Verbindungsobjekt
+    selbst, und dessen `sock` ist oeffentlich. `None` heisst, dass der
+    Verbindungsaufbau noch laeuft — der ist durch die Socket-Frist gedeckelt
+    und braucht den Waechter nicht.
+    """
+    stecker = getattr(verbindung, "sock", None)
+    if stecker is None:
+        return False
+    try:
+        stecker.shutdown(socket.SHUT_RDWR)
+        return True
+    except OSError:
+        return False
+
+
+class _Waechter:
+    """Gemeinsames Geruest beider Waechter: ein Timer ueber die Restfrist.
+
+    Der Timer wird in JEDEM Fall abbestellt — sonst haelt jeder Abruf bis zum
+    Ende seines Budgets einen Faden am Leben.
+
+    `cancel()` hilft aber nur gegen einen Timer, der noch wartet. Ein bereits
+    LAUFENDES `_zuschlagen` erreicht es nicht mehr, und genau dieser Fall
+    tritt auf, wenn Lesetimeout und Frist zusammenfallen (beobachtet bei der
+    Form "Server schweigt nach den Kopfzeilen"). Ohne die Sperre unten hatte
+    das zwei Folgen: die Meldung beschuldigte urllib3, obwohl der Socket nur
+    regulaer geschlossen war, und `ausgeloest` stand hinterher auf True — was
+    die Pruefung hinter dem `with`-Block aus einer FERTIG gelesenen Seite
+    eine Zeitueberschreitung machte. Eine stumm verlorene Quelle.
+    """
+
+    KLAGE = ""
+
+    def __init__(self, frist: float):
         self._frist = frist
         self._timer: threading.Timer | None = None
+        self._sperre = threading.Lock()
+        self._fertig = False
         self.ausgeloest = False
 
-    def __enter__(self) -> "_Fristwaechter":
+    def __enter__(self):
         rest = max(0.0, self._frist - time.monotonic())
         self._timer = threading.Timer(rest, self._zuschlagen)
         self._timer.name = WAECHTER_FADEN_NAME
@@ -431,21 +534,85 @@ class _Fristwaechter:
         self._timer.start()
         return self
 
+    def _zuklappen(self) -> bool:
+        raise NotImplementedError
+
     def _zuschlagen(self) -> None:
-        # Zuerst merken, dann handeln: der Lesevorgang darf danach mit einer
-        # beliebigen Ausnahme abbrechen — der Aufrufer muss sie als
-        # abgelaufene Zeit lesen koennen, nicht als Serverfehler.
-        self.ausgeloest = True
-        if not _socket_zuklappen(self._antwort):
-            print("[websuche] Fristwaechter fand keinen Socket — die "
-                  "urllib3-Attributkette in _socket_zuklappen passt nicht "
-                  "mehr; das Seitenbudget ist nur noch weich",
-                  file=sys.stderr, flush=True)
+        with self._sperre:
+            if self._fertig:
+                return
+            # Zuerst merken, dann handeln: der Lesevorgang darf danach mit
+            # einer beliebigen Ausnahme abbrechen — der Aufrufer muss sie als
+            # abgelaufene Zeit lesen koennen, nicht als Serverfehler.
+            self.ausgeloest = True
+            gegriffen = self._zuklappen()
+        # Ausserhalb der Sperre: ein wirkungsloser Waechter, von dem niemand
+        # weiss, ist schlimmer als gar keiner.
+        if not gegriffen:
+            print(self.KLAGE, file=sys.stderr, flush=True)
 
     def __exit__(self, *_) -> bool:
+        with self._sperre:
+            self._fertig = True
         if self._timer is not None:
             self._timer.cancel()
         return False
+
+
+class _KopfWaechter(_Waechter):
+    """Der Waechter fuer die Phase VOR dem Antwortobjekt.
+
+    `_Fristwaechter` haengt an der Antwort und kann deshalb erst greifen,
+    wenn `requests.get` zurueckgekehrt ist. Genau davor sitzt die Luecke: ein
+    Server, der gueltige Kopfzeilen troepfelt, laeuft in keine der
+    Socket-Fristen (jedes einzelne `recv` kommt rechtzeitig) und wurde allein
+    von `http.client._MAXHEADERS` begrenzt — 100 Zeilen mal Tropfabstand.
+    """
+
+    KLAGE = ("[websuche] Kopf-Waechter fand keinen Socket — entweder stand "
+             "die Verbindung noch nicht, oder urllib3 reicht sie nicht mehr "
+             "ueber _get_conn heraus; die Kopfzeilen-Phase ist dann nur noch "
+             "weich gedeckelt")
+
+    def __init__(self, frist: float):
+        super().__init__(frist)
+        self._vorheriger = None
+        self.schacht = _Verbindungsschacht()
+
+    def __enter__(self) -> "_KopfWaechter":
+        # Den vorherigen Schacht merken statt ihn beim Austritt auf None zu
+        # setzen: der robots-Abruf laeuft heute vor diesem Block, aber eine
+        # spaetere Umstellung soll den aeusseren Waechter nicht entwaffnen.
+        self._vorheriger = getattr(_schacht, "aktuell", None)
+        _schacht.aktuell = self.schacht
+        return super().__enter__()
+
+    def _zuklappen(self) -> bool:
+        return _verbindung_zuklappen(self.schacht.verbindung)
+
+    def __exit__(self, *_) -> bool:
+        super().__exit__()
+        _schacht.aktuell = self._vorheriger
+        return False
+
+
+class _Fristwaechter(_Waechter):
+    """Schliesst bei Fristablauf den Socket unter einem blockierten Lesevorgang.
+
+    Damit wird das Seitenbudget fuer den Rumpf zu einer harten Grenze, statt
+    zu einer, die nur der gutwillige Server einhaelt.
+    """
+
+    KLAGE = ("[websuche] Fristwaechter fand keinen Socket — die "
+             "urllib3-Attributkette in _socket_zuklappen passt nicht mehr; "
+             "das Seitenbudget ist nur noch weich")
+
+    def __init__(self, antwort, frist: float):
+        super().__init__(frist)
+        self._antwort = antwort
+
+    def _zuklappen(self) -> bool:
+        return _socket_zuklappen(self._antwort)
 
 
 def _lies_gedeckelt(antwort, frist: float,
@@ -507,16 +674,29 @@ def _hole_gedeckelt(url: str, frist: float, *, accept: str, max_bytes: int,
     - ein Socket-Timeout von `min(Restbudget, SOCKET_FRIST)`, je Sprung
       einmal gesetzt,
     - ein Socket-Waechter ueber den Rumpf, der die Frist hart durchsetzt,
-      auch wenn die wartende Schleife unter `read1` liegt.
-
-    NICHT zugesichert ist die Frist waehrend der Kopfzeilen — die liest
-    `requests.get`, bevor es einen Socket zum Zuklappen gibt. Siehe
-    Modul-Docstring, "WAS WEITERHIN NICHT GEDECKELT IST".
+      auch wenn die wartende Schleife unter `read1` liegt,
+    - ein Kopf-Waechter ueber die Kopfzeilen-Phase, der dasselbe eine Phase
+      frueher leistet — dort gibt es noch kein Antwortobjekt, wohl aber die
+      Verbindung (siehe `_Verbindungsschacht`).
 
     `vor_abruf(ziel)` darf jeden Sprung mit einem Grund ablehnen (die Seite
     haengt dort ihre robots.txt-Pruefung ein). `kopf_pruefung(antwort)` darf
     nach den Kopfzeilen entscheiden, dass der Rumpf gar nicht erst gelesen
     wird — so muss ein 500-MB-PDF nicht gelesen werden, um als PDF zu gelten.
+    """
+    with _sitzung() as sitzung:
+        return _hole_ueber(sitzung, url, frist, accept=accept,
+                           max_bytes=max_bytes, vor_abruf=vor_abruf,
+                           kopf_pruefung=kopf_pruefung)
+
+
+def _hole_ueber(sitzung, url: str, frist: float, *, accept: str,
+                max_bytes: int, vor_abruf=None,
+                kopf_pruefung=None) -> RohAntwort:
+    """Der Rumpf von `_hole_gedeckelt`, mit der Sitzung als Mittel.
+
+    Eigene Funktion nur, damit die Sitzung genau einen `with`-Block hat und
+    dieser Ablauf nicht um eine Einrueckungsebene wandert.
     """
     aktuell = url
     for _sprung in range(MAX_WEITERLEITUNGEN + 1):
@@ -541,15 +721,28 @@ def _hole_gedeckelt(url: str, frist: float, *, accept: str, max_bytes: int,
         if rest <= 0:
             return RohAntwort(zeit_aus=True)
         schritt = min(rest, SOCKET_FRIST)
-        try:
-            antwort = requests.get(
-                aktuell, timeout=(schritt, schritt),
-                headers={"User-Agent": USER_AGENT, "Accept": accept},
-                allow_redirects=False, stream=True)
-        except requests.exceptions.Timeout:
-            return RohAntwort(zeit_aus=True)
-        except requests.exceptions.RequestException as e:
-            return RohAntwort(fehler=f"Abruf fehlgeschlagen: {e}")
+        with _KopfWaechter(frist) as kopfwaechter:
+            try:
+                antwort = sitzung.get(
+                    aktuell, timeout=(schritt, schritt),
+                    headers={"User-Agent": USER_AGENT, "Accept": accept},
+                    allow_redirects=False, stream=True)
+            except requests.exceptions.Timeout:
+                return RohAntwort(zeit_aus=True)
+            except requests.exceptions.RequestException as e:
+                # Wie beim Rumpf: hat der Waechter zugeschlagen, ist der
+                # abgerissene Socket unsere eigene Wirkung und kein
+                # Serverfehler.
+                if kopfwaechter.ausgeloest:
+                    return RohAntwort(zeit_aus=True)
+                return RohAntwort(fehler=f"Abruf fehlgeschlagen: {e}")
+            # Ein zugeklappter Socket beendet den Kopfblock auch ohne
+            # Ausnahme: `http.client` liest bis zum Dateiende und haelt die
+            # bis dahin gelesenen Zeilen fuer den ganzen Kopf. Ohne diese
+            # Pruefung ginge eine halbe Antwort als vollstaendige durch.
+            if kopfwaechter.ausgeloest:
+                antwort.close()
+                return RohAntwort(zeit_aus=True)
 
         if antwort.status_code in WEITERLEITUNGS_CODES:
             ziel = antwort.headers.get("Location")
@@ -582,26 +775,37 @@ def _hole_gedeckelt(url: str, frist: float, *, accept: str, max_bytes: int,
             return RohAntwort(status=antwort.status_code, kopf=kopf,
                               fehler=grund)
 
-    with _Fristwaechter(antwort, frist) as waechter:
-        try:
-            rumpf, zeitfehler = _lies_gedeckelt(antwort, frist, max_bytes)
-        # `raw.read1()` geht an `requests` vorbei und wirft deshalb die rohen
-        # urllib3-Ausnahmen, die `iter_content()` sonst uebersetzt haette.
-        except (requests.exceptions.Timeout, urllib3.exceptions.TimeoutError):
-            return RohAntwort(status=antwort.status_code, kopf=kopf,
-                              zeit_aus=True)
-        except (requests.exceptions.RequestException,
-                urllib3.exceptions.HTTPError, OSError) as e:
-            # Hat der Waechter zugeschlagen, ist dieser Fehler unsere eigene
-            # Wirkung — ein abgerissener Socket. Ihn als Serverfehler zu
-            # melden waere eine Falschaussage im Ergebnis.
-            if waechter.ausgeloest:
+    # `antwort.close()` steht AUSSERHALB des Waechter-Blocks. Innerhalb lag
+    # ein Fenster zwischen dem regulaeren Schliessen des Sockets und dem
+    # Abbestellen des Timers: feuerte der Waechter darin, fand er nichts mehr
+    # zum Zuklappen, beschuldigte urllib3 in der Meldung — und setzte
+    # `ausgeloest`, was die Pruefung unten aus einer FERTIG gelesenen Seite
+    # eine Zeitueberschreitung machte. Beim Nachmessen der Form "Server
+    # schweigt nach den Kopfzeilen" trat das in etwa jedem zwanzigsten Abruf
+    # auf; die Sperre im Waechter allein reicht dagegen nicht.
+    try:
+        with _Fristwaechter(antwort, frist) as waechter:
+            try:
+                rumpf, zeitfehler = _lies_gedeckelt(antwort, frist, max_bytes)
+            # `raw.read1()` geht an `requests` vorbei und wirft deshalb die
+            # rohen urllib3-Ausnahmen, die `iter_content()` sonst uebersetzt
+            # haette.
+            except (requests.exceptions.Timeout,
+                    urllib3.exceptions.TimeoutError):
                 return RohAntwort(status=antwort.status_code, kopf=kopf,
                                   zeit_aus=True)
-            return RohAntwort(status=antwort.status_code, kopf=kopf,
-                              fehler=f"Abruf fehlgeschlagen: {e}")
-        finally:
-            antwort.close()
+            except (requests.exceptions.RequestException,
+                    urllib3.exceptions.HTTPError, OSError) as e:
+                # Hat der Waechter zugeschlagen, ist dieser Fehler unsere
+                # eigene Wirkung — ein abgerissener Socket. Ihn als
+                # Serverfehler zu melden waere eine Falschaussage im Ergebnis.
+                if waechter.ausgeloest:
+                    return RohAntwort(status=antwort.status_code, kopf=kopf,
+                                      zeit_aus=True)
+                return RohAntwort(status=antwort.status_code, kopf=kopf,
+                                  fehler=f"Abruf fehlgeschlagen: {e}")
+    finally:
+        antwort.close()
     # Der Waechter zaehlt auch dann als Zeitueberschreitung, wenn das
     # Zuklappen zu einem sauberen Dateiende statt zu einer Ausnahme fuehrt
     # (chunked): der Rumpf ist dann unvollstaendig, ohne dass es jemand saehe.

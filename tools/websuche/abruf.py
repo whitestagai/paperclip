@@ -204,6 +204,65 @@ def _aufloesen_mit_frist(host: str, sekunden: float) -> list[str]:
     return ergebnis.get("adressen", [])
 
 
+def _adressen_des_ziels(url: str, aufloese_frist: float):
+    """`(Adressen, Grund)` — genau eins von beiden ist gesetzt.
+
+    Gemeinsamer Kern von `pruefe_ziel` und `pruefe_lokales_ziel`. Die beiden
+    unterscheiden sich nur im Urteil ueber die Adressen; alles davor — Schema,
+    Hostname, Aufloesung mit Frist, IPv4-in-IPv6 — ist dieselbe Logik. Zwei
+    leicht abweichende Kopien davon waeren genau die Sorte Duplikat, an der
+    sich in diesem Modul schon einmal eine Luecke aufgetan hat (siehe
+    `_hole_gedeckelt`).
+    """
+    teile = urlparse(url)
+    if teile.scheme not in ("http", "https"):
+        return None, (f"Schema '{teile.scheme}' nicht erlaubt — abgerufen "
+                      f"werden nur http und https")
+    host = teile.hostname
+    if not host:
+        return None, f"URL ohne Hostnamen: {url}"
+
+    try:
+        adressen = [ipaddress.ip_address(host)]
+    except ValueError:
+        try:
+            adressen = [ipaddress.ip_address(a)
+                        for a in _aufloesen_mit_frist(host, aufloese_frist)]
+        except (OSError, ValueError) as e:
+            return None, f"Hostname '{host}' nicht aufloesbar: {e}"
+    if not adressen:
+        return None, f"Hostname '{host}' liefert keine Adresse"
+    # ::ffff:127.0.0.1 ist Loopback, auch wenn es als IPv6 daherkommt.
+    return [getattr(a, "ipv4_mapped", None) or a for a in adressen], None
+
+
+def pruefe_lokales_ziel(url: str,
+                        aufloese_frist: float = DNS_FRIST) -> str | None:
+    """`None`, wenn die URL auf einen Dienst auf DIESER Maschine zeigt.
+
+    Das Gegenstueck zu `pruefe_ziel`, fuer den umgekehrten Fall: die
+    Suchquelle IST ein Hausdienst auf Loopback, `pruefe_ziel` wuerde sie
+    genau deshalb verweigern.
+
+    Bewusst eine eigene Funktion und kein Schalter an `pruefe_ziel`: ein
+    `pruefe_ziel(..., lokal_erlauben=True)` waere genau die Art Parameter,
+    die eines Tages versehentlich am Seitenabruf steht — und dort ist er die
+    ganze Abwehr. So laesst sich die Pruefung austauschen, aber nicht
+    entfernen, und die hier ist strikt enger, nicht laxer.
+    """
+    adressen, grund = _adressen_des_ziels(url, aufloese_frist)
+    if grund:
+        return grund
+    for adresse in adressen:
+        if not adresse.is_loopback:
+            return (f"Ziel '{urlparse(url).hostname}' zeigt auf {adresse} und "
+                    f"damit nicht auf diese Maschine — als Suchquelle ist nur "
+                    f"ein lokaler Dienst vorgesehen. Ein Ferndienst waere eine "
+                    f"bewusste Entscheidung und soll nicht durch einen "
+                    f"vertippten Parameter passieren")
+    return None
+
+
 def pruefe_ziel(url: str, aufloese_frist: float = DNS_FRIST) -> str | None:
     """`None`, wenn die URL abgerufen werden darf, sonst der Grund im Klartext.
 
@@ -219,28 +278,11 @@ def pruefe_ziel(url: str, aufloese_frist: float = DNS_FRIST) -> str | None:
     schuetzt das nicht — dafuer muesste die Verbindung auf die gepruefte IP
     festgenagelt werden. Der hier abgewehrte Fall ist die umleitende Fremdseite.
     """
-    teile = urlparse(url)
-    if teile.scheme not in ("http", "https"):
-        return (f"Schema '{teile.scheme}' nicht erlaubt — abgerufen werden "
-                f"nur http und https")
-    host = teile.hostname
-    if not host:
-        return f"URL ohne Hostnamen: {url}"
-
-    try:
-        adressen = [ipaddress.ip_address(host)]
-    except ValueError:
-        try:
-            adressen = [ipaddress.ip_address(a)
-                        for a in _aufloesen_mit_frist(host, aufloese_frist)]
-        except (OSError, ValueError) as e:
-            return f"Hostname '{host}' nicht aufloesbar: {e}"
-    if not adressen:
-        return f"Hostname '{host}' liefert keine Adresse"
-
+    adressen, grund = _adressen_des_ziels(url, aufloese_frist)
+    if grund:
+        return grund
+    host = urlparse(url).hostname
     for adresse in adressen:
-        # ::ffff:127.0.0.1 ist Loopback, auch wenn es als IPv6 daherkommt.
-        adresse = getattr(adresse, "ipv4_mapped", None) or adresse
         if (adresse.is_private or adresse.is_loopback or adresse.is_link_local
                 or adresse.is_reserved or adresse.is_multicast
                 or adresse.is_unspecified):
@@ -656,8 +698,26 @@ class RohAntwort:
     zeit_aus: bool = False
 
 
+def hole_roh(url: str, timeout: float, *, accept: str, max_bytes: int,
+             zielpruefung=None) -> RohAntwort:
+    """Ein gedeckelter Abruf ohne Textextraktion.
+
+    Fuer Aufrufer, die den rohen Rumpf brauchen statt Fliesstext — heute die
+    JSON-Antwort der Suchquelle. Sie bekommen damit dasselbe harte
+    Gesamtbudget, denselben Groessendeckel und dieselbe Sprungkontrolle wie
+    der Seitenabruf, ohne dass die Logik ein zweites Mal entsteht.
+
+    `zielpruefung` ist Pflicht in dem Sinne, dass ohne Angabe die strenge
+    `pruefe_ziel` gilt. Wer einen Hausdienst abruft, gibt ausdruecklich
+    `pruefe_lokales_ziel` an — abschalten laesst sie sich nicht.
+    """
+    return _hole_gedeckelt(url, time.monotonic() + timeout, accept=accept,
+                           max_bytes=max_bytes, zielpruefung=zielpruefung)
+
+
 def _hole_gedeckelt(url: str, frist: float, *, accept: str, max_bytes: int,
-                    vor_abruf=None, kopf_pruefung=None) -> RohAntwort:
+                    vor_abruf=None, kopf_pruefung=None,
+                    zielpruefung=None) -> RohAntwort:
     """Gemeinsamer Kern von Seiten- und robots-Abruf.
 
     Es gab diese Logik einmal zweimal: streng fuer die Seite, mit blankem
@@ -687,12 +747,13 @@ def _hole_gedeckelt(url: str, frist: float, *, accept: str, max_bytes: int,
     with _sitzung() as sitzung:
         return _hole_ueber(sitzung, url, frist, accept=accept,
                            max_bytes=max_bytes, vor_abruf=vor_abruf,
-                           kopf_pruefung=kopf_pruefung)
+                           kopf_pruefung=kopf_pruefung,
+                           zielpruefung=zielpruefung or pruefe_ziel)
 
 
 def _hole_ueber(sitzung, url: str, frist: float, *, accept: str,
-                max_bytes: int, vor_abruf=None,
-                kopf_pruefung=None) -> RohAntwort:
+                max_bytes: int, vor_abruf=None, kopf_pruefung=None,
+                zielpruefung=None) -> RohAntwort:
     """Der Rumpf von `_hole_gedeckelt`, mit der Sitzung als Mittel.
 
     Eigene Funktion nur, damit die Sitzung genau einen `with`-Block hat und
@@ -703,9 +764,10 @@ def _hole_ueber(sitzung, url: str, frist: float, *, accept: str,
         rest = frist - time.monotonic()
         if rest <= 0:
             return RohAntwort(zeit_aus=True)
-        # Zuerst die Frist, dann die Aufloesung: `pruefe_ziel` loest Namen auf
-        # und bekommt dafuer ausdruecklich nur das, was vom Budget uebrig ist.
-        grund = pruefe_ziel(aktuell, aufloese_frist=min(rest, DNS_FRIST))
+        # Zuerst die Frist, dann die Aufloesung: die Zielpruefung loest Namen
+        # auf und bekommt dafuer ausdruecklich nur das, was vom Budget uebrig
+        # ist. Sie gilt auch fuer jedes Weiterleitungsziel.
+        grund = zielpruefung(aktuell, aufloese_frist=min(rest, DNS_FRIST))
         if grund:
             return RohAntwort(fehler=grund)
 

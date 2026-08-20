@@ -6,9 +6,11 @@ Agenten, n8n und die Bots merken davon nichts.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from urllib.parse import urlencode
 
-import requests
+import abruf
 
 
 class BackendFehler(Exception):
@@ -31,6 +33,13 @@ class Treffer:
 # brauchbar, aber nicht mehr repraesentativ — SearXNG faehrt gut ein Dutzend
 # Engines, drei Ausfaelle sind ein spuerbarer Teil davon.
 WARNUNG_AB_ENGINES = 3
+
+# Obergrenze fuer die JSON-Antwort. Eine SearXNG-Trefferliste liegt bei
+# einigen zehn KB; acht MB sind weit jenseits jedes echten Ergebnisses und
+# nur dafuer da, dass ein durchdrehender Dienst nicht den Speicher fuellt.
+MAX_ANTWORT_BYTES = 8_000_000
+
+ACCEPT = "application/json"
 
 
 def _ausgefallene_engines(roh) -> list[str]:
@@ -65,27 +74,55 @@ class SearxngBackend:
         self.letzte_warnung: str | None = None
 
     def suche(self, frage: str, limit: int) -> list[Treffer]:
+        """Fragt die Suchquelle ab. `timeout` ist ein GESAMTBUDGET.
+
+        Frueher stand hier ein blankes `requests.get(timeout=...)`. Dessen
+        `timeout` deckelt eine einzelne Socket-Operation, nicht die Anfrage:
+        SearXNG aggregiert ein Dutzend Upstream-Engines, und troepfelte es
+        seine Antwort, lief diese Suche weit ueber die Deadline von
+        `recherchiere` hinaus — der Agent damit in den harten 30-s-Deckel von
+        `shell_exec`, ohne je ein Ergebnis zu sehen. Gemessen 6,1 s bei 0,3 s
+        Budget, begrenzt allein durch die Geduld des Testservers.
+
+        Der Abruf laeuft deshalb ueber `abruf.hole_roh`: dasselbe harte
+        Budget, derselbe Groessendeckel und keine blind verfolgten
+        Weiterleitungen wie beim Seitenabruf. Die Zielpruefung ist die
+        umgekehrte — hier ist Loopback erwuenscht und alles andere verdaechtig.
+        """
         self.letzte_warnung = None
-        try:
-            antwort = requests.get(
-                f"{self.basis_url}/search",
-                params={"q": frage, "format": "json"},
-                timeout=self.timeout,
-            )
-            antwort.raise_for_status()
-            daten = antwort.json()
-        except requests.exceptions.ConnectionError as e:
-            raise BackendFehler(
-                f"SearXNG unter {self.basis_url} nicht erreichbar: {e}") from e
-        except requests.exceptions.Timeout as e:
+        adresse = (f"{self.basis_url}/search?"
+                   f"{urlencode({'q': frage, 'format': 'json'})}")
+        antwort = abruf.hole_roh(
+            adresse, timeout=self.timeout, accept=ACCEPT,
+            max_bytes=MAX_ANTWORT_BYTES,
+            zielpruefung=abruf.pruefe_lokales_ziel)
+
+        if antwort.zeit_aus:
             raise BackendFehler(
                 f"SearXNG unter {self.basis_url} antwortet nicht innerhalb "
-                f"von {self.timeout}s") from e
-        except requests.exceptions.RequestException as e:
-            raise BackendFehler(f"SearXNG-Anfrage fehlgeschlagen: {e}") from e
+                f"von {self.timeout}s")
+        if antwort.fehler:
+            raise BackendFehler(
+                f"SearXNG unter {self.basis_url} nicht erreichbar: "
+                f"{antwort.fehler}")
+        if antwort.status != 200:
+            raise BackendFehler(
+                f"SearXNG antwortete mit HTTP {antwort.status}")
+        if len(antwort.rumpf) >= MAX_ANTWORT_BYTES:
+            # Sonst scheiterte gleich darauf das Parsen, und die Meldung
+            # hiesse "kein verwertbares JSON" — was die Ursache verdeckt.
+            raise BackendFehler(
+                f"SearXNG-Antwort ueberschritt {MAX_ANTWORT_BYTES} Bytes und "
+                f"wurde gekappt — das ist keine Trefferliste mehr")
+
+        try:
+            daten = json.loads(antwort.rumpf.decode("utf-8", "replace"))
         except ValueError as e:
             raise BackendFehler(
                 f"SearXNG lieferte kein verwertbares JSON: {e}") from e
+        if not isinstance(daten, dict):
+            raise BackendFehler(
+                "SearXNG-Antwort ist kein JSON-Objekt")
 
         roh = daten.get("results")
         if not isinstance(roh, list):

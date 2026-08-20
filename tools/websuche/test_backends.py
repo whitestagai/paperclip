@@ -1,8 +1,15 @@
+import contextlib
+import time
+
 import pytest
 import requests
 import requests_mock
 
 from backends import BackendFehler, SearxngBackend, Treffer
+# Derselbe Rinnsal-Server wie im Seitenabruf. Bewusst wiederverwendet statt
+# nachgebaut: eine zweite, leicht abweichende Kopie einer Angriffsform ist
+# genau der Grund, warum Luecken zwischen zwei Pfaden entstehen.
+from test_abruf import _starte_troepfel_server
 
 ANTWORT = {
     "results": [
@@ -140,6 +147,73 @@ def test_warnung_wird_bei_jedem_lauf_zurueckgesetzt():
         m.get("http://127.0.0.1:8888/search", json=ANTWORT)
         backend.suche("egal", limit=10)
     assert backend.letzte_warnung is None
+
+
+# --- Zeitbudget und Deckel gegen eine lahme Suchquelle ---------------------
+#
+# SearXNG ist ein Hausdienst, aber kein schneller: es aggregiert ein Dutzend
+# Upstream-Engines, die in CAPTCHA und Rate-Limits laufen. Der Seitenabruf war
+# gegen troepfelnde Server gehaertet, diese Anfrage nicht.
+
+@pytest.fixture
+def troepfelnde_suchquelle():
+    """Ein Server, der auf /search ewig tropft. Gibt die Basis-URL zurueck."""
+    offen = []
+
+    def starte(art="text", pause=0.02):
+        port, lauscher = _starte_troepfel_server(
+            ["/search"], dauer=6.0, pause=pause, art=art)
+        offen.append(lauscher)
+        return f"http://127.0.0.1:{port}"
+
+    yield starte
+    for lauscher in offen:
+        with contextlib.suppress(OSError):
+            lauscher.close()
+
+
+@pytest.mark.parametrize("art", ["text", "kopfzeilen"])
+def test_troepfelnde_suchquelle_endet_im_zeitbudget(troepfelnde_suchquelle,
+                                                    art):
+    """`timeout` von requests deckelt eine Socket-Operation, nicht die Suche.
+
+    Troepfelt SearXNG seine JSON-Antwort (oder schon deren Kopfzeilen), lief
+    diese Anfrage weit ueber die 25-s-Deadline von `recherchiere` hinaus — und
+    der Agent in den harten 30-s-Deckel von `shell_exec`, ohne je ein Ergebnis
+    zu sehen.
+    """
+    basis = troepfelnde_suchquelle(art=art, pause=0.2 if art == "kopfzeilen"
+                                   else 0.02)
+    backend = SearxngBackend(basis, timeout=0.3)
+    start = time.monotonic()
+    with pytest.raises(BackendFehler):
+        backend.suche("egal", limit=5)
+    dauer = time.monotonic() - start
+    assert dauer < 1.5, f"lief {dauer:.2f}s trotz 0,3s Budget"
+
+
+def test_suchquelle_ausserhalb_von_loopback_wird_verweigert():
+    """SearXNG ist per Aufbau ein Hausdienst auf Loopback.
+
+    Die Zielpruefung des Seitenabrufs (`pruefe_ziel`) taugt hier nicht — sie
+    verweigert Loopback, das ist ja ihr Zweck. Statt sie abschaltbar zu machen
+    (und damit versehentlich auch fuer Fremdziele) gilt hier ihr Gegenstueck:
+    NUR Loopback. Ein Ferndienst als Suchquelle waere eine bewusste
+    Architekturentscheidung und soll nicht durch einen getippten Parameter
+    passieren.
+    """
+    # IP-Literal statt Name: die Pruefung darf hier kein DNS brauchen, und der
+    # Test soll ohne Netz laufen.
+    fern = "http://93.184.216.34:8888"
+    with requests_mock.Mocker() as m:
+        m.get(f"{fern}/search", json=ANTWORT)
+        backend = SearxngBackend(fern, timeout=1.0)
+        with pytest.raises(BackendFehler) as e:
+            backend.suche("egal", limit=5)
+        # Der Kern: die Anfrage darf nicht bloss fehlschlagen, sie darf gar
+        # nicht erst hinausgehen.
+        assert m.call_count == 0, "die Anfrage ging trotz Fremdziel hinaus"
+    assert "93.184.216.34" in str(e.value)
 
 
 def test_treffer_ohne_url_werden_verworfen():

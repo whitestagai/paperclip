@@ -73,7 +73,7 @@ Neues Modul im bestehenden Muster: es liefert Daten, `main()` komponiert.
 
 | Funktion | Aufgabe |
 |---|---|
-| `fetch_aa(key, cache_path)` | `GET https://artificialanalysis.ai/api/v2/language/models/free`, Header `x-api-key`, paginiert (`pagination.has_more`). Antwort roh nach `state/aa-cache.json` mit Abrufdatum |
+| `fetch_aa(key, cache_pfad)` | `GET https://artificialanalysis.ai/api/v2/language/models/free`, Header `x-api-key`, paginiert (`pagination.has_more`), Seitendeckel gegen ein `has_more`, das nie endet. Antwort roh nach `state/aa-cache.json` mit Abrufdatum |
 | `match_slug(lm_key, slugs, overrides)` | LM-Studio-Schlüssel → AA-Slug oder `None` |
 | `fetch_web(frage, deadline)` | `POST http://127.0.0.1:7789/suche`, reicht `quellen` und `hinweis` unverändert durch |
 | `market_report(...)` | komponiert das JSON-Fragment aus beidem |
@@ -168,6 +168,11 @@ Marktdaten** — der Bericht meldet, dass die Quelle fehlte.
 
 Stilles Weiterlaufen ist die gefährlichste Variante: Genau daraus entstand die Lage, die
 diese Spec behebt. Ein Agent mit unerfüllbarem Rechercheauftrag erfindet.
+
+**Der Cache wird geschrieben, aber nie gelesen.** `state/aa-cache.json` hält fest, was beim
+Lauf dastand — das ist Nachvollziehbarkeit, nicht Verfügbarkeit. Ein Lese-Fallback bei
+Ausfall würde alte Zahlen als aktuelle ausgeben und damit exakt den Fehlertyp erzeugen, den
+diese Spec beseitigt. Lieber keine Zahl als eine stille alte.
 
 `collect_ist_zustand.py` darf an einem Ausfall der Marktdaten **nicht scheitern** — die
 Telemetrie ist der wichtigere Teil und muss auch ohne Netz entstehen.

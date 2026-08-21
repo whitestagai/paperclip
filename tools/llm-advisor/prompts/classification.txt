@@ -1,0 +1,2 @@
+Klassifiziere diese E-Mail in genau eines von {Rechnung, Anfrage, Spam, Sonstiges}.
+Antworte nur mit dem Label. Text: "Ihre Bestellung #4821 wurde versandt."

@@ -1,0 +1,2 @@
+Schreibe eine Python-Funktion `merge_intervals(intervals)`, die überlappende
+Intervalle zusammenfasst. Gib nur den Code zurück.

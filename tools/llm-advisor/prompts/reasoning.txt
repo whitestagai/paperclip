@@ -1,0 +1,2 @@
+Ein Agent erreicht 14x pro Woche das max_iterations-Limit bei vagen Routinen.
+Nenne die zwei wahrscheinlichsten Ursachen und je eine Gegenmaßnahme. Kurz.

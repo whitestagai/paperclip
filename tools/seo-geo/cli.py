@@ -1,4 +1,4 @@
-import argparse, json, os, shutil
+import argparse, json, os, shutil, time
 from dataclasses import asdict
 from config import load_sites, resolve_credential
 from apply import apply_changeset
@@ -102,6 +102,63 @@ def _cmd_validate(args, environ, client_factory):
     return 0
 
 
+def _cmd_notify(args, environ, pusher, token_maker):
+    import seo_approvals as sa
+    from approval_render import render_change_list, summary_line
+    from changeset import validate_changeset
+    cs = json.loads(open(os.path.expanduser(args.changeset)).read())
+    problems = validate_changeset(cs)
+    if problems:
+        print(f"KEIN PUSH — Changeset unsauber ({len(problems)} Problem(e)):")
+        for p in problems:
+            print(f"  ✗ {p}")
+        return 1
+    count, alt = summary_line(cs)
+    list_dir = os.path.expanduser(args.list_dir); os.makedirs(list_dir, exist_ok=True)
+    token = token_maker()
+    list_path = os.path.join(list_dir, token + ".txt")
+    with open(list_path, "w", encoding="utf-8") as fh:
+        fh.write(render_change_list(cs))
+    sa.create(os.path.expanduser(args.approvals_dir), args.site,
+              os.path.expanduser(args.changeset), list_path, count, alt,
+              int(args.chat_id), token=token)
+    caption = (f"🟢 SEO-Freigabe {args.site} — {count} Änderungen"
+               + (f" ({alt} Alt-Texte)" if alt else ""))
+    pusher(caption, list_path, token, int(args.chat_id), args.bot_env)
+    print(f"PUSH RAUS — {args.site}, Token {token}")
+    return 0
+
+def _default_pusher(caption, list_path, token, chat_id, bot_env):
+    from telegram_push import push_approval, load_bot_token
+    bot_token = load_bot_token(bot_env)
+    push_approval(bot_token, chat_id, caption, list_path, token)
+
+def _cmd_reping(args, environ, pusher, now):
+    import seo_approvals as sa
+    ad = os.path.expanduser(args.approvals_dir)
+    pend = sa.list_pending(ad, older_than_hours=int(args.older_than_hours), now=now)
+    n = 0
+    for rec in pend:
+        if rec.get("last_reping"):
+            continue
+        days = int((now - rec.get("created", now)) / 86400)
+        pusher(rec["chat_id"], "⏳ SEO-Freigabe {} wartet seit {} Tag(en).".format(
+            rec["site"], days), args.bot_env)
+        # Re-Read vor dem Schreiben: der Bot kann den Token zwischen dem
+        # list_pending()-Load und diesem Write bereits auf applied/rejected
+        # gesetzt haben. In dem Fall NICHT zurueck auf pending revertieren.
+        fresh = sa.load(ad, rec["token"])
+        if fresh is not None and fresh.get("status") == "pending":
+            fresh["last_reping"] = now
+            sa._write_atomic(sa._path(ad, rec["token"]), fresh)
+            n += 1
+    print(f"RE-PING — {n} Erinnerung(en)")
+    return 0
+
+def _default_text_pusher(chat_id, text, bot_env):
+    from telegram_push import push_text, load_bot_token
+    push_text(load_bot_token(bot_env), chat_id, text)
+
 def _http_fetch(url):
     import requests
     r = requests.get(url, timeout=30); r.raise_for_status()
@@ -113,8 +170,12 @@ def _http_fetch(url):
         return r.content.decode("utf-8-sig", errors="replace")
     return r.text
 
-def main(argv, environ, fetch=None, client_factory=None) -> int:
+def main(argv, environ, fetch=None, client_factory=None,
+         pusher=None, token_maker=None, now=None) -> int:
     client_factory = client_factory or _default_client_factory
+    if token_maker is None:
+        token_maker = lambda: os.urandom(9).hex()
+    now = time.time() if now is None else now
     p = argparse.ArgumentParser(prog="seo-geo")
     sub = p.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("audit"); a.add_argument("--site"); a.add_argument("--sites")
@@ -125,12 +186,23 @@ def main(argv, environ, fetch=None, client_factory=None) -> int:
     v.add_argument("--changeset"); v.add_argument("--no-live", action="store_true")
     rs = sub.add_parser("resolve"); rs.add_argument("--site"); rs.add_argument("--sites")
     rs.add_argument("--changeset"); rs.add_argument("--out")
+    nt = sub.add_parser("notify")
+    for aa in ("--site", "--changeset", "--approvals-dir", "--list-dir",
+               "--bot-env", "--chat-id"):
+        nt.add_argument(aa)
+    rp = sub.add_parser("reping")
+    for aa in ("--approvals-dir", "--bot-env", "--older-than-hours"):
+        rp.add_argument(aa)
     args = p.parse_args(argv)
     if args.cmd == "resolve": return _cmd_resolve(args, environ, client_factory)
     if args.cmd == "validate": return _cmd_validate(args, environ, client_factory)
     if args.cmd == "approve": return _cmd_approve(args, environ)
     if args.cmd == "apply": return _cmd_apply(args, environ, client_factory)
     if args.cmd == "audit": return _cmd_audit(args, environ, fetch)
+    # NB: pusher wird NICHT global gesetzt — notify und reping haben verschiedene
+    # Pusher-Signaturen, jeder Command wählt seinen eigenen Default beim Dispatch.
+    if args.cmd == "notify": return _cmd_notify(args, environ, pusher or _default_pusher, token_maker)
+    if args.cmd == "reping": return _cmd_reping(args, environ, pusher or _default_text_pusher, now)
     return 1
 
 if __name__ == "__main__":

@@ -139,6 +139,81 @@ def test_resolve_reports_unresolved_exit1(tmp_path, capsys):
     assert "NICHT auflösbar" in capsys.readouterr().out
 
 
+def test_notify_rejects_invalid_changeset(tmp_path, capsys):
+    cs = {"site": "s", "changes": [{"url": "u", "field": "NICHT_WHITELIST",
+                                    "id": 1, "target": "page", "new": "x"}]}
+    csf = tmp_path / "cs.json"; csf.write_text(json.dumps(cs))
+    rc = main(["notify", "--site", "s", "--changeset", str(csf),
+               "--approvals-dir", str(tmp_path / "appr"),
+               "--list-dir", str(tmp_path / "lists"),
+               "--bot-env", str(tmp_path / "bot.env"), "--chat-id", "42"],
+              os.environ, pusher=_no_push, token_maker=lambda: "T")
+    assert rc == 1  # validate schlägt an -> kein Push
+
+def test_notify_valid_creates_token_and_pushes(tmp_path):
+    (tmp_path / "bot.env").write_text('TELEGRAM_BOT_TOKEN="1:A"\n')
+    cs = {"site": "whitestag.film", "changes": [
+        {"url": "u", "field": "meta_description", "id": 1, "target": "page",
+         "new": "x" * 130}]}
+    csf = tmp_path / "cs.json"; csf.write_text(json.dumps(cs))
+    sent = []
+    rc = main(["notify", "--site", "whitestag.film", "--changeset", str(csf),
+               "--approvals-dir", str(tmp_path / "appr"),
+               "--list-dir", str(tmp_path / "lists"),
+               "--bot-env", str(tmp_path / "bot.env"), "--chat-id", "42"],
+              os.environ,
+              pusher=lambda *a, **k: sent.append((a, k)), token_maker=lambda: "TOK")
+    assert rc == 0
+    import seo_approvals as sa
+    rec = sa.load(str(tmp_path / "appr"), "TOK")
+    assert rec["site"] == "whitestag.film" and rec["status"] == "pending"
+    assert sent  # Push wurde ausgelöst
+
+def _no_push(*a, **k):
+    raise AssertionError("darf bei unsauberem Changeset nicht pushen")
+
+
+def test_reping_pings_only_stale_once(tmp_path):
+    (tmp_path / "bot.env").write_text('TELEGRAM_BOT_TOKEN="1:A"\n')
+    import seo_approvals as sa
+    ad = str(tmp_path / "appr")
+    sa.create(ad, "film", "/c.json", "/l.txt", 5, 0, 42, token="OLD", now=0.0)
+    pings = []
+    rc = main(["reping", "--approvals-dir", ad, "--bot-env", str(tmp_path / "bot.env"),
+               "--older-than-hours", "24"], os.environ,
+              pusher=lambda *a, **k: pings.append(a), now=100000.0)
+    assert rc == 0 and len(pings) == 1
+    # zweiter Lauf: last_reping gesetzt -> kein zweiter Ping
+    rc2 = main(["reping", "--approvals-dir", ad, "--bot-env", str(tmp_path / "bot.env"),
+                "--older-than-hours", "24"], os.environ,
+               pusher=lambda *a, **k: pings.append(a), now=100050.0)
+    assert len(pings) == 1
+
+
+def test_reping_does_not_clobber_concurrently_applied_token(tmp_path):
+    """Wird der Token zwischen list_pending() und dem reping-Write vom Bot auf
+    applied/rejected gesetzt (Race), darf reping den Status NICHT auf pending
+    zurückdrehen und darf 'last_reping' nicht auf den bereits erledigten
+    Datensatz schreiben."""
+    (tmp_path / "bot.env").write_text('TELEGRAM_BOT_TOKEN="1:A"\n')
+    import seo_approvals as sa
+    ad = str(tmp_path / "appr")
+    sa.create(ad, "film", "/c.json", "/l.txt", 5, 0, 42, token="RACE", now=0.0)
+
+    def _pusher_flips_status(*a, **k):
+        # simuliert den Bot, der den Token im Fenster zwischen Laden und
+        # Zurückschreiben bereits auf 'applied' setzt
+        sa.set_status(ad, "RACE", "applied")
+
+    rc = main(["reping", "--approvals-dir", ad, "--bot-env", str(tmp_path / "bot.env"),
+               "--older-than-hours", "24"], os.environ,
+              pusher=_pusher_flips_status, now=100000.0)
+    assert rc == 0
+    rec = sa.load(ad, "RACE")
+    assert rec["status"] == "applied"
+    assert not rec.get("last_reping")  # reping darf den applied-Datensatz nicht anfassen
+
+
 def test_resolve_corrects_target_from_where_id_found(tmp_path):
     sites = _write_sites(tmp_path)
     cs = tmp_path / "agent.json"

@@ -3,11 +3,18 @@
 Ein Token-JSON pro Freigabevorgang unter <base_dir>/<token>.json. Atomarer Write
 über tmp+rename. now/token injizierbar für deterministische Tests (Prod: os.urandom
 + time.time über die Default-None-Pfade)."""
-import json, os, time, tempfile
+import json, os, re, time, tempfile
 
 TTL_SECONDS = 7 * 24 * 3600
 
+_TOKEN_RE = re.compile(r"[A-Za-z0-9_-]+\Z")
+
+def _valid_token(token):
+    return isinstance(token, str) and bool(_TOKEN_RE.match(token))
+
 def _path(base_dir, token):
+    if not _valid_token(token):
+        raise ValueError(f"invalid token: {token!r}")
     return os.path.join(base_dir, token + ".json")
 
 def _write_atomic(path, data):
@@ -35,7 +42,11 @@ def create(base_dir, site, changeset_path, list_path, count, alt_count, chat_id,
 
 def load(base_dir, token):
     try:
-        with open(_path(base_dir, token), encoding="utf-8") as fh:
+        path = _path(base_dir, token)
+    except ValueError:
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
             return json.load(fh)
     except FileNotFoundError:
         return None

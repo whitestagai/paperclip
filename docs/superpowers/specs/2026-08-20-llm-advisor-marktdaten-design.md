@@ -225,3 +225,61 @@ Neu in `tests/test_market.py`:
    `huggingfaceUrl` wäre besonders wertvoll: an erfundenen Repo-Größen ist die 07.08.-Mail
    gescheitert.
 3. **Wirkt `timeoutSec: 1800`?** Zeigt der nächste reguläre Lauf (Montag 07:00).
+
+---
+
+## Umsetzung (2026-08-20/21): Entscheidungen und Abweichungen vom Plan
+
+Umgesetzt in sieben Tasks, `~/.paperclip/scripts/llm-advisor` `8b608bb..edaf5fe` (19 Commits,
+nach `main` gemergt). Tests **111 → 198**. Jeder Task durchlief ein eigenes Review; dazu ein
+abschließendes Whole-Branch-Review und eine Fix-Welle.
+
+**Der Plan war an fünf Stellen zu schwach; die Spec-Vorgabe „fail-closed" hat jeweils vorgerangen:**
+
+1. **Kein Shape-Guard an den JSON-Lesestellen.** Der Plan-Code rief `.get()` direkt auf dem
+   Parse-Ergebnis auf. Ein syntaktisch gültiger Body ohne Objekt-Toplevel (`null`, Array) ließ
+   `AttributeError` entkommen — in `fetch_aa` und `fetch_web` je reproduziert, in
+   `lade_ablehnungen` vorab abgefangen. Gelöst mit `isinstance`-Prüfung am Ort der Verwendung;
+   die `except`-Klauseln bleiben eng.
+2. **`_variante` erkannte nur zwei Schreibweisen.** Der reale AA-Katalog führt 36 Einträge als
+   `(Reasoning, Max Effort)`, `(Non-reasoning, High Effort)` oder `(Adaptive Reasoning, …)` —
+   alle wären als `unbekannt` durchgefallen. Reihenfolge ist dabei kritisch: `reasoning` ist
+   Teilstring von `non-reasoning`.
+3. **`waehle_variante` versprach im Docstring mehr als der Code hielt** (reiner Dict-Index ohne
+   Variantenvergleich); der Plan-Test konnte es nicht bemerken, weil er zwei verschiedene Slugs
+   verwendete und deshalb nie kollidierte.
+4. **Der Wächter hatte zwei Löcher und einen Konstruktionsfehler.** Der Plan-Regex verlangte die
+   Zahl unmittelbar hinter dem Label — deutsche Prosa („liegt bei", „beträgt") lief vorbei. Die
+   Modellerkennung prüfte nur den LM-Studio-Schlüssel, sodass ein Bericht mit AA-Slug den ganzen
+   Absatz durchwinkte. Und die Prüfung jeder Zahl gegen jedes genannte Modell erzeugte bei einem
+   **korrekten** Zwei-Modell-Vergleich vier Fehlalarme. Neu: Bindung jeder Zahl an genau ein
+   Modell plus `markt_zeile()` als Renderer — die Hälfte, die `evidence.py` längst hatte.
+5. **Die Ablehnungsliste erreichte `state/` nie** (kein Task kopierte die Vorlage) und griff dann
+   nur auf den exakten Schlüssel — ausgerechnet `qwen3.8-27b-mlx` blieb ungeschützt, obwohl der
+   Ablehnungsgrund genau die MLX-Variante betrifft. Abgleich läuft jetzt über `normalisiere()`.
+
+**Zwei Annahmen dieser Spec waren falsch:**
+
+- **„Läuft außerhalb des Agenten-Wallclock" stimmt nicht.** `collect_ist_zustand.py` ist
+  Schritt 1 des Agenten-Briefs; einen launchd-Job dafür gibt es nicht. Die Abrufe kosten also
+  genau das Zeitbudget, an dem zwei von drei Läufen starben. `fetch_aa` hat deshalb ein hartes
+  60-s-Wandbudget, und die Websuche wurde auf 1200 Zeichen je Quelle gedeckelt (Dokument
+  98.824 → 87.240 Zeichen).
+- **Der Kopierschritt der Ablehnungsliste lag zunächst außerhalb der Fangklausel.** Eine falsch
+  kodierte Vorlage (`UnicodeDecodeError`, kein `OSError`) hätte den ganzen Lauf beendet, bevor
+  das Dokument geschrieben wird — also die Telemetrie mitgerissen.
+
+**Vier bekannte Einschränkungen, bewusst offen gelassen:**
+
+1. Das 40-Zeichen-Fenster des Wächters hält nicht am Satzende. Korrekte Sätze wie
+   „Intelligence Index 29,69 bei 262.144 Token Kontext" lösen einen Fehlalarm aus. Fix bekannt
+   (Fenster am ersten satzbeendenden Zeichen stoppen), kostet bis dahin Iterationen.
+2. Tabellen mit Modellen in den **Spalten** statt in den Zeilen umgeht der Tabellenpfad — dort
+   ist ein stiller Durchlass möglich. Der Brief schreibt Modell-pro-Zeile vor.
+3. `markt_zeile()` entgeht dem eigenen Wächter bei ISO-Daten nur mit einem Zeichen Abstand;
+   nichts pinnt das fest.
+4. Zwei Ablehnungseinträge mit gleicher Normalform: der zweite fällt still weg (`setdefault`).
+
+**Offen:** der AA-Free-API-Key (bis dahin `status: "nicht_verfuegbar"`, `modelle` leer) und der
+`PATCH /api/routines/666f3c66` — bewusst erst nach dem Merge, weil der neue Brief auf
+`model_market` verweist.

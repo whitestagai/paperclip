@@ -148,6 +148,46 @@ describe("reconcileHealedStrandedIssues", () => {
     expect(calls).toEqual(["removeBlocker", "cancelRecoveryIssue", "wakeAgent"]);
   });
 
+  it("schliesst pro Durchlauf hoechstens so viele Vorfaelle wie erlaubt", async () => {
+    // Ohne Deckel wuerde der erste Lauf auf den Echtdaten 185 Issues auf einmal
+    // freigeben und ebenso viele Agenten wecken — genau die Sturmform, gegen die
+    // die Selbstheilung ihr maxConcurrentRevives hat.
+    const many = [1, 2, 3, 4, 5].map((n) => ({
+      ...RECOVERY,
+      id: `recovery-${n}`,
+      originId: `source-${n}`,
+    }));
+    const { deps } = makeDeps({ loadOpenStrandedRecoveries: async () => many });
+
+    const result = await reconcileHealedStrandedIssues(deps, { maxClosuresPerTick: 2 });
+
+    expect(result.closed).toBe(2);
+    expect(result.deferredOverBudget).toBe(3);
+  });
+
+  it("laesst den Rest unangetastet, statt ihn als erledigt zu zaehlen", async () => {
+    const many = [1, 2, 3].map((n) => ({ ...RECOVERY, id: `recovery-${n}` }));
+    const cancelRecoveryIssue = vi.fn(async () => {});
+    const { deps } = makeDeps({
+      loadOpenStrandedRecoveries: async () => many,
+      cancelRecoveryIssue,
+    });
+
+    await reconcileHealedStrandedIssues(deps, { maxClosuresPerTick: 1 });
+
+    expect(cancelRecoveryIssue).toHaveBeenCalledTimes(1);
+  });
+
+  it("arbeitet ohne Deckel weiter wie bisher", async () => {
+    const many = [1, 2, 3].map((n) => ({ ...RECOVERY, id: `recovery-${n}` }));
+    const { deps } = makeDeps({ loadOpenStrandedRecoveries: async () => many });
+
+    const result = await reconcileHealedStrandedIssues(deps);
+
+    expect(result.closed).toBe(3);
+    expect(result.deferredOverBudget).toBe(0);
+  });
+
   it("protokolliert jeden Abschluss — ein Waechter ohne Spur ist wertlos", async () => {
     const logAction = vi.fn(async () => {});
     const { deps } = makeDeps({ logAction });

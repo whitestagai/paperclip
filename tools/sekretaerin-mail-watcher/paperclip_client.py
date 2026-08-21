@@ -1,4 +1,8 @@
-"""Dünner, stdlib-only Client für die Paperclip Control-Plane (:3100)."""
+"""Dünner, stdlib-only Client für die Paperclip Control-Plane.
+
+Die Adresse kommt aus PAPERCLIP_API_URL; ohne die Variable bleibt es beim
+bisherigen http://localhost:3100.
+"""
 from __future__ import annotations
 
 import json
@@ -6,7 +10,17 @@ import os
 import urllib.error
 import urllib.request
 
-DEFAULT_BASE = "http://localhost:3100"
+FALLBACK_BASE = "http://localhost:3100"
+
+
+def api_base() -> str:
+    """Basis-URL der Control-Plane, ohne abschliessenden Slash."""
+    return os.environ.get("PAPERCLIP_API_URL", FALLBACK_BASE).rstrip("/")
+
+
+# Rueckwaertskompatibel: Aufrufer, die DEFAULT_BASE importieren, bekommen den
+# konfigurierten Wert statt der alten Konstante.
+DEFAULT_BASE = api_base()
 
 
 class ApiError(RuntimeError):
@@ -21,8 +35,16 @@ def load_token(auth_path: str | None = None) -> str:
     except (OSError, ValueError):
         return ""
     creds = (data or {}).get("credentials", {})
-    entry = creds.get(DEFAULT_BASE) or creds.get("http://127.0.0.1:3100") or {}
-    return entry.get("token", "")
+    # auth.json ist nach der URL geschluesselt, unter der der Token ausgestellt
+    # wurde. Erst die konfigurierte Adresse probieren, dann die historischen
+    # Schreibweisen, zuletzt den einzigen Eintrag (haeufigster Fall).
+    for key in (api_base(), FALLBACK_BASE, "http://127.0.0.1:3100"):
+        entry = creds.get(key)
+        if entry:
+            return entry.get("token", "")
+    if len(creds) == 1:
+        return next(iter(creds.values())).get("token", "")
+    return ""
 
 
 def _post(url: str, token: str, payload: dict) -> dict:

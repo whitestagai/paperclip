@@ -2,7 +2,8 @@
 import json
 import os
 
-API_BASE = "http://127.0.0.1:3100/api"
+PAPERCLIP_BASE = os.environ.get("PAPERCLIP_API_URL", "http://127.0.0.1:3100").rstrip("/")
+API_BASE = f"{PAPERCLIP_BASE}/api"
 AUTH_JSON = os.path.expanduser("~/.paperclip/auth.json")
 ENV_PATH = os.path.expanduser("~/.paperclip/voice-echo-bot.env")
 WHITESTAG_ENV = os.path.expanduser("~/.whitestag.env")
@@ -27,10 +28,21 @@ def load_env(path):
 
 
 def load_paperclip_token(auth_path=AUTH_JSON):
-    """Liest das Board-Token aus der auth.json (auto-renewt)."""
+    """Liest das Board-Token aus der auth.json (auto-renewt).
+
+    Die auth.json ist nach der URL geschluesselt, unter der der Token
+    ausgestellt wurde. Erst die konfigurierte Adresse probieren, dann die
+    historischen Schreibweisen, zuletzt den einzigen Eintrag.
+    """
     with open(auth_path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
-    return data["credentials"]["http://localhost:3100"]["token"]
+    creds = data["credentials"]
+    for key in (PAPERCLIP_BASE, "http://localhost:3100", "http://127.0.0.1:3100"):
+        if key in creds:
+            return creds[key]["token"]
+    if len(creds) == 1:
+        return next(iter(creds.values()))["token"]
+    raise KeyError(f"Kein Token fuer {PAPERCLIP_BASE} in {auth_path}")
 
 
 # --- Rückkanal + Mehrmandanten ---

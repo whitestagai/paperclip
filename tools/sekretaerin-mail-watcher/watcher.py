@@ -33,7 +33,7 @@ import office_inbox as office_inbox  # noqa: E402
 
 WALTER_SENDERS = ("w.schonenbrocher", "walter", "ws@whitestag.ai")
 
-BASE = "http://localhost:3100"
+BASE = os.environ.get("PAPERCLIP_API_URL", "http://localhost:3100").rstrip("/")
 COMPANY = "9cebf3cf-efe8-4597-a400-f06488900a87"
 AGENT = "e24b8d9d-143e-4141-b413-4361aa618771"
 MAILDIR = Path.home() / "Obsidian" / "WHITESTAG-Vault" / "E-Mails"

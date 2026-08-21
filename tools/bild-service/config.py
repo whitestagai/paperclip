@@ -26,7 +26,7 @@ def read_secret(path, key):
 
     raise RuntimeError(f"{key} nicht in Secrets-File gefunden: {path}")
 
-PAPERCLIP_BASE = "http://localhost:3100"
+PAPERCLIP_BASE = os.environ.get("PAPERCLIP_API_URL", "http://localhost:3100").rstrip("/")
 AUTH_JSON = os.path.expanduser("~/.paperclip/auth.json")
 SECRETS_ENV = os.path.expanduser("~/.paperclip/instances/default/secrets/openai_image.env")
 MAIL_SECRET_ENV = os.path.expanduser("~/.paperclip/instances/default/secrets/mailhub.env")

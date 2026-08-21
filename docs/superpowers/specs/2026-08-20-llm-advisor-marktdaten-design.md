@@ -1,7 +1,7 @@
 # LLM-Advisor: Marktdaten aus dem Skript statt Recherche im Agenten
 
 **Datum:** 2026-08-20
-**Status:** freigegeben, Umsetzung ausstehend
+**Status:** umgesetzt und nach `main` gemergt (21.08.); offen sind der AA-API-Key und der Routine-PATCH
 **Auslöser:** Schritt 3 des Routine-Briefs („Web-Recherche — deine Kernaufgabe") ist seit
 dem Trägerwechsel am 31.07. nicht ausführbar
 **Betroffen:** `~/.paperclip/scripts/llm-advisor/` (host-lokales Git-Repo, kein Remote),

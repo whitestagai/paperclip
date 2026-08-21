@@ -1,0 +1,41 @@
+{
+  "report_root": "~/.paperclip/seo-geo",
+  "sites": [
+    {
+      "name": "whitestag.ai",
+      "url": "https://www.whitestag.ai",
+      "wp_rest_base": "https://www.whitestag.ai/wp-json",
+      "credential_ref": "WHITESTAG_AI_WP",
+      "crawl_limit": 100,
+      "seo_plugin": "yoast",
+      "gsc_property": "https://www.whitestag.ai/"
+    },
+    {
+      "name": "whitestag.film",
+      "url": "https://www.whitestag.film",
+      "wp_rest_base": "https://www.whitestag.film/wp-json",
+      "credential_ref": "WHITESTAG_FILM_WP",
+      "crawl_limit": 160,
+      "seo_plugin": "yoast",
+      "gsc_property": "https://www.whitestag.film/"
+    },
+    {
+      "name": "whitestag.de",
+      "url": "https://whitestag.de",
+      "wp_rest_base": "https://whitestag.de/wp-json",
+      "credential_ref": "WHITESTAG_DE_WP",
+      "crawl_limit": 60,
+      "seo_plugin": "yoast",
+      "gsc_property": "https://whitestag.de/"
+    },
+    {
+      "name": "virtuelle-lausitz.de",
+      "url": "https://virtuelle-lausitz.de",
+      "wp_rest_base": "https://virtuelle-lausitz.de/wp-json",
+      "credential_ref": "VIRTUELLE_LAUSITZ_WP",
+      "crawl_limit": 60,
+      "seo_plugin": "yoast",
+      "gsc_property": "https://virtuelle-lausitz.de/"
+    }
+  ]
+}

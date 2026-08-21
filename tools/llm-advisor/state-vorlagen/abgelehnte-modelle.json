@@ -1,0 +1,8 @@
+[
+  {
+    "modell": "qwen3.8-27b",
+    "abgelehnt_am": "2026-08-17",
+    "grund": "MLX-Variante laesst reasoning_effort=none nicht zu; der Denkmodus laeuft davon (28,3 s / 2.236 Token). Nur auf der RTX mit abgeschaltetem Denken brauchbar.",
+    "quelle": "project_qwen38_bewertung_und_adapter_reasoning_luecke"
+  }
+]

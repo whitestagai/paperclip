@@ -269,16 +269,24 @@ abschließendes Whole-Branch-Review und eine Fix-Welle.
   kodierte Vorlage (`UnicodeDecodeError`, kein `OSError`) hätte den ganzen Lauf beendet, bevor
   das Dokument geschrieben wird — also die Telemetrie mitgerissen.
 
-**Vier bekannte Einschränkungen, bewusst offen gelassen:**
+**Einschränkung 1 ist behoben (21.08., Commit `3179c70`):** Das Vorwärtsfenster prüfte alle
+Zahlen, obwohl hinter der ersten praktisch immer Kontext steht — Kontextlänge, RAM, Skala,
+Delta, Vorwochenwert. Fünf natürliche korrekte Sätze lösten dadurch Fehlalarm aus. Jetzt zählt
+nur die erste Zahl hinter dem Label, und das Satzende begrenzt das Fenster zusätzlich. Dabei
+musste ein Test weichen, der verlangte, „(Vorwoche 27,1)" zu beanstanden: zu Ende gedacht wäre
+damit jede Vorwochenangabe ein Befund und die von `evaluate_history.py` verlangte Berichtsform
+verboten. **Ein Wächter darf nicht verbieten, was er nicht prüfen kann.**
 
-1. Das 40-Zeichen-Fenster des Wächters hält nicht am Satzende. Korrekte Sätze wie
-   „Intelligence Index 29,69 bei 262.144 Token Kontext" lösen einen Fehlalarm aus. Fix bekannt
-   (Fenster am ersten satzbeendenden Zeichen stoppen), kostet bis dahin Iterationen.
-2. Tabellen mit Modellen in den **Spalten** statt in den Zeilen umgeht der Tabellenpfad — dort
+**Drei bekannte Einschränkungen bleiben offen:**
+
+1. Tabellen mit Modellen in den **Spalten** statt in den Zeilen umgeht der Tabellenpfad — dort
    ist ein stiller Durchlass möglich. Der Brief schreibt Modell-pro-Zeile vor.
-3. `markt_zeile()` entgeht dem eigenen Wächter bei ISO-Daten nur mit einem Zeichen Abstand;
-   nichts pinnt das fest.
-4. Zwei Ablehnungseinträge mit gleicher Normalform: der zweite fällt still weg (`setdefault`).
+2. `markt_zeile()` entgeht dem eigenen Wächter bei ISO-Daten nur mit einem Zeichen Abstand;
+   nichts pinnt das fest. Gegen die Live-Daten geprüft: alle 17 Zeilen sauber.
+3. Zwei Ablehnungseinträge mit gleicher Normalform: der zweite fällt still weg (`setdefault`).
+
+Dazu ein Rest-Fehlalarm, im Brief statt im Code adressiert: die Aufzählungsform „Intelligence
+Index und Coding Index liegen bei 29,7 und 43,4" ordnet die erste Zahl dem zweiten Label zu.
 
 **Beides erledigt (21.08.):** Routine-Brief gepatcht (Revision 11, verifiziert) und der
 AA-Free-API-Key gesetzt.

@@ -212,6 +212,33 @@ export async function reconcileHealedStrandedIssues(
   return result;
 }
 
+let running = false;
+let lastTickAt = 0;
+
+/**
+ * Getakteter Einstieg fuer den Scheduler. `index.ts` ruft mit `void` — ohne die
+ * `running`-Sperre laufen bei langsamer Datenbank zwei Durchlaeufe parallel und
+ * der Deckel gilt je Durchlauf statt global.
+ */
+export async function tickIncidentClosure(
+  deps: IncidentClosureDeps,
+  options: { enabled: boolean; minIntervalMs: number; maxClosuresPerTick: number },
+): Promise<IncidentClosureResult | null> {
+  if (!options.enabled) return null;
+  if (running) return null;
+  const now = Date.now();
+  if (now - lastTickAt < options.minIntervalMs) return null;
+  lastTickAt = now;
+  running = true;
+  try {
+    return await reconcileHealedStrandedIssues(deps, {
+      maxClosuresPerTick: options.maxClosuresPerTick,
+    });
+  } finally {
+    running = false;
+  }
+}
+
 /** Laeufe, die als „auf diesem Issue wird gerade gearbeitet" zaehlen. */
 const ACTIVE_RUN_STATUSES = ["queued", "running", "scheduled_retry"] as const;
 

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   reconcileHealedStrandedIssues,
+  tickIncidentClosure,
   type IncidentClosureDeps,
 } from "./incident-closure.js";
 
@@ -200,5 +201,52 @@ describe("reconcileHealedStrandedIssues", () => {
         action: "recovery.incident_closed",
       }),
     );
+  });
+});
+
+describe("tickIncidentClosure", () => {
+  const TICK_OPTS = { enabled: true, minIntervalMs: 0, maxClosuresPerTick: 10 };
+
+  it("tut nichts, solange der Schalter aus ist", async () => {
+    const loadOpenStrandedRecoveries = vi.fn(async () => [RECOVERY]);
+    const { deps } = makeDeps({ loadOpenStrandedRecoveries });
+
+    await expect(tickIncidentClosure(deps, { ...TICK_OPTS, enabled: false })).resolves.toBeNull();
+    expect(loadOpenStrandedRecoveries).not.toHaveBeenCalled();
+  });
+
+  it("startet keinen zweiten Durchlauf, solange der erste laeuft", async () => {
+    // index.ts ruft mit `void`. Ohne Sperre laufen bei langsamer DB zwei
+    // Durchlaeufe parallel und der Deckel gilt je Durchlauf statt global.
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const loadOpenStrandedRecoveries = vi.fn(async () => {
+      await blocked;
+      return [];
+    });
+    const { deps } = makeDeps({ loadOpenStrandedRecoveries });
+
+    const first = tickIncidentClosure(deps, TICK_OPTS);
+    await expect(tickIncidentClosure(deps, TICK_OPTS)).resolves.toBeNull();
+    expect(loadOpenStrandedRecoveries).toHaveBeenCalledTimes(1);
+
+    release();
+    await expect(first).resolves.toMatchObject({ closed: 0 });
+  });
+
+  it("gibt die Sperre auch frei, wenn der Durchlauf wirft", async () => {
+    const { deps } = makeDeps({
+      loadOpenStrandedRecoveries: async () => {
+        throw new Error("DB weg");
+      },
+    });
+
+    await expect(tickIncidentClosure(deps, TICK_OPTS)).rejects.toThrow("DB weg");
+    // Ohne finally-Freigabe waere der Waechter ab hier dauerhaft tot.
+    await expect(
+      tickIncidentClosure(makeDeps().deps, TICK_OPTS),
+    ).resolves.toMatchObject({ closed: 1 });
   });
 });

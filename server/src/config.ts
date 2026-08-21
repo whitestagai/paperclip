@@ -92,6 +92,11 @@ export interface Config {
     endpointDownAlertMs: number;
     maxConcurrentRevives: number;
   };
+  incidentClosure: {
+    enabled: boolean;
+    minIntervalMs: number;
+    maxClosuresPerTick: number;
+  };
   companyDeletionEnabled: boolean;
   telemetryEnabled: boolean;
 }
@@ -350,6 +355,15 @@ export function loadConfig(): Config {
       // Deckel pro Tick: verhindert, dass ein Endpoint-Ausfall mit 40 toten
       // Agenten in einem Schlag 40 Runs erzeugt.
       maxConcurrentRevives: Math.max(1, Number(process.env.AGENT_SELF_HEAL_MAX_CONCURRENT_REVIVES) || 5),
+    },
+    incidentClosure: {
+      // Default AUS: der erste Lauf auf gewachsenen Daten gibt hunderte
+      // geparkte Issues frei. Das ist gewollt, aber es soll bewusst
+      // eingeschaltet werden, nicht durch ein Deployment passieren.
+      enabled: process.env.INCIDENT_CLOSURE_ENABLED === "true",
+      minIntervalMs: Math.max(60_000, Number(process.env.INCIDENT_CLOSURE_MIN_INTERVAL_MS) || 300_000),
+      // Deckel pro Tick — der Rest kommt beim naechsten Durchlauf dran.
+      maxClosuresPerTick: Math.max(1, Number(process.env.INCIDENT_CLOSURE_MAX_PER_TICK) || 10),
     },
     companyDeletionEnabled,
     telemetryEnabled: fileConfig?.telemetry?.enabled ?? true,

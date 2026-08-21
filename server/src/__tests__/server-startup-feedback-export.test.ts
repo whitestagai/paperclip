@@ -112,6 +112,13 @@ vi.mock("@paperclipai/db", () => ({
   companies: {},
   companyMemberships: {},
   instanceUserRoles: {},
+  // Vom Vorfall-Abschluss (services/recovery/incident-closure.ts) gebraucht,
+  // den index.ts fuer den Scheduler laedt.
+  activityLog: {},
+  agentSelfHealLedger: {},
+  heartbeatRuns: {},
+  issueRelations: {},
+  issues: {},
 }));
 
 vi.mock("../app.js", () => ({

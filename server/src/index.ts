@@ -40,6 +40,10 @@ import {
   selfHealTickIsNoteworthy,
   tickAgentSelfHeal,
 } from "./services/recovery/agent-self-heal.js";
+import {
+  createIncidentClosureDeps,
+  tickIncidentClosure,
+} from "./services/recovery/incident-closure.js";
 import { createFeedbackTraceShareClientFromConfig } from "./services/feedback-share-client.js";
 import { buildRuntimeApiCandidateUrls, choosePrimaryRuntimeApiUrl } from "./runtime-api.js";
 import { createPluginWorkerManager } from "./services/plugin-worker-manager.js";
@@ -683,6 +687,7 @@ export async function startServer(): Promise<StartedServer> {
     // Einmalig erzeugen statt pro Tick: der Wächter braucht nur `heartbeat.wakeup`
     // und baut sich seinen Agenten-Service selbst (siehe agent-self-heal.ts).
     const selfHealDeps = createSelfHealDeps(db as any, { heartbeat });
+    const incidentClosureDeps = createIncidentClosureDeps(db as any, { heartbeat });
 
     // Reap orphaned running runs at startup while in-memory execution state is empty,
     // then resume any persisted queued runs that were waiting on the previous process.
@@ -764,6 +769,22 @@ export async function startServer(): Promise<StartedServer> {
         })
         .catch((err) => {
           logger.error({ err }, "agent self-heal tick failed");
+        });
+
+      // Gegenstueck zur Selbstheilung: die holt den Arbeiter zurueck, das hier
+      // holt seine geparkte Arbeit zurueck.
+      void tickIncidentClosure(incidentClosureDeps, {
+        enabled: config.incidentClosure.enabled,
+        minIntervalMs: config.incidentClosure.minIntervalMs,
+        maxClosuresPerTick: config.incidentClosure.maxClosuresPerTick,
+      })
+        .then((result) => {
+          if (result && (result.closed > 0 || result.failed > 0)) {
+            logger.warn({ ...result }, "Vorfall-Abschluss gab geparkte Arbeit frei");
+          }
+        })
+        .catch((err) => {
+          logger.error({ err }, "incident closure tick failed");
         });
 
       // Periodically reap orphaned runs (5-min staleness threshold) and make sure

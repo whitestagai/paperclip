@@ -1,7 +1,7 @@
 # LLM-Advisor: Marktdaten aus dem Skript statt Recherche im Agenten
 
 **Datum:** 2026-08-20
-**Status:** umgesetzt und nach `main` gemergt (21.08.); offen sind der AA-API-Key und der Routine-PATCH
+**Status:** live seit 21.08. — umgesetzt, gemergt, Routine-Brief gepatcht (Rev. 11), AA-Key gesetzt
 **Auslöser:** Schritt 3 des Routine-Briefs („Web-Recherche — deine Kernaufgabe") ist seit
 dem Trägerwechsel am 31.07. nicht ausführbar
 **Betroffen:** `~/.paperclip/scripts/llm-advisor/` (host-lokales Git-Repo, kein Remote),
@@ -280,6 +280,32 @@ abschließendes Whole-Branch-Review und eine Fix-Welle.
    nichts pinnt das fest.
 4. Zwei Ablehnungseinträge mit gleicher Normalform: der zweite fällt still weg (`setdefault`).
 
-**Offen:** der AA-Free-API-Key (bis dahin `status: "nicht_verfuegbar"`, `modelle` leer) und der
-`PATCH /api/routines/666f3c66` — bewusst erst nach dem Merge, weil der neue Brief auf
-`model_market` verweist.
+**Beides erledigt (21.08.):** Routine-Brief gepatcht (Revision 11, verifiziert) und der
+AA-Free-API-Key gesetzt.
+
+### Was der erste echte Abruf zeigte
+
+Die Free-API liefert **610 Modelle**. Die defensive Kandidatenliste in `kennzahlen()` traf auf
+Anhieb — die Feldnamen lauten `artificial_analysis_intelligence_index`, `…_coding_index`,
+`…_agentic_index` unter `evaluations`. **Nicht enthalten** sind `is_open_weights`,
+`context_window_tokens` und `huggingfaceUrl`; die offene Frage 2 dieser Spec ist damit
+beantwortet, die Repo-Größen bleiben ohne Quelle.
+
+**Zwei Lücken, die erst echte Daten zeigten** (behoben, Commit `c83b142`):
+
+1. **`lm_keys` kam allein aus `models_on_disk`** — also aus `lms ls` dieses Geräts. Modelle auf
+   dem remote gelinkten MacBook fehlen darin, und dort liegt `gemma-4-31b-it-mlx`. Der Advisor
+   bewertete damit ausgerechnet das Modell nicht, das **22 seiner Agenten fahren**; insgesamt
+   blieben 26 von 40 Agenten ohne Marktzahlen. Jetzt zählt die Vereinigung aus Platte und real
+   zugewiesenen Agenten-Modellen — Abdeckung **39 von 40** (offen nur `openbiollm`, bei AA
+   zu Recht nicht gelistet).
+2. **Overrides trafen nur den rohen Schlüssel**, sodass
+   `mistral-small-3.2-24b-instruct-2506-mlx` am Eintrag für seine eigene Basis vorbeilief.
+   Sie greifen jetzt auch über die Normalform, der rohe Treffer behält Vorrang. Dieselbe Lücke
+   hatte zuvor schon die Ablehnungsliste — dasselbe Muster, zweimal übersehen.
+
+**Gegen Live-Daten verifiziert:** alle 17 gerenderten `zeile`-Sätze passieren den eigenen
+Wächter, einzeln und als 3.642-Zeichen-Gesamtbericht; eine eingebaute Fälschung wird in allen
+drei deutschen Satzformen gefangen. Damit ist auch Einschränkung 3 (die Ein-Zeichen-Marge bei
+ISO-Daten) praktisch entschärft, aber weiterhin nicht durch einen Test festgenagelt.
+203 Tests grün.

@@ -18,6 +18,11 @@ afterEach(async () => {
   await Promise.all(cleanup.splice(0).map((candidate) => fs.rm(candidate, { recursive: true, force: true })));
 });
 
+// Spawn-level confinement is built on Bubblewrap and refuses to run off Linux
+// (see buildLocalProcessSandboxSpawnTarget). The parsing tests below are
+// platform-independent; the ones that actually build a spawn target are not.
+const itOnLinux = it.skipIf(process.platform !== "linux");
+
 describe("local process sandbox", () => {
   it("parses read-only and writable extra paths", () => {
     expect(parseLocalProcessSandboxExtraPaths(["/opt/cache", { path: "/var/lib/tool", access: "rw" }])).toEqual([
@@ -40,7 +45,7 @@ describe("local process sandbox", () => {
     expect(() => parseLocalProcessNetworkScope("public")).toThrow('"deny" or "allowlist"');
   });
 
-  it("builds a fresh-root bubblewrap command with workspace access", async () => {
+  itOnLinux("builds a fresh-root bubblewrap command with workspace access", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-fs-sandbox-"));
     cleanup.push(root);
     const workspace = path.join(root, "workspace");
@@ -67,7 +72,7 @@ describe("local process sandbox", () => {
     expect(target.args.slice(-3)).toEqual([process.execPath, "-e", "console.log('ok')"]);
   });
 
-  it("builds a network-only namespace without changing filesystem visibility", async () => {
+  itOnLinux("builds a network-only namespace without changing filesystem visibility", async () => {
     const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-network-sandbox-"));
     cleanup.push(workspace);
     const target = await buildLocalProcessSandboxSpawnTarget({
@@ -83,7 +88,7 @@ describe("local process sandbox", () => {
     expect(target.env?.HTTP_PROXY).toBeUndefined();
   });
 
-  it("forwards allowed proxy targets and rejects other hosts", async () => {
+  itOnLinux("forwards allowed proxy targets and rejects other hosts", async () => {
     const workspace = await fs.mkdtemp(path.join(os.tmpdir(), "paperclip-network-proxy-"));
     cleanup.push(workspace);
     const server = http.createServer((_request, response) => response.end("allowed-response"));

@@ -1,7 +1,7 @@
 # Design: Vorfall-Abschluss — die geparkte Arbeit kommt zurück
 
 - **Datum:** 2026-08-17
-- **Status:** Entwurf zur Freigabe
+- **Status:** **Umgesetzt am 2026-08-21** (Branch `feat/vorfall-abschluss`). Scharfschalten fehlt noch — siehe §11.
 - **Auslöser:** Seit dem 17.08. holt die Agenten-Selbstheilung gestrandete Agenten zurück (`docs/superpowers/specs/2026-07-24-agent-self-heal-design.md`, Baustein A). Der Agent lebt danach wieder — **seine Arbeit nicht.** Das Abschluss-Review formulierte es so: „Recovery parkt die Arbeit, Selbstheilung weckt den Arbeiter, niemand bringt beide zusammen."
 
 ## 1. Problem
@@ -95,3 +95,62 @@ Für diesen Entwurf ist das eher hilfreich (im Zweifel kommt Arbeit zurück, sta
 ## 10. Deploy
 
 Wie Baustein A: Merge in den Arbeitsbranch des Hauptbaums, `launchctl kickstart -k gui/501/ing.paperclip.dev`, vorher prüfen dass keine `heartbeat_runs` laufen. Keine Migration nötig — es wird nur gelesen, was schon da ist.
+
+---
+
+## 11. Umsetzung (2026-08-21)
+
+Umgesetzt auf `feat/vorfall-abschluss`, drei Commits. Der Zuschnitt aus §6 blieb
+erhalten; zwei Dinge kamen anders als entworfen.
+
+### Abweichung 1 — `removeRecoveryBlockerFromSource` war nicht wiederverwendbar
+
+§5.4a nennt die vorhandene Funktion. Sie beginnt aber mit
+`parseLivenessIncidentKey(recovery.originId)` und liefert `false`, sobald das
+fehlschlägt. Bei `stranded_issue_recovery` ist `originId` **direkt die
+Quell-Issue-ID** (`heartbeat.ts:2689`), kein zusammengesetzter Liveness-Schlüssel
+— die Funktion hätte hier stillschweigend nie etwas getan.
+
+Deshalb ein eigener Blocker-Pfad in `createIncidentClosureDeps`. Er benutzt
+dieselben Operationen (`issue_relations` lesen, `issuesSvc.update` mit
+`blockedByIssueIds`), nur ohne den Schlüssel-Parser. Der Grundsatz aus §2 —
+kein zweiter Entblock-*Mechanismus* — bleibt gewahrt.
+
+### Abweichung 2 — Deckel pro Durchlauf (neu)
+
+Auf den Echtdaten vom 21.08. stehen **233 offene Recovery-Issues, davon würden
+185 sofort schließen**. Ohne Bremse gibt der erste Tick alle auf einmal frei und
+weckt ebenso viele Agenten — dieselbe Sturmform, gegen die die Selbstheilung ihr
+`maxConcurrentRevives` hat. Neu: `maxClosuresPerTick` (Default 10), der Rest
+kommt beim nächsten Durchlauf dran. Ergebnisfeld `deferredOverBudget`.
+
+### Scharfschalten steht aus
+
+`INCIDENT_CLOSURE_ENABLED` ist bewusst **opt-in** (`=== "true"`), anders als der
+Selbstheiler (`!== "false"`). Ein Deployment allein darf 185 Freigaben nicht
+auslösen. Bei 10 pro Tick und 5 Minuten Intervall braucht der Abbau des
+Altbestands rund 15 Stunden — das ist gewollt langsam.
+
+Vorschlag für den ersten Lauf: `INCIDENT_CLOSURE_MAX_PER_TICK=2` setzen, einen
+Tick beobachten (`activity_log`, `action = 'recovery.incident_closed'`), dann
+hochdrehen.
+
+### Testabdeckung
+
+25 Tests, alle grün: 8 rein auf `decideIncidentClosure`, 17 auf Durchlauf und
+Takt, dazu 4 gegen eingebettete Postgres auf die Evidenz-Abfrage und 4
+end-to-end auf die Verdrahtung. Die Deps-Fabrik entstand
+implementierungsgetrieben; ihre Integrationstests sind deshalb per
+Mutationsprobe auf Wirksamkeit geprüft (Blocker-Entfernung und Weckruf-Payload
+je einzeln gebrochen, beide Male schlug der Test an).
+
+Die übrige Suite ist unverändert: 6 rote Dateien vor und nach der Änderung,
+identische Zahlen (31 Fehlschläge). Sie sind vorbestehend und liegen in
+`workspace-runtime`, `heartbeat-*` und `acpx-local`.
+
+### §8 gilt unverändert
+
+`resolveSelfHealLedgerForAgent` schließt weiterhin **alle** offenen Zeilen eines
+Agenten. Ein Agent mit zwei unabhängigen Störungen bekommt mit einem
+erfolgreichen Lauf beide zu. Für diesen Baustein ist das die gutmütige Richtung;
+der Punkt bleibt für das gemeinsame Vorfall-Register (C) stehen.

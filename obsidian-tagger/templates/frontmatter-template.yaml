@@ -126,16 +126,24 @@ ignoriere:
 # 5) LLM-VERHALTEN
 # ---------------------------------------------------------------------
 llm:
-  modell: "qwen3.6-35b-a3b-mlx"
-  # Begründung: bestes Verhältnis Qualität/Speed für strukturierte
-  # Extraktion auf Deutsch; folgt JSON-Schemas zuverlässig.
-  # WICHTIG: Der nächtliche Lauf (01:00) braucht ein Modell auf einem
-  # 24/7-Gerät. qwen3.6 liegt lokal (ctx 98304); mistral-small-3.2-24b
-  # liegt auf der RTX Pro 6000 (ctx 8192), die nachts nicht sicher läuft.
-  # qwen3.6 antwortet nur in reasoning_content — tagger.py fängt das ab.
-  # Alternativen falls zu langsam:
-  #   - google/gemma-4-12b      (ebenfalls lokal)
-  #   - mistral-small-3.2-24b-instruct-2506  (RTX, nur wenn Gerät läuft)
+  modell: "gemma4-31b-it"
+  # Geändert 2026-08-22. Vorher stand hier "qwen3.6-35b-a3b-mlx" — diese ID
+  # existiert seit der Migration auf die RTX nicht mehr, LM Studio antwortete
+  # mit "Invalid model identifier". Aufgefallen war es nicht, weil der Tagger
+  # bei null zu bearbeitenden Dateien nie ein LLM anfasst.
+  #
+  # Begründung für gemma4-31b-it (RTX Pro 6000, Q8_0, ctx 98304):
+  #   - Reasoning ist in seiner Jinja-Vorlage fest abgeschaltet (0 Denk-Token
+  #     verifiziert) — genau der Fehlermodus, an dem der Tagger 2026 schon
+  #     einmal 51 Tage lang starb (qwen3.6 legte das JSON in reasoning_content).
+  #   - Die RTX läuft seit 22.08. rund um die Uhr, der 01:00-Lauf ist gedeckt.
+  #   - Gemessen an einer echten Vault-Datei: kompletter Lauf 9,6 s.
+  # Gegengetestet und verworfen:
+  #   - google/gemma-4-12b (Mac Studio): funktioniert, aber ~143 s je Datei
+  #     und ~615 Denk-Token, dünnere Zusammenfassung.
+  #   - gemma-4-31b-it-mlx (MacBook via LM Link): LLM-FEHLER "timed out".
+  # Ausweich, falls die RTX doch einmal fehlt: google/gemma-4-12b (lokal,
+  # Mac Studio, 24/7) — langsam, aber liefert schema-konform.
   endpoint: "http://127.0.0.1:1234/v1/chat/completions"
   temperatur: 0.2
   max_input_chars: 8000   # Notiz wird ggf. gekürzt

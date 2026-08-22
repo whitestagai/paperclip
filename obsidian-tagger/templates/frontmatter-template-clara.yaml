@@ -155,7 +155,17 @@ ignoriere:
   min_zeichen: 50
 
 llm:
-  modell: "mistral-small-3.2-24b-instruct-2506"
+  modell: "gemma4-31b-it"
+  # Geändert 2026-08-22. Vorher "mistral-small-3.2-24b-instruct-2506" — ohne
+  # das "-mlx"-Suffix, unter dem LM Studio das Modell heute führt; die ID war
+  # tot ("Invalid model identifier"). Statt nur das Suffix nachzuziehen, geht
+  # dieser Vault auf dasselbe Modell wie der WHITESTAG-Vault: eine Instanz
+  # weniger, die am Leben bleiben muss.
+  # Gemessen an einer Clara-Testnotiz (Konzert/Soundcheck): kompletter Lauf
+  # 5,3 s, Tags aus dem Vokabular unten, treffende Zusammenfassung.
+  # mistral-…-mlx liefert dort ebenfalls sauber, liegt aber auf dem MacBook
+  # hinter LM Link — dieselbe Strecke, auf der gemma-4-31b-it-mlx beim
+  # WHITESTAG-Test in den Timeout lief.
   endpoint: "http://127.0.0.1:1234/v1/chat/completions"
   temperatur: 0.2
   max_input_chars: 8000

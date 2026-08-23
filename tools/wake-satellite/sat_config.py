@@ -65,12 +65,22 @@ TTS_FORMAT = "mp3_44100_128"
 # gesprochenes Deutsch natuerlicher. Der Preis ist gemessen und bewusst:
 #   mistral-small-24b (RTX, lokal)  1,8 / 0,9 / 0,9 s
 #   gemma-4-31b-it-mlx (MacBook)    4,1 / 3,2 / 3,2 s
-# Das Modell liegt auf dem MacBook (`lms ps` -> MacbookM5Mx128), der
-# Sprachpfad haengt damit an LM Link statt nur am Studio. Abgefedert durch
-# den Fallback in llm.chat(): weil CHAT_MODEL hier == llm.FALLBACK_MODEL
-# ist, weicht der Modul-Default auf llm.DEFAULT_MODEL aus — ein lokales
-# Netz unter dem entfernten Modell. Zurueck geht es mit einer Zeile.
-CHAT_MODEL = "gemma-4-31b-it-mlx"
+#
+# 22.08.2026 auf die GGUF-Q8-Kopie derselben Gemma umgestellt, die jetzt auf
+# der RTX liegt. Gleiches Modell, gleiche Sprachqualitaet, nur schneller —
+# unter laufender Flottenlast gemessen (dieselben drei Fragen, ohne
+# max_tokens, deshalb hoeher als die Werte oben):
+#   gemma4-31b-it (RTX)              19,3 / 9,7 / 6,3 s
+#   gemma-4-31b-it-mlx (MacBook)    108,1 / 32,0 /  -   s
+# Das MacBook traegt weiterhin 7 aktive n8n-Workflows, zwei Reports und den
+# Fallback von 14 Agenten bei ~2 GB freiem RAM; daher der Einbruch.
+#
+# NEBENEFFEKT auf den Fallback in llm.chat(): CHAT_MODEL ist jetzt NICHT mehr
+# gleich llm.FALLBACK_MODEL, also greift kein Ausweichen auf DEFAULT_MODEL
+# mehr — das Netz ist ab sofort `gemma-4-31b-it-mlx` auf dem MacBook. Also
+# gleiche Modellqualitaet im Fallback statt Abstieg auf die 12b, und weiterhin
+# ein ANDERES Geraet als der Primaerpfad. Zurueck geht es mit einer Zeile.
+CHAT_MODEL = "gemma4-31b-it"
 
 # Mandant fest verdrahtet.
 TENANT = {

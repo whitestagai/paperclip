@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>de.whitestag.mlx-fallback-waechter</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/walterschonenbrocher/.paperclip-scripts/mlx-fallback-waechter.sh</string>
+  </array>
+  <key>StartInterval</key><integer>900</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/walterschonenbrocher/.paperclip-logs/mlx-waechter.out</string>
+  <key>StandardErrorPath</key><string>/Users/walterschonenbrocher/.paperclip-logs/mlx-waechter.err</string>
+</dict>
+</plist>

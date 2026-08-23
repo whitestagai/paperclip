@@ -9,7 +9,8 @@ ins Kontextfenster passen muss.
 Vergleicht den realen Bedarf (Perzentile über die Vorwoche, MAX über 30 Tage) mit
 dem KONFIGURIERTEN Kontextfenster je Modell (aus den LM-Studio-Model-Configs) und
 vergibt eine Ampel:
-  ROT   = konfiguriert < p99      -> Overflow-Risiko (Kontext wird abgeschnitten)
+  ROT   = gezählte "Context size has been exceeded"-Fehler in der Vorwoche
+          (harter Beweis, überstimmt alles Weitere) ODER konfiguriert < p99
   GELB  = konfiguriert > 3x p99   -> überdimensioniert (RAM-Verschwendung)
           ODER konfiguriert < 1.2x p99 -> zu wenig Puffer für Ausreißer
   GRÜN  = gesunder Puffer (1.2x .. 3x p99)
@@ -38,6 +39,10 @@ RE_MODEL = re.compile(r'"model":\s*"([^"]+)"')
 RE_PROMPT = re.compile(r'"prompt_tokens":\s*(\d+)')
 RE_TOTAL = re.compile(r'"total_tokens":\s*(\d+)')
 RE_FNAME = re.compile(r'(\d{4})-(\d{2})-(\d{2})\.\d+\.log$')
+# Fehlerbloecke: das Modell steht nur in der Kopfzeile, die Ursache erst in
+# einem "- Caused By:"-Nachsatz mehrere Zeilen spaeter.
+RE_ERRHEAD = re.compile(r'^\[[\d\- :]+\]\[(?:ERROR|WARN)\]\[([^\]]+)\]')
+OVERFLOW_TEXT = "Context size has been exceeded"
 # Pfad einer remoten Modell-Kopie: "<32-stelliger geräte-hash>:<publisher>/<ordner>"
 RE_DEVPATH = re.compile(r'^([0-9a-f]{32}):(.+)$')
 
@@ -106,6 +111,45 @@ def collect(files):
                 last_seen[cur_model] = d
     proc.wait()
     return per_model, last_seen
+
+
+def parse_overflows(text):
+    """{modell: anzahl} der Bloecke mit 'Context size has been exceeded'.
+
+    Warum das noetig ist: p99 und MAX kommen aus den `usage`-Bloecken
+    ERFOLGREICHER Aufrufe. Ein Prompt, der am Fenster scheitert, erzeugt nie
+    eine solche Zeile und faellt damit komplett aus der Statistik — die
+    Messung bestaetigt sich selbst. Am 23.08.2026 stand deshalb "0 ROT" im
+    Bericht, waehrend allein `gemma4-31b-it` an dem Tag 129 Aufrufe genau
+    daran verlor.
+
+    Je Fehlerblock wird einmal gezaehlt: LM Studio wiederholt dieselbe Ursache
+    verschachtelt, das wuerde die Zahl sonst aufblaehen.
+    """
+    raus = {}
+    modell = None
+    for zeile in text.splitlines():
+        kopf = RE_ERRHEAD.match(zeile)
+        if kopf:
+            modell = kopf.group(1)
+        elif OVERFLOW_TEXT in zeile and modell:
+            raus[modell] = raus.get(modell, 0) + 1
+            modell = None      # Block abgehakt, Wiederholungen ignorieren
+    return raus
+
+
+def collect_overflows(files):
+    """parse_overflows ueber alle Logdateien des Zeitfensters."""
+    raus = {}
+    for _d, pfad in files:
+        try:
+            with open(pfad, encoding="utf-8", errors="replace") as fh:
+                teil = parse_overflows(fh.read())
+        except OSError:
+            continue
+        for modell, n in teil.items():
+            raus[modell] = raus.get(modell, 0) + n
+    return raus
 
 
 def pct(sorted_vals, q):
@@ -299,8 +343,18 @@ def resolve_config(model, cfg_map, model_idx, loaded_paths, hash_names):
     return None, "unknown", None
 
 
-def ampel(ctx, p99, maxv):
-    """(farbe_hex, symbol, klartext) je nach Bedarf vs. konfiguriert."""
+def ampel(ctx, p99, maxv, overflows=0):
+    """(farbe_hex, symbol, klartext) je nach Bedarf vs. konfiguriert.
+
+    `overflows` sind GEZAEHLTE 'Context size has been exceeded'-Fehler. Sie
+    ueberstimmen jede Schaetzung: p99 und MAX sehen nur erfolgreiche Aufrufe,
+    ein gescheiterter Prompt taucht dort nie auf.
+    """
+    if overflows:
+        return ("#d93025", "●",
+                f"ROT: {overflows} Aufrufe am Fenster gescheitert "
+                f"(gezaehlt, nicht geschaetzt) — Fenster {fmt(ctx) if ctx else '?'} "
+                f"zu klein oder Prompts zu gross")
     if ctx is None:
         return ("#9aa0a6", "—", "kein Fenster konfiguriert (JIT/entladen)")
     if ctx < p99:
@@ -319,7 +373,7 @@ def fmt(n):
 
 
 def build_rows(week, month, cfg_map, loaded_map, installed, dev_map, last_seen, today,
-               model_idx, loaded_paths, hash_names):
+               model_idx, loaded_paths, hash_names, overflows=None):
     rows = []
     for model, vals in week.items():
         v = sorted(vals)
@@ -343,7 +397,8 @@ def build_rows(week, month, cfg_map, loaded_map, installed, dev_map, last_seen, 
             note = f"ABGELÖST: nicht mehr in LM Studio installiert{seen_txt} — keine Bewertung"
             ctx = None
         else:
-            color, sym, note = ampel(ctx, p99, maxv)
+            color, sym, note = ampel(ctx, p99, maxv,
+                                     (overflows or {}).get(model, 0))
             # Persistenz-Diskrepanz: geladen ≠ Default-Config -> überlebt Neustart nicht
             if cfg_status == "local" and loaded_ctx is not None and cfg_ctx != loaded_ctx:
                 note += (f" · ⚠ nicht festgenagelt: Config {fmt(cfg_ctx)} — beim nächsten "
@@ -360,6 +415,7 @@ def build_rows(week, month, cfg_map, loaded_map, installed, dev_map, last_seen, 
             "model": model, "calls": len(v), "device": device,
             "last_seen": seen.isoformat() if seen else None, "retired": retired,
             "cfg_status": cfg_status,
+            "overflows": (overflows or {}).get(model, 0),
             "p50": p50, "p90": p90, "p95": p95, "p99": p99, "max30d": maxv,
             "ctx": ctx, "loaded": loaded_ctx, "config": cfg_ctx,
             "color": color, "sym": sym, "note": note,
@@ -445,6 +501,10 @@ def main():
 
     week, last_seen = collect(log_files_since(week_cut))
     month, _ = collect(log_files_since(month_cut))
+    # Gezaehlte Overflows der Vorwoche. Ohne sie meldet der Bericht "0 ROT",
+    # waehrend Aufrufe am Fenster scheitern — sie erzeugen keine usage-Zeile
+    # und sind in p99/MAX deshalb unsichtbar.
+    overflows = collect_overflows(log_files_since(week_cut))
     week = {m: v for m, v in week.items() if len(v) >= args.min_calls}
 
     cfg_map = load_configured_ctx()
@@ -453,7 +513,7 @@ def main():
     model_idx = load_model_index()
     loaded_paths, hash_names = load_loaded_paths()
     rows = build_rows(week, month, cfg_map, loaded_map, installed, dev_map, last_seen, today,
-                      model_idx, loaded_paths, hash_names)
+                      model_idx, loaded_paths, hash_names, overflows)
 
     html = render_html(rows, week_cut.isoformat(), today.isoformat())
     open(args.out_html, "w", encoding="utf-8").write(html)
@@ -462,7 +522,9 @@ def main():
     # Kurzstatus auf stdout
     reds = sum(1 for r in rows if r["color"] == "#d93025")
     ret = sum(1 for r in rows if r["retired"])
-    print(f"ctx_report: {len(rows)} Modelle ({ret} abgelöst), {reds} ROT, HTML -> {args.out_html}")
+    ov = sum(r["overflows"] for r in rows)
+    print(f"ctx_report: {len(rows)} Modelle ({ret} abgelöst), {reds} ROT, "
+          f"{ov} gezählte Overflows, HTML -> {args.out_html}")
     return 0
 
 

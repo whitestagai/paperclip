@@ -84,6 +84,24 @@ Aufruf pro Run (p50 27.153, max 27.188) und steht bei 96 %.
 
 Nicht Teil dieses Übergangs, aber der größte bekannte Hebel für später.
 
+### Nebenbefund: die Cloud-Agenten scheitern an der lokalen Farm
+
+Über 7 Tage:
+
+| Agent | Modell | Erfolg | Hauptfehler |
+|---|---|---|---|
+| VP Engineering | `claude-sonnet-5` | **5 von 122** (4 %) | `blocked_by_pii_proxy: classifier_unavailable` — 50 (45 %) |
+| n8n-Betriebsingenieur | `claude_local` | **35 von 272** (13 %) | `429 Server is temporarily limiting requests` — 177 (77 %) |
+
+Der größte Einzelfehler des Cloud-Agenten VP Engineering ist der **PII-Klassifikator** —
+also `google/gemma-4-12b-qat`, das heute auf der überlasteten RTX liegt. Schritt 4 der
+Migration verlagert genau dieses Modell auf den Mac Studio und repariert damit 45 % der
+VP-Engineering-Fehler, obwohl der Agent in der Cloud bleibt.
+
+Beim n8n-Betriebsingenieur ist der Umzug ins Lokale keine Qualitätseinbuße, sondern die
+Reparatur seiner Hauptfehlerquelle: 77 % seiner Fehler sind Anthropic-Ratenbegrenzungen,
+und ein einzelner 429 beendet bei `claude_local` den kompletten Run.
+
 ## Festlegungen
 
 Vom Auftraggeber entschieden, nicht abgeleitet:
@@ -93,14 +111,22 @@ Vom Auftraggeber entschieden, nicht abgeleitet:
 | Knoten | Mac Studio M4 (128 GB) + RTX Pro 6000 (96 GB); MacBook fällt weg |
 | Rolle Mac Studio | bleibt Steuerungshost für Paperclip, Postgres, n8n |
 | Netz | 10 GbE oder schneller |
-| Cloud | **strikt lokal, kein Cloud-Ventil** |
+| Cloud | strikt lokal, kein Cloud-Ventil — **Ausnahme: VP Engineering bleibt auf `claude-sonnet-5`** |
 | Aufteilung | nach Promptgröße: Kurzstrecke Mac, Langstrecke RTX |
 | Fallback-Modelle | **entfallen im Übergang; nur noch Primärmodelle** |
 | Flottenweite Obergrenze | zurückgestellt, erst Konfiguration und messen |
-| Slot-Teilung | 6 qwen / 4 gemma, danach nachsteuern |
+| Coding-Modell lokal | **entfällt** — ohne VP Engineering bliebe nur ein Nutzer |
+| Slot-Teilung | **8 qwen / 12 gemma**, danach nachsteuern |
 
-Konsequenz aus „strikt lokal": fünf Agenten müssen aus der Cloud zurück — VP Engineering,
-n8n-Betriebsingenieur, Social Media & Community, Bild & Video, Link-Detektor.
+Konsequenz aus „strikt lokal": **drei** Agenten kommen aus der Cloud zurück —
+n8n-Betriebsingenieur, Social Media & Community, Link-Detektor. (Bild & Video steht auf
+`terminated` und wird nicht reaktiviert.)
+
+**Die Ausnahme für VP Engineering trägt sich selbst.** Ohne ihn hätte ein lokales
+Coding-Modell nur noch den n8n-Betriebsingenieur bedient — 22 GB für einen Agenten. Diese
+22 GB werden stattdessen zu Bearbeitungsplätzen: `gemma4-31b-it` steigt von 4 auf 12 Slots.
+Damit ist das größte Risiko dieses Entwurfs — 29 Agenten auf 4 Slots beim langsamen dichten
+Modell — vom Tisch, ohne dass ein Gerät hinzukommt.
 
 ## Zielarchitektur
 
@@ -121,21 +147,24 @@ konkurriert heute auf der RTX mit jedem Agentendialog um die GPU.
 
 ### RTX Pro 6000 — 96 GB
 
-| # | Modell | CTX | Parallel | Thinking | Speicher |
-|---|---|---|---|---|---|
-| 1 | `abiray/qwen3.6-35b-a3b` | 65.536 | **6** | 0,5 % | 34,4 GB |
-| 2 | `gemma4-31b-it` | 65.536 | 4 | 0,5 % | 28,4 GB |
-| 3 | `qwen/qwen3-coder-30b` | 65.536 | 2 | 0,0 % | ~22,0 GB |
-| | | | | **Summe** | **84,8 / 96 GB** |
+| # | Modell | CTX | Parallel | Thinking | Agenten | Speicher |
+|---|---|---|---|---|---|---|
+| 1 | `abiray/qwen3.6-35b-a3b` | 65.536 | **8** | 0,5 % | 12 | 38,5 GB |
+| 2 | `gemma4-31b-it` | 65.536 | **12** | 0,5 % | ~29 | 45,4 GB |
+| | | | | | **Summe** | **83,9 / 96 GB** |
+
+Kein lokales Coding-Modell. `qwen/qwen3-coder-30b` wird **nicht** nachinstalliert — mit
+VP Engineering in der Cloud bliebe nur ein Nutzer übrig, und die 22 GB sind als
+Bearbeitungsplätze für die gesamte Flotte deutlich mehr wert.
 
 ### Mac Studio M4 — 128 GB
 
 | # | Modell | CTX | Parallel | Thinking | Speicher |
 |---|---|---|---|---|---|
-| 4 | `google/gemma-4-12b-qat` | 16.384 | 8 | 0,1 % | 7,2 GB |
-| 5 | `google/gemma-4-12b` | 16.384 | 6 | 11,8 % → `none` | 7,6 GB |
-| 6 | `openbiollm-llama3-8b.gguf` | 8.192 | 2 | 0,0 % | 5,7 GB |
-| 7 | `text-embedding-bge-m3` | 8.192 | — | — | 0,6 GB |
+| 3 | `google/gemma-4-12b-qat` | 16.384 | 8 | 0,1 % | 7,2 GB |
+| 4 | `google/gemma-4-12b` | 16.384 | 6 | 11,8 % → `none` | 7,6 GB |
+| 5 | `openbiollm-llama3-8b.gguf` | 8.192 | 2 | 0,0 % | 5,7 GB |
+| 6 | `text-embedding-bge-m3` | 8.192 | — | — | 0,6 GB |
 | | | | | **Summe** | **21,1 GB** |
 
 Dazu Paperclip, Postgres, n8n. Der Swap steht heute bei **7,4 von 8 GB** — deshalb bleibt
@@ -151,10 +180,24 @@ qwen:  30,30 GB − 22,07 GB Gewichte =  8,23 GB KV / 262.144 = 31,4 kB je Slot-
 gemma: 32,64 GB − 19,89 GB Gewichte = 12,75 GB KV / 393.216 = 32,4 kB je Slot-Token
 ```
 
-Mit ~32 kB je Slot-Token ist jede Tabellenzeile nachrechenbar. Auf dem Mac (MLX) wird KV
-lazy belegt, dort entspricht die gemeldete Größe näherungsweise den Gewichten.
+Mit ~32 kB je Slot-Token ist jede Tabellenzeile nachrechenbar:
 
-**Der Kern:** `qwen` bekommt sechs Slots statt einem und kostet dabei 4,1 GB mehr.
+```
+qwen:  22,07 Gewichte + (8 × 65.536 × 31,4 kB = 16,46 KV) = 38,53 GB
+gemma: 19,89 Gewichte + (12 × 65.536 × 32,4 kB = 25,48 KV) = 45,37 GB
+                                                    Summe = 83,90 GB
+```
+
+Auf dem Mac (MLX) wird KV lazy belegt, dort entspricht die gemeldete Größe näherungsweise
+den Gewichten.
+
+**Der Kern:** `qwen` bekommt **acht** Bearbeitungsplätze statt einem, `gemma4-31b-it`
+**zwölf** statt vier — bei 12,1 GB verbleibender Reserve.
+
+**Vorbehalt:** Mehr Slots erhöhen nicht den Rohdurchsatz der GPU, der ist fest. Sie sorgen
+dafür, dass Anfragen *vorankommen*, statt in einer Schlange zu verhungern. Genau das ist
+der gemessene Fehlermodus — nicht zu wenig Rechenleistung, sondern Anfragen, die den
+Timeout in der Warteschlange erreichen.
 
 ### Kontextwahl 65.536
 
@@ -171,7 +214,7 @@ Gemessener Bedarf über 30 Tage:
 
 65.536 liegt über dem p99 beider großen Modelle. **Bewusst in Kauf genommen:** rund 1 % der
 Aufrufe wird künftig vom Adapter beschnitten statt vollständig übergeben. Der Tausch lautet
-1 % gekappte Historie gegen sechsfachen Durchsatz bei aktuell 76 % Timeout.
+1 % gekappte Historie gegen die acht- bzw. dreifache Slotzahl bei aktuell 76 % Timeout.
 
 Die Kürzung von `google/gemma-4-12b` auf 16.384 adressiert seine 220 Overflows — die
 schlechteste Zahl der Flotte. Sie entstehen aus der Doppelnutzung für Winzigaufgaben
@@ -190,7 +233,7 @@ Gemessene Quote über 10 Tage LM-Studio-Logs — Anteil der Aufrufe mit nichtlee
 | `google/gemma-4-12b` | 5.085 | 11,8 % |
 | `gemma4-31b-it` | 6.960 | 0,5 % |
 | `google/gemma-4-12b-qat` | 42.305 | 0,1 % |
-| `qwen/qwen3-coder-30b` | 1.203 | 0,0 % |
+| `qwen/qwen3-coder-30b` (nicht Teil der Zielbelegung) | 1.203 | 0,0 % |
 
 Dasselbe Modell denkt je nach Build um Faktor 200 unterschiedlich. Dass die Zielbelegung
 auf der GGUF-Variante landet, ist damit nachträglich belegt — der MLX-Zwilling hatte mit
@@ -211,8 +254,8 @@ ignoriert ein gesetztes `none`.
 | `ornith-1.0-9b` | 6,0 | **0 Aufrufe/30 T**, kein Agent, kein Skript |
 | `text-embedding-nomic-…` ×2 | 0,2 | ungenutzt neben `bge-m3` |
 
-Von 14 Modellen auf 7. `ornith-1.0-9b` und `google/gemma-4-31b` belegen zusammen 25,9 GB
-auf der Maschine, deren Swap voll ist.
+Von 14 Modellen auf **6**. `ornith-1.0-9b` und `google/gemma-4-31b` belegen zusammen
+25,9 GB auf der Maschine, deren Swap voll ist.
 
 ### Agenten-Zuordnung
 
@@ -224,20 +267,21 @@ Zwei Namen kommen doppelt vor und meinen zwei getrennte Agenten: **Vault-Maintai
 (WHITESTAG und Clara — beide auf `gemma4-31b-it`) und **Link-Detektor** (ein
 `lmstudio_local` und ein `claude_local`; beide gehen auf `google/gemma-4-12b` am Mac).
 
-**`abiray/qwen3.6-35b-a3b` (RTX, 6 Slots)** — Koordination, Analyse, Recherche
+**`abiray/qwen3.6-35b-a3b` (RTX, 8 Slots)** — Koordination, Analyse, Recherche
 CEO · CTO · CPO · CRO · CHO · Büroleitung · Sekretärin · Blender · Recherche ·
 Online-Rechercheur · Trainingscoach
+*Rückkehrer aus der Cloud:* n8n-Betriebsingenieur
 
-**`gemma4-31b-it` (RTX, 4 Slots)** — Deutsch, Kreativ, Text, Fachaufgaben
+**`gemma4-31b-it` (RTX, 12 Slots)** — Deutsch, Kreativ, Text, Fachaufgaben
 CMO · CFO · DPO · Adobe · Akquise & Booking · Buchhaltung · Creative Assistant ·
 Creative Director · Drehbuch · Label Manager · Lektorat · Marken-Spezialist · Mistika VR ·
 Produktentwicklung · Redaktion & PR · Social Media Specialist · Vault-Maintainer (×2) ·
 Vermögensverwaltung · Vitals-Monitor · Web-Design Specialist · LLM-Konfigurationsanalyst
 *Umzügler vom MacBook:* SEO/GEO-Spezialist · Schlafcoach · Office & Admin
-*Rückkehrer aus der Cloud:* Social Media & Community · Bild & Video
+*Rückkehrer aus der Cloud:* Social Media & Community
 
-**`qwen/qwen3-coder-30b` (RTX, 2 Slots)** — Rückkehrer aus der Cloud
-VP Engineering · n8n-Betriebsingenieur
+**`claude-sonnet-5` (Cloud, `claude_local`)** — bleibt als einzige Ausnahme
+VP Engineering
 
 **`google/gemma-4-12b` (Mac, 6 Slots)** — Kurzstrecke
 Link-Detektor ×2 (p50 = 0, reine Werkzeugarbeit — der ideale Mac-Kandidat)
@@ -312,10 +356,10 @@ Der Aufruf-Timeout sinkt von 15 auf 4 Minuten, das Run-Budget steigt von 15 auf 
 
 | Modellpool | Slots | Agenten | Grenze je Agent |
 |---|---|---|---|
-| `abiray/qwen3.6-35b-a3b` | 6 | 11 | **1** |
-| `gemma4-31b-it` | 4 | ~29 | **1** |
-| `qwen/qwen3-coder-30b` | 2 | 2 | **1** |
-| Mac-Kurzstrecke | 16 | 2 + Dienste | **2** |
+| `abiray/qwen3.6-35b-a3b` | 8 | 12 | **1** |
+| `gemma4-31b-it` | 12 | ~29 | **1** |
+| Mac-Kurzstrecke | 16 | 3 + Dienste | **2** |
+| `claude-sonnet-5` (Cloud) | — | 1 | **1** |
 
 Senkt das theoretische Maximum von 740 auf 47 — Faktor 16, durch Setzen eines Feldes, das
 heute leer ist. Bei sieben Agenten muss dafür eine ausdrückliche 20 auf 1 korrigiert werden
@@ -329,16 +373,21 @@ Jeder Schritt ist einzeln wirksam und einzeln zurücknehmbar.
 1. **Tote Modelle entladen** — `ornith-1.0-9b`, `google/gemma-4-31b`, Nomic-Embeddings
    (zusammen **26,1 GB auf dem Mac Studio**) sowie die `qwen/qwen3.6-35b-a3b`-Dublette
    (**22,1 GB auf der RTX**).
-2. **Slot-Korrektur `qwen`** — 262.144×1 → 65.536×6. Der größte Einzelhebel, ohne
-   Speichermehrbedarf.
-3. **`gemma4-31b-it`** auf 65.536×4, **`google/gemma-4-12b`** auf 16.384×6.
-4. **`gemma-4-12b-qat`** von RTX auf Mac verlagern.
-5. **`qwen/qwen3-coder-30b`** neu laden (RTX), **`openbiollm-llama3-8b`** auf den Mac.
+2. **Slot-Korrektur `qwen`** — 262.144×1 → 65.536×**8**. Der größte Einzelhebel; Schritt 1
+   auf der RTX muss dafür abgeschlossen sein.
+3. **`gemma4-31b-it`** auf 65.536×**12**, **`google/gemma-4-12b`** auf 16.384×6.
+4. **`gemma-4-12b-qat`** von RTX auf Mac verlagern. *Vorziehen: repariert 45 % der
+   VP-Engineering-Fehler (siehe „Nebenbefund: die Cloud-Agenten scheitern an der lokalen
+   Farm") und wirkt damit auch auf den Agenten, der in der Cloud bleibt.*
+5. **`openbiollm-llama3-8b`** auf den Mac.
 6. **`fallbackModel` leeren** bei allen 38 Agenten.
 7. **Zeitfelder setzen** — `timeoutMs`, `maxRunSeconds`, `maxIterations`; bei
    Dr-Knowledge `timeoutMs` erstmalig.
-8. **`maxConcurrentRuns`** auf 1 bzw. 2.
-9. **20 Agenten umhängen** — MacBook-Waisen und Cloud-Rückkehrer.
+8. **`maxConcurrentRuns`** auf 1 bzw. 2 — bei sieben Agenten von einer ausdrücklichen 20.
+9. **Neun Agenten umhängen** — fünf MacBook-Waisen (SEO/GEO-Spezialist, Schlafcoach,
+   Vault-Maintainer, Office & Admin, Dr-Knowledge), drei Cloud-Rückkehrer
+   (n8n-Betriebsingenieur, Social Media & Community, Link-Detektor) und der
+   `lmstudio_local`-Link-Detektor auf den Mac.
 10. **`reasoningEffort: "none"`** für `google/gemma-4-12b`.
 
 Schritte 1–5 betreffen LM Studio, 6–10 die Datenbank. Kein Servercode, kein Build, kein
@@ -353,13 +402,18 @@ Nach einer Woche Regelbetrieb, gemessen mit denselben Abfragen wie oben:
 | Erfolgsquote gesamt | 26,7 % | **> 70 %** |
 | Timeout-Quote 07:00–15:00 | 60–76 % | **< 15 %** |
 | „failed on fallback: timed out" | 2.339 / 7 T | **0** |
-| Erfolgsquote CRO | 11 % | **> 70 %** |
+| Erfolgsquote CRO (1 Slot → 8) | 11 % | **> 70 %** |
+| Erfolgsquote n8n-Betriebsingenieur (Cloud → lokal) | 13 % | **> 70 %** |
+| `blocked_by_pii_proxy` bei VP Engineering | 50 / 7 T | **< 5** |
 | Overflows `google/gemma-4-12b` | 220 / 30 T | **< 20** |
 | Swap Mac Studio | 7,4 / 8 GB | **< 4 GB** |
 
-Wird die Timeout-Quote nicht erreicht, greift in dieser Reihenfolge:
-`gemma4-31b-it` auf 5 Slots (2,1 GB, passt) → analytische Agenten von Gemma auf die MoE
-ziehen (Vitals-Monitor, LLM-Konfigurationsanalyst, Label Manager) → Stufe B.
+Wird die Timeout-Quote nicht erreicht, greift in dieser Reihenfolge: analytische Agenten
+von Gemma auf die MoE ziehen (Vitals-Monitor, LLM-Konfigurationsanalyst, Label Manager) →
+Slots zwischen den beiden Modellen umverteilen → Stufe B.
+
+**VP Engineering bleibt bewusst außerhalb der Erfolgsziele.** Seine 429-Fehler (21 %)
+adressiert dieser Entwurf nicht.
 
 ## Bewusst zurückgestellt
 
@@ -371,9 +425,12 @@ ziehen (Vitals-Monitor, LLM-Konfigurationsanalyst, Label Manager) → Stufe B.
 
 ## Risiken
 
-**`gemma4-31b-it` trägt mit ~29 Agenten mehr als die halbe Flotte auf 4 Slots** und ist das
-langsame dichte Modell (25 s Median-Prefill gegen 5 s bei der MoE). Entschieden wurde,
-mit 6/4 zu starten und nachzusteuern; die Reserve dafür ist eingeplant.
+**`gemma4-31b-it` trägt mit ~29 Agenten mehr als die halbe Flotte** und ist das langsame
+dichte Modell (25 s Median-Prefill gegen 5 s bei der MoE). Mit 12 statt 4 Slots ist das
+Risiko weitgehend abgeräumt — ermöglicht durch den Verzicht auf das lokale Coding-Modell.
+Bleibt es dennoch der Engpass, ist der nächste Schritt, analytische Agenten auf die MoE zu
+ziehen (Vitals-Monitor, LLM-Konfigurationsanalyst, Label Manager brauchen kein kreatives
+Deutsch).
 
 **Kein Cloud-Ventil.** Übersteigt die Last dauerhaft die Kapazität beider Knoten, gibt es
 keinen Ausweg außer Warten. Genau das ist gewollt — ein wartender Run kostet nichts, ein
@@ -383,9 +440,16 @@ gestarteter und gestorbener kostet Rechenzeit und erzeugt Nacharbeit.
 Im Übergang bewusst hingenommen: sie trägt heute bereits 89 %, und ein zweiter Knoten, der
 in den Timeout läuft, erhöht die Verfügbarkeit nicht.
 
-**VP Engineering verliert Qualität.** Der Umzug von `claude-sonnet-5` auf ein lokales 30B
-ist der teuerste Teil von „strikt lokal". `qwen/qwen3-coder-30b` ist die belegte Wahl — es
-lief hier bis zum 22.08. produktiv, mit 2.189 Aufrufen allein am 30.07. — aber es ist
-kein Ersatz auf Augenhöhe.
+**VP Engineering bleibt bei 429ern verwundbar.** Er behält `claude-sonnet-5`, damit auch
+die Anthropic-Ratenbegrenzung. 21 % seiner Fehler kommen von dort, und ein einzelner 429
+beendet bei `claude_local` den kompletten Run. Dieser Entwurf repariert seine anderen 45 %
+(PII-Klassifikator), aber nicht diesen Anteil — das ist ein eigener Vorgang.
+
+**Der n8n-Betriebsingenieur verliert Coding-Qualität.** n8n-Reparatur bedeutet JSON und
+JavaScript in Code-Nodes; `abiray/qwen3.6-35b-a3b` ist ein Allzweckmodell. Bewusst
+abgewogen gegen seinen Ist-Zustand von 13 % Erfolg — die 77 % 429-Fehler verschwinden
+lokal vollständig. Verschlechtert sich die Reparaturqualität sichtbar, ist die Rückkehr
+zu einem lokalen Coding-Modell jederzeit möglich; die RTX hat 12,1 GB Reserve, das reicht
+allerdings nur mit reduzierter Slotzahl.
 
 **Dr-Knowledge verliert nichts.** Das Fachmodell zieht mit auf den Mac.

@@ -56,15 +56,6 @@ hier hinein — nur den Fundort nennen.
   staut, gehoert das Modell groesser dimensioniert oder der Batch entzerrt.
   *(2026-08-23, Chat: LLM-Farm Umbau)*
 
-- [ ] **`openbiollm-llama3-8b` auf dem Mac Studio laden** — geht erst, **wenn das
-  MacBook aus ist**: beide Kopien tragen denselben `modelKey`, und `lms load`
-  kennt keinen Geraeteschalter. Die Datei liegt seit 25.08. lokal (aus
-  `/Volumes/WHITESTAG-ARCHIV/LM Studio Modelle/NicholasJohn/`, 5.732.986.720 Byte
-  byte-identisch geprueft). Ohne diesen Schritt hat **Dr-Knowledge kein Modell** —
-  der Agent mit 82 von 82 erfolgreichen Laeufen in 30 Tagen.
-  `~/.lmstudio/bin/lms load openbiollm-llama3-8b.gguf -c 8192 --parallel 2 -y`
-  *(2026-08-25, Chat: LLM-Farm Übergangskonzept)*
-
 - [ ] **Cloud-Rueckkehrer auf `lmstudio_local` umstellen** — n8n-Betriebsingenieur
   (39 Laeufe/Tag, **77 % seiner Fehler sind 429er**) und Social Media & Community
   laufen weiter auf `claude_local`. Der Wechsel des `adapter_type` ist der

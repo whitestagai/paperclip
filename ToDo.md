@@ -42,16 +42,26 @@ hier hinein — nur den Fundort nennen.
   Desktop ausgefuehrt. Ohne `cp` nach jeder Aenderung driftet der Repo-Stand weg.
   Besser waere ein Symlink oder ein Deploy-Schritt. *(2026-08-23, Chat: LLM-Farm Umbau)*
 
-- [ ] **3652 aufgefangene Dateien im Vault-Spiegel pruefen** — der Lauf am 25.08.
-  um 08:47 legte sie nach `/Volumes/WHITESTAG-ARCHIV/Obsidian/_vault-geloescht/2026-08-25/`.
-  Ungeklaert, ob das normale Katalog-Rotation ist oder dem Vault echte Dateien
-  fehlen. Sie sind aufgefangen, nicht geloescht — aber die Zahl ist hoch genug
-  fuer einen Blick. *(2026-08-25, Chat: Mount-Waechter Katalogausfall)*
+- [ ] **`~/bin/nas-mount-keepalive.sh` auf `nas-mount.sh` umstellen** — der
+  Keepalive fuer `/Volumes/homes` hat dieselbe Haenger-Anfaelligkeit, die den
+  Archiv-Waechter am 24.08. 28 Stunden lahmgelegt hat: kein Timeout um
+  `osascript mount volume`. Seine Lebendpruefung (`[ -d … ]`) ist korrekt,
+  deshalb blieb er unangetastet. Umstellbar ohne Codeaenderung:
+  `nas-mount.sh --freigabe homes --probe "cw/Obsidian/Clara-Vault/Kontakte"`.
+  *(2026-08-25, Chat: Sicherungsalarm NAS-Mount)*
+
+- [ ] **Pruefung des Claude-Code-Spiegels im Sicherungs-Waechter verschaerfen** —
+  `ordner_stand()` liest nur die mtimes der OBERSTEN Ebene, die bei
+  verschachtelten Aenderungen nicht mitziehen. Am 25.08. meldete der Waechter
+  „vor 43 Stunden", waehrend Dateien von vor Minuten auf der NAS lagen. Bei
+  7 Tagen Grenze faellt ein Totalausfall von Synology Drive erst sehr spaet auf.
+  *(2026-08-25, Chat: Sicherungsalarm NAS-Mount)*
 
 - [ ] **Erste Nacht unter dem neuen Mount-Waechter nachsehen** — `nas-mount.sh`
   hat `mount-whitestag-archiv.sh` am 25.08. abgeloest und lief tagsueber sauber
   (25 Laeufe Exit 0, null Zwangs-Ummountungen). Der Beweis steht aber erst aus,
-  wenn HDD-Katalog (02:30) und Vault-Spiegel (04:00) einmal komplett
-  durchgelaufen sind: `~/.paperclip/logs/nas-mount.log`,
-  `hdd-katalog.log` und `vault-nas-sync.log` am Morgen des 26.08. pruefen.
-  *(2026-08-25, Chat: Mount-Waechter Katalogausfall)*
+  wenn DB-Sicherung (02:30), HDD-Katalog (02:30) und Vault-Spiegel (04:00)
+  einmal komplett durchgelaufen sind: `~/.paperclip/logs/nas-mount.log`
+  (muss ohne neue Zeile bleiben), `paperclip-db-backup.log`, `hdd-katalog.log`
+  und `vault-nas-sync.log` am Morgen des 26.08. pruefen.
+  *(2026-08-25, Chats: Mount-Waechter Katalogausfall + Sicherungsalarm NAS-Mount)*

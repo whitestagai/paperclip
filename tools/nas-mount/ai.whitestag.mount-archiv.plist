@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.whitestag.mount-archiv</string>
+
+  <!-- Der Sondenpfad ist mit Absicht der Ordner, an dem die DB-Sicherung
+       haengt: geprueft wird, was gebraucht wird, nicht irgendein Ordner. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/walterschoenenbroecher.de/.paperclip/scripts/nas-mount/nas-mount.sh</string>
+    <string>--freigabe</string>
+    <string>WHITESTAG-ARCHIV</string>
+    <string>--probe</string>
+    <string>Backup Mac Studio M4 Max</string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <!-- Beide Kanaele in EINE Datei: die Vorgaengerin schrieb stderr nach
+       /dev/null, weshalb bei jedem Fehlschlag nur "FEHLER" im Log stand und
+       nie der Grund. -->
+  <key>StandardOutPath</key>
+  <string>/Users/walterschoenenbroecher.de/.paperclip/logs/nas-mount.launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/walterschoenenbroecher.de/.paperclip/logs/nas-mount.launchd.log</string>
+</dict>
+</plist>

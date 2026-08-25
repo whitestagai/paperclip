@@ -259,7 +259,7 @@ einem 12B ist KV billig, die Großzügigkeit kostet fast nichts.
 ### Thinking
 
 Gemessene Quote über 10 Tage LM-Studio-Logs — Anteil der Aufrufe mit nichtleerem
-`reasoning_content`. Kein Schalter, sondern Modellverhalten:
+`reasoning_content`:
 
 | Modell | Aufrufe | Quote |
 |---|---|---|
@@ -274,9 +274,36 @@ Dasselbe Modell denkt je nach Build um Faktor 200 unterschiedlich. Dass die Ziel
 auf der GGUF-Variante landet, ist damit nachträglich belegt — der MLX-Zwilling hatte mit
 p50 = 222.119 Input-Token den teuersten Aufruf der Flotte.
 
-Einziger Eingriff: `reasoningEffort: "none"` für `google/gemma-4-12b` auf dem
-Kurzstrecken-Knoten. Bei `qwen3.6` wäre ein solcher Eingriff wirkungslos — das Modell
-ignoriert ein gesetztes `none`.
+**Es ist ein Schalter, kein Modellverhalten** — eine frühere Fassung dieses Entwurfs hat
+das Gegenteil behauptet. Bei Gemma hängt die Abschaltung an einem überschriebenen
+Jinja-Template in `~/.lmstudio/.internal/user-concrete-model-default-config/`:
+
+```json
+"llm.load.promptTemplate": { "type": "jinja", "jinjaPromptTemplate":
+  { "template": "{%- set enable_thinking = false -%}…" } }
+```
+
+Das ist eine **Load-Time-Einstellung und übersteht einen Reload nicht zuverlässig.** Beleg:
+über 25 Tage denken `gemma4-31b-it` und `abiray/qwen3.6-35b-a3b` an genau **einem** Tag
+(22.08.: 34 bzw. 26 Aufrufe), an allen anderen null. Am 21.08. wurde die RTX leergeräumt.
+
+Zwei praktische Folgen:
+- **Nach jedem Reload nachmessen**, nicht der Konfiguration vertrauen:
+  `grep -c '"reasoning_content": "[^"]' ~/.lmstudio/server-logs/$(date +%Y-%m)/$(ls -t ~/.lmstudio/server-logs/$(date +%Y-%m) | head -1)`
+- **Die Konfiguration der RTX-Modelle liegt auf der RTX**, nicht auf dem Mac Studio. Von
+  hier ist sie weder les- noch setzbar; nur die Wirkung ist über die Logs messbar.
+
+Warum Thinking im Übergang **aus** bleibt: Ohne Prompt-Caching (`cachedInputTokens: 0`)
+landen Reasoning-Token in der Historie und werden bei jeder Folge-Iteration erneut
+geprefillt. Gemessen an den beiden qwen-Builds: 793 gegen 3.191 Output-Token je Aufruf. Bei
+12 Iterationen summiert sich das auf ~53.000 gegen ~211.000 zusätzliche Prefill-Token je
+Run — bei 800 Runs am Tag über 120 Millionen zusätzlich. In einer prefill-limitierten Farm
+ist das der teuerste Schalter überhaupt. **Ein Qualitätsvergleich liegt nicht vor**, nur
+ein Kostenvergleich; ein gezielter Test für ein bis zwei strategische Agenten lohnt, sobald
+die Farm stabil über 70 % läuft.
+
+Einziger aktiver Eingriff: `reasoningEffort: "none"` für `google/gemma-4-12b`. Bei
+`qwen3.6` wäre das wirkungslos — das Modell ignoriert ein gesetztes `none`.
 
 ### Modelle, die entfallen
 
@@ -368,8 +395,18 @@ Ist `fallbackModel` leer, nimmt der Adapter das Primärmodell.
 
 > **Umsetzung: `fallbackModel` bei allen 38 Agenten leeren, `fallbackUrl` stehen lassen.**
 
-Kein Modellwechsel mehr — die Fehlerklasse „failed on fallback" entfällt
-konstruktionsbedingt — und die Wiederholung bleibt erhalten, jetzt auf dem richtigen Modell.
+Kein Modellwechsel mehr, und die Wiederholung bleibt erhalten — jetzt auf dem richtigen
+Modell.
+
+**Der Fehlertext bleibt trotzdem „failed on fallback".** Eine frühere Fassung behauptete,
+die Fehlerklasse entfalle konstruktionsbedingt. Das ist falsch: `fallbackModel ||
+primaryModel` lässt den Adapter weiterhin „umschalten", nur eben auf dasselbe Modell — der
+Logtext ist derselbe. Am 25.08. nach der Umstellung gemessen: 4 solcher Timeouts in 20
+Minuten bei leerem `fallbackModel`.
+
+Was sich ändert, ist das Verhalten dahinter: Der Wiederholungsversuch landet nicht mehr auf
+dem langsamsten Knoten der Flotte. **Der Text taugt deshalb nicht als Erfolgsmaß** — messen
+muss man die Timeout-Quote, nicht das Vorkommen dieser Zeichenkette.
 
 ### Zeitarchitektur
 
@@ -457,7 +494,8 @@ Nach einer Woche Regelbetrieb, gemessen mit denselben Abfragen wie oben:
 |---|---|---|
 | Erfolgsquote gesamt | 26,7 % | **> 70 %** |
 | Timeout-Quote 07:00–15:00 | 60–76 % | **< 15 %** |
-| „failed on fallback: timed out" | 2.339 / 7 T | **0** |
+| Kontextüberläufe (`Context size has been exceeded`) | ~19/h | **0** ✓ *(erreicht 25.08.)* |
+| Agenten in `error` | 10 | **0** ✓ *(erreicht 25.08.)* |
 | Erfolgsquote CRO (1 Slot → 5) | 11 % | **> 70 %** |
 | Erfolgsquote n8n-Betriebsingenieur (Cloud → lokal) | 13 % | **> 70 %** |
 | `blocked_by_pii_proxy` bei VP Engineering | 50 / 7 T | **< 5** |

@@ -1,7 +1,8 @@
 # LLM-Farm: Übergangskonzept für Mac Studio + RTX Pro 6000
 
 **Datum:** 2026-08-25
-**Status:** Entwurf — freigegeben, Umsetzung noch nicht begonnen
+**Status:** umgesetzt am 25.08. — mit zwei Korrekturen gegenüber dem Entwurf, siehe
+„Was bei der Umsetzung anders kam"
 **Auslöser:** Erfolgsquote der Flotte über 7 Tage bei **26,7 %** (1.739 von 6.520 Runs);
 das MacBook M5 Max muss aus der Farm genommen werden
 **Betroffen:** LM-Studio-Belegung auf Mac Studio M4 und RTX Pro 6000, `adapter_config`
@@ -94,9 +95,10 @@ Nicht Teil dieses Übergangs, aber der größte bekannte Hebel für später.
 | n8n-Betriebsingenieur | `claude_local` | **35 von 272** (13 %) | `429 Server is temporarily limiting requests` — 177 (77 %) |
 
 Der größte Einzelfehler des Cloud-Agenten VP Engineering ist der **PII-Klassifikator** —
-also `google/gemma-4-12b-qat`, das heute auf der überlasteten RTX liegt. Schritt 4 der
-Migration verlagert genau dieses Modell auf den Mac Studio und repariert damit 45 % der
-VP-Engineering-Fehler, obwohl der Agent in der Cloud bleibt.
+`google/gemma-4-12b-qat`, das auf der überlasteten RTX lag und beim Aufräumen am 25.08.
+gelöscht wurde. Schritt 4 der Migration stellt den Proxy auf `google/gemma-4-12b` am Mac
+Studio um und repariert damit 45 % der VP-Engineering-Fehler, obwohl der Agent in der Cloud
+bleibt.
 
 Beim n8n-Betriebsingenieur ist der Umzug ins Lokale keine Qualitätseinbuße, sondern die
 Reparatur seiner Hauptfehlerquelle: 77 % seiner Fehler sind Anthropic-Ratenbegrenzungen,
@@ -116,7 +118,7 @@ Vom Auftraggeber entschieden, nicht abgeleitet:
 | Fallback-Modelle | **entfallen im Übergang; nur noch Primärmodelle** |
 | Flottenweite Obergrenze | zurückgestellt, erst Konfiguration und messen |
 | Coding-Modell lokal | **entfällt** — ohne VP Engineering bliebe nur ein Nutzer |
-| Slot-Teilung | **8 qwen / 12 gemma**, danach nachsteuern |
+| Slot-Teilung | entschieden: 8 qwen / 12 gemma — **umgesetzt: 5 / 8**, siehe „Was bei der Umsetzung anders kam" |
 
 Konsequenz aus „strikt lokal": **drei** Agenten kommen aus der Cloud zurück —
 n8n-Betriebsingenieur, Social Media & Community, Link-Detektor. (Bild & Video steht auf
@@ -124,9 +126,10 @@ n8n-Betriebsingenieur, Social Media & Community, Link-Detektor. (Bild & Video st
 
 **Die Ausnahme für VP Engineering trägt sich selbst.** Ohne ihn hätte ein lokales
 Coding-Modell nur noch den n8n-Betriebsingenieur bedient — 22 GB für einen Agenten. Diese
-22 GB werden stattdessen zu Bearbeitungsplätzen: `gemma4-31b-it` steigt von 4 auf 12 Slots.
+22 GB werden stattdessen zu Bearbeitungsplätzen: `gemma4-31b-it` steigt von 4 auf 8 Slots
+(im Entwurf waren 12 vorgesehen; das Fenster musste zurückgenommen werden, siehe unten).
 Damit ist das größte Risiko dieses Entwurfs — 29 Agenten auf 4 Slots beim langsamen dichten
-Modell — vom Tisch, ohne dass ein Gerät hinzukommt.
+Modell — deutlich entschärft, ohne dass ein Gerät hinzukommt.
 
 ## Zielarchitektur
 
@@ -147,59 +150,68 @@ konkurriert heute auf der RTX mit jedem Agentendialog um die GPU.
 
 ### RTX Pro 6000 — 96 GB
 
-| # | Modell | CTX | Parallel | Thinking | Agenten | Speicher |
+| # | Modell | CTX | Parallel | Thinking | Agenten | Slot-Token |
 |---|---|---|---|---|---|---|
-| 1 | `abiray/qwen3.6-35b-a3b` | 65.536 | **8** | 0,5 % | 12 | 38,5 GB |
-| 2 | `gemma4-31b-it` | 65.536 | **12** | 0,5 % | ~29 | 45,4 GB |
-| | | | | | **Summe** | **83,9 / 96 GB** |
+| 1 | `abiray/qwen3.6-35b-a3b` | **98.304** | **5** | 0,5 % | 11 | 491.520 |
+| 2 | `gemma4-31b-it` | **98.304** | **8** | 0,5 % | ~29 | 786.432 |
+| | | | | | **Summe** | **1.277.952** |
 
 Kein lokales Coding-Modell. `qwen/qwen3-coder-30b` wird **nicht** nachinstalliert — mit
 VP Engineering in der Cloud bliebe nur ein Nutzer übrig, und die 22 GB sind als
 Bearbeitungsplätze für die gesamte Flotte deutlich mehr wert.
 
+**Warum 98.304 und nicht 65.536** — der Entwurf sah zunächst 65.536 × 8 / × 12 vor. Das ist
+am 25.08. produktiv gescheitert und wurde zurückgenommen; die Begründung steht unten unter
+„Was bei der Umsetzung anders kam". Kurzfassung: der Adapter kürzt erst ab 32.000
+*geschätzten* Token, und seine Schätzung unterschätzt JSON um Faktor 2,19 — bis zu 70.000
+echte Token gehen also ungekürzt durch. Unter einem Fenster von ~74.000 überläuft das.
+
 ### Mac Studio M4 — 128 GB
 
-| # | Modell | CTX | Parallel | Thinking | Speicher |
+| # | Modell | CTX | Parallel | Thinking | Gewichte |
 |---|---|---|---|---|---|
-| 3 | `google/gemma-4-12b-qat` | 16.384 | 8 | 0,1 % | 7,2 GB |
-| 4 | `google/gemma-4-12b` | 16.384 | 6 | 11,8 % → `none` | 7,6 GB |
-| 5 | `openbiollm-llama3-8b.gguf` | 8.192 | 2 | 0,0 % | 5,7 GB |
-| 6 | `text-embedding-bge-m3` | 8.192 | — | — | 0,6 GB |
-| | | | | **Summe** | **21,1 GB** |
+| 3 | `google/gemma-4-12b` | **65.536** | 6 | 11,8 % → `none` | 7,6 GB |
+| 4 | `openbiollm-llama3-8b.gguf` | 8.192 | 2 | 0,0 % | 5,7 GB |
+| 5 | `text-embedding-bge-m3` | 8.192 | — | — | 0,6 GB |
+| | | | | **Summe** | **13,9 GB** |
+
+**`google/gemma-4-12b-qat` existiert nicht mehr.** Es wurde beim RTX-Aufräumen am 25.08.
+zusammen mit der qwen-Dublette gelöscht (14 Modelle / 186,02 GB → 12 / 156,80 GB, Differenz
+29,22 GB = 7,15 + 22,07). Der PII-Proxy zeigte danach auf ein totes Modell und lief nur noch
+über seinen Fallback — jede der 28.686 Klassifikationen pro 30 Tage mit einem Fehlversuch
+davor. `PII_PROXY_CLASSIFIER_MODEL` steht jetzt ebenfalls auf `google/gemma-4-12b`.
 
 Dazu Paperclip, Postgres, n8n. Der Swap steht heute bei **7,4 von 8 GB** — deshalb bleibt
 dieser Knoten bewusst schlank.
 
-### Speicherrechnung
+### Speicherrechnung — in Slot-Token, nicht in Gigabyte
 
-Nicht geschätzt, sondern aus den geladenen Modellen rückgerechnet. Auf der RTX reserviert
-llama.cpp den KV-Cache vorab, die gemeldete Größe enthält ihn also:
+**Die SIZE-Spalte von `lms ps` enthält nur die Gewichte, nicht den KV-Cache.** Belegt am
+25.08.: `abiray/qwen3.6-35b-a3b` meldet **30,30 GB bei 262.144 × 1 und bei 65.536 × 8** —
+dieselbe Zahl bei doppelter Slot-Token-Zahl. Eine frühere Fassung dieses Entwurfs hat aus
+dieser Spalte einen KV-Bedarf von „~32 kB je Slot-Token" abgeleitet und darauf die gesamte
+Belegung gerechnet. Das war falsch und ist entfernt.
+
+Ohne VRAM-Einblick auf der RTX ist die belastbare Größe deshalb das **Produkt aus Fenster
+und Slots**, kalibriert an einem nachweislich laufenden Zustand:
 
 ```
-qwen:  30,30 GB − 22,07 GB Gewichte =  8,23 GB KV / 262.144 = 31,4 kB je Slot-Token
-gemma: 32,64 GB − 19,89 GB Gewichte = 12,75 GB KV / 393.216 = 32,4 kB je Slot-Token
+nachweislich getragen (25.08., 65.536 × 8 + 65.536 × 12) = 1.310.720 Slot-Token
+Zielbelegung          (98.304 × 5 + 98.304 × 8)          = 1.277.952 Slot-Token  ✓
 ```
 
-Mit ~32 kB je Slot-Token ist jede Tabellenzeile nachrechenbar:
+Solange die Summe unter dem belegten Maximum bleibt, passt die Belegung. Wächst der Bedarf,
+muss der Wert neu ermittelt werden — nicht aus `lms ps`, sondern durch Laden und Beobachten.
 
-```
-qwen:  22,07 Gewichte + (8 × 65.536 × 31,4 kB = 16,46 KV) = 38,53 GB
-gemma: 19,89 Gewichte + (12 × 65.536 × 32,4 kB = 25,48 KV) = 45,37 GB
-                                                    Summe = 83,90 GB
-```
-
-Auf dem Mac (MLX) wird KV lazy belegt, dort entspricht die gemeldete Größe näherungsweise
-den Gewichten.
-
-**Der Kern:** `qwen` bekommt **acht** Bearbeitungsplätze statt einem, `gemma4-31b-it`
-**zwölf** statt vier — bei 12,1 GB verbleibender Reserve.
+**Der Kern:** `qwen` bekommt **fünf** Bearbeitungsplätze statt einem, `gemma4-31b-it`
+**acht** statt vier.
 
 **Vorbehalt:** Mehr Slots erhöhen nicht den Rohdurchsatz der GPU, der ist fest. Sie sorgen
 dafür, dass Anfragen *vorankommen*, statt in einer Schlange zu verhungern. Genau das ist
 der gemessene Fehlermodus — nicht zu wenig Rechenleistung, sondern Anfragen, die den
 Timeout in der Warteschlange erreichen.
 
-### Kontextwahl 65.536
+### Kontextwahl 98.304 — die Untergrenze ist der Adapter, nicht das Modell
 
 Gemessener Bedarf über 30 Tage:
 
@@ -210,16 +222,39 @@ Gemessener Bedarf über 30 Tage:
 | `google/gemma-4-12b` | 98.304 | 1.717 | 33.792 | 53.377 | 74.868 | **220** |
 | `google/gemma-4-12b-qat` | 16.384 | 1.526 | 1.850 | 2.087 | 17.955 | 0 |
 
-¹ laut Konfiguration; **geladen** ist das Modell mit 262.144.
+¹ laut Konfiguration; **geladen** war das Modell mit 262.144.
 
-65.536 liegt über dem p99 beider großen Modelle. **Bewusst in Kauf genommen:** rund 1 % der
-Aufrufe wird künftig vom Adapter beschnitten statt vollständig übergeben. Der Tausch lautet
-1 % gekappte Historie gegen die acht- bzw. dreifache Slotzahl bei aktuell 76 % Timeout.
+Der p99 liegt bei 54.072 bzw. 57.662 — nach dieser Zahl allein wäre 65.536 richtig
+gewesen. **Die bindende Grenze ist aber nicht der Modellbedarf, sondern der Adapter.**
 
-Die Kürzung von `google/gemma-4-12b` auf 16.384 adressiert seine 220 Overflows — die
-schlechteste Zahl der Flotte. Sie entstehen aus der Doppelnutzung für Winzigaufgaben
-(p50 1.717) und Riesenprompts (p90 33.792); nach der Trennung bedient es nur noch die
-Kurzstrecke.
+In [execute.ts:484](../../../opensource/paperclip-adapter-lmstudio/src/server/execute.ts#L484):
+
+```ts
+// Der Wert liegt deutlich unter dem kleinsten Budget, das ueberhaupt
+// herauskommen kann (98304 × 0,8 = 78.643) …
+const BUDGET_LOOKUP_THRESHOLD_TOKENS = 32_000;
+```
+
+Unterhalb von 32.000 **geschätzten** Token wird weder das Fenster abgefragt noch gekürzt.
+Und die Schätzung ist `chars/4` — laut `context-budget.ts` unterschätzt sie JSON
+(1,89 Zeichen/Token) und Shell-Ausgaben (1,83) um bis zu **Faktor 2,19**. Der
+Korrekturfaktor `tokenFactor` startet bei 1 und wird erst *nach* einem erfolgreichen Aufruf
+aus `usage.prompt_tokens` kalibriert — ein gescheiterter Aufruf liefert keine Usage, der
+Faktor bleibt also auf 1 und der Lauf scheitert erneut.
+
+```
+32.000 geschätzt × 2,19 = 70.080 echte Token, die ungekürzt durchgehen
++ Platz für die Antwort                     ≈ 74.000 Mindestfenster
+```
+
+**Damit ist 98.304 die kleinste sichere Fenstergröße, solange die Konstante 32.000 ist.**
+Wer das Fenster kleiner haben will, muss zuerst den Schwellenwert senken — siehe „Bewusst
+zurückgestellt".
+
+`google/gemma-4-12b` bekommt **65.536 × 6**, nicht die im Entwurf genannten 16.384: Der
+Link-Detektor wurde wegen p50 = 0 als Kurzstrecke eingestuft, sein **Maximum liegt aber bei
+47.180 Token**. Genau die Bimodalität, vor der dieser Entwurf weiter oben selbst warnt. Bei
+einem 12B ist KV billig, die Großzügigkeit kostet fast nichts.
 
 ### Thinking
 
@@ -341,11 +376,23 @@ konstruktionsbedingt — und die Wiederholung bleibt erhalten, jetzt auf dem ric
 Die Wiederholung ist heute rechnerisch tot: `timeoutMs` (900.000) und `maxRunSeconds`
 (900) sind identisch, das Restbudget nach einem Timeout ist die 1-Sekunden-Untergrenze.
 
-| Feld | heute | neu | Begründung |
+| Feld | vorher | gesetzt | Begründung |
 |---|---|---|---|
 | `timeoutMs` | 900.000 | **240.000** | p90-Prefill der dichten Gemma = 146 s |
 | `timeoutSec` / `maxRunSeconds` | 900 | **1800** | 12 Iterationen × 150 s |
-| `maxIterations` | 8–40 | **12** | Ausreißer angleichen |
+| `maxIterations` | 8–40 | **min(vorher, 12)** | nur nach unten geklemmt, siehe unten |
+| `maxToolResultChars` | 40.000 (Default) | **12.000** | ein Tool-Ergebnis durfte ~21.800 Token belegen |
+
+**`maxIterations` wird nur nach unten geklemmt**, nicht einheitlich auf 12 gesetzt. Wer
+vorher 8 hatte, behält 8. Grund: bei aktivem Überlaufproblem wäre eine *Erhöhung* die
+falsche Richtung — mehr Iterationen heißt längere Historie heißt mehr Überläufe. Betroffen
+sind 16 Agenten, die vorher zwischen 20 und 40 lagen.
+
+**`maxToolResultChars`** war nie gesetzt und lief auf dem Default von 40.000 Zeichen. Bei
+gemessenen 1,83 Zeichen/Token für Shell-Ausgaben sind das ~21.800 Token — ein einzelnes
+Tool-Ergebnis konnte also über 40 % des Prompt-Budgets belegen. `capToolResult` läuft
+ungated bei jedem Ergebnis ([execute.ts:786](../../../opensource/paperclip-adapter-lmstudio/src/server/execute.ts#L786)),
+ist also unabhängig vom Schwellenwert-Problem wirksam.
 
 Der Aufruf-Timeout sinkt von 15 auf 4 Minuten, das Run-Budget steigt von 15 auf 30 Minuten:
 **schnell aufgeben beim einzelnen Aufruf, geduldig sein beim Gesamtvorgang.**
@@ -356,10 +403,13 @@ Der Aufruf-Timeout sinkt von 15 auf 4 Minuten, das Run-Budget steigt von 15 auf 
 
 | Modellpool | Slots | Agenten | Grenze je Agent |
 |---|---|---|---|
-| `abiray/qwen3.6-35b-a3b` | 8 | 12 | **1** |
-| `gemma4-31b-it` | 12 | ~29 | **1** |
-| Mac-Kurzstrecke | 16 | 3 + Dienste | **2** |
-| `claude-sonnet-5` (Cloud) | — | 1 | **1** |
+| `abiray/qwen3.6-35b-a3b` | 5 | 11 | **1** |
+| `gemma4-31b-it` | 8 | ~29 | **1** |
+| Mac-Kurzstrecke | 8 | 3 + Dienste | **1** |
+| `claude_local` (Cloud) | — | 3 | **1** |
+
+Umgesetzt wurde **1 für alle 47** — auch für die Mac-Kurzstrecke, weil die Warteschlange
+ohnehin greift und ein einheitlicher Wert weniger Sonderfälle erzeugt.
 
 Senkt das theoretische Maximum von 740 auf 47 — Faktor 16, durch Setzen eines Feldes, das
 heute leer ist. Bei sieben Agenten muss dafür eine ausdrückliche 20 auf 1 korrigiert werden
@@ -373,13 +423,19 @@ Jeder Schritt ist einzeln wirksam und einzeln zurücknehmbar.
 1. **Tote Modelle entladen** — `ornith-1.0-9b`, `google/gemma-4-31b`, Nomic-Embeddings
    (zusammen **26,1 GB auf dem Mac Studio**) sowie die `qwen/qwen3.6-35b-a3b`-Dublette
    (**22,1 GB auf der RTX**).
-2. **Slot-Korrektur `qwen`** — 262.144×1 → 65.536×**8**. Der größte Einzelhebel; Schritt 1
+2. **Slot-Korrektur `qwen`** — 262.144×1 → **98.304×5**. Der größte Einzelhebel; Schritt 1
    auf der RTX muss dafür abgeschlossen sein.
-3. **`gemma4-31b-it`** auf 65.536×**12**, **`google/gemma-4-12b`** auf 16.384×6.
-4. **`gemma-4-12b-qat`** von RTX auf Mac verlagern. *Vorziehen: repariert 45 % der
-   VP-Engineering-Fehler (siehe „Nebenbefund: die Cloud-Agenten scheitern an der lokalen
-   Farm") und wirkt damit auch auf den Agenten, der in der Cloud bleibt.*
-5. **`openbiollm-llama3-8b`** auf den Mac.
+   *`lms load` braucht den `modelKey` (`qwen3.6-35b-a3b`), nicht den Lade-Bezeichner
+   (`abiray/…`) — sonst „select a model interactively". Nach `unload` warten, bis das Modell
+   aus `lms ps` verschwunden ist, sonst „identifier already exists".*
+3. **`gemma4-31b-it`** auf **98.304×8**, **`google/gemma-4-12b`** auf **65.536×6**.
+4. **PII-Proxy** von `google/gemma-4-12b-qat` (gelöscht) auf `google/gemma-4-12b` umstellen,
+   Dienst neu starten. *Vorziehen: repariert 45 % der VP-Engineering-Fehler (siehe
+   „Nebenbefund: die Cloud-Agenten scheitern an der lokalen Farm").*
+5. **`openbiollm-llama3-8b`** vom NAS auf den Mac kopieren; laden erst nach MacBook-Aus.
+   **Nach jedem Reload prüfen, ob Thinking noch aus ist** — das Gemma-Jinja-Template mit
+   `{%- set enable_thinking = false -%}` ist am 22.08. schon einmal bei einem Reload
+   verlorengegangen (34 denkende Aufrufe an genau diesem Tag, sonst null).
 6. **`fallbackModel` leeren** bei allen 38 Agenten.
 7. **Zeitfelder setzen** — `timeoutMs`, `maxRunSeconds`, `maxIterations`; bei
    Dr-Knowledge `timeoutMs` erstmalig.
@@ -402,7 +458,7 @@ Nach einer Woche Regelbetrieb, gemessen mit denselben Abfragen wie oben:
 | Erfolgsquote gesamt | 26,7 % | **> 70 %** |
 | Timeout-Quote 07:00–15:00 | 60–76 % | **< 15 %** |
 | „failed on fallback: timed out" | 2.339 / 7 T | **0** |
-| Erfolgsquote CRO (1 Slot → 8) | 11 % | **> 70 %** |
+| Erfolgsquote CRO (1 Slot → 5) | 11 % | **> 70 %** |
 | Erfolgsquote n8n-Betriebsingenieur (Cloud → lokal) | 13 % | **> 70 %** |
 | `blocked_by_pii_proxy` bei VP Engineering | 50 / 7 T | **< 5** |
 | Overflows `google/gemma-4-12b` | 220 / 30 T | **< 20** |
@@ -415,10 +471,53 @@ Slots zwischen den beiden Modellen umverteilen → Stufe B.
 **VP Engineering bleibt bewusst außerhalb der Erfolgsziele.** Seine 429-Fehler (21 %)
 adressiert dieser Entwurf nicht.
 
+## Was bei der Umsetzung anders kam
+
+Umgesetzt am 25.08. zwischen 14:30 und 15:05. Vier Abweichungen vom Entwurf, alle belegt:
+
+**1. Das Fenster 65.536 ist produktiv gescheitert und wurde zurückgenommen.**
+
+| Zeitfenster | Runs | Erfolg | Timeout | Kontextüberlauf |
+|---|---|---|---|---|
+| vorher (07–09 Uhr, 98.304 / 262.144) | 162 | 36 % | 15 % | 21 % |
+| 65.536 × 8 / × 12 (10:00–14:35) | 301 | 18 % | **5 %** | **55 %** |
+| dazu die DB-Änderungen (14:35–14:56) | 21 | **0 %** | 0 % | **67 %** |
+| Rollback auf 98.304 × 5 / × 8 | — | — | — | **0** |
+
+Die Slot-Erhöhung hat die Timeouts von 60–76 % auf 5 % gebracht — das war der Hebel und er
+hält. Die Fensterverkleinerung hat gleichzeitig die Überläufe von 21 % auf 67 % getrieben.
+Beides sind unabhängige Effekte derselben Änderung; nur der zweite wurde zurückgenommen.
+
+**Wie der Fehler zunächst übersehen wurde:** Die erste Auswertung nach der Umstellung zeigte
+„kein Aufruf mehr über 65.536, p99 von 75.000 auf 46.000 gefallen" und wurde als Beleg
+gelesen, dass die Kürzung greift. Sie war aus den LM-Studio-Logs gezogen — und die enthalten
+nur **erfolgreiche** Aufrufe. Der p99 fiel, weil die großen Aufrufe scheiterten statt
+durchzugehen. Dieselbe Falle ist in `ctx-stats` schon einmal aufgetreten.
+
+**2. Die Speicherrechnung in Gigabyte war falsch.** Siehe „Speicherrechnung". Gerechnet wird
+jetzt in Slot-Token gegen einen nachweislich getragenen Zustand.
+
+**3. `google/gemma-4-12b` bekommt 65.536 statt 16.384** — Link-Detektors Maximum liegt bei
+47.180 Token, nicht bei seinem p50 von 0.
+
+**4. `google/gemma-4-12b-qat` war bereits gelöscht.** Der Migrationsschritt „von RTX auf Mac
+verlagern" ging damit ins Leere; stattdessen wurde der PII-Proxy auf `google/gemma-4-12b`
+umgestellt.
+
+**Dr-Knowledge:** `openbiollm-llama3-8b` aus `/Volumes/WHITESTAG-ARCHIV/LM Studio Modelle/`
+zurückgeholt, 5.732.986.720 Byte byte-identisch. Laden erst möglich, **wenn das MacBook aus
+ist** — beide Kopien tragen denselben `modelKey`, und `lms load` kennt keinen Geräteschalter.
+
+**Zehn Agenten** mussten über `POST /agents/:id/resume` aus `error` geholt werden. Sechs
+standen auf `escalated_human`, wo bei uns niemand benachrichtigt wird (Buchhaltung bei 73
+Versuchen, Link-Detektor bei 32, Creative Assistant bei 29).
+
 ## Bewusst zurückgestellt
 
 | Punkt | Grund |
 |---|---|
+| **`BUDGET_LOOKUP_THRESHOLD_TOKENS` senken** | Die Konstante 32.000 im Adapter zwingt uns auf ein Mindestfenster von ~74.000 und kostet damit Slots. Auf ~20.000 gesenkt (oder besser: aus dem tatsächlichen Budget abgeleitet statt hart verdrahtet) wären 65.536 × 8 / × 12 wieder möglich — rund 60 % mehr Bearbeitungsplätze. Braucht Codeänderung, Build und Deploy im laufenden Betrieb. |
+| **Cloud-Rückkehrer** | n8n-Betriebsingenieur und Social Media & Community bleiben vorerst auf `claude_local`. Der Wechsel des `adapter_type` ist der riskanteste Schritt und wurde nicht auf eine gerade erst stabilisierte Farm gestapelt. Vom MacBook sind beide nicht betroffen. |
 | **Flottenweite Obergrenze (Stufe B)** | Braucht Servercode. Erst messen, ob 47 reicht. Entwurf: zusätzlicher Zähler über alle Agenten vor `startNextQueuedRunForAgent`, Startwert 12. |
 | **Prompt-Caching** | Größter bekannter Hebel (`cachedInputTokens: 0` überall), aber eigene Untersuchung — betrifft Adapter und LM-Studio-Slotverhalten. |
 | **Zielarchitektur mit 2× 512 GB** | Eigener Entwurf. Kernthese: große MoE-Modelle auf die Macs, dichte auf die RTX — belegt durch 5 s gegen 25 s Median-Prefill bei gleicher Promptlänge auf derselben Maschine. |
@@ -449,7 +548,10 @@ beendet bei `claude_local` den kompletten Run. Dieser Entwurf repariert seine an
 JavaScript in Code-Nodes; `abiray/qwen3.6-35b-a3b` ist ein Allzweckmodell. Bewusst
 abgewogen gegen seinen Ist-Zustand von 13 % Erfolg — die 77 % 429-Fehler verschwinden
 lokal vollständig. Verschlechtert sich die Reparaturqualität sichtbar, ist die Rückkehr
-zu einem lokalen Coding-Modell jederzeit möglich; die RTX hat 12,1 GB Reserve, das reicht
-allerdings nur mit reduzierter Slotzahl.
+zu einem lokalen Coding-Modell möglich — dann aber nur gegen Slots, denn die RTX ist mit
+1.277.952 Slot-Token nahe an dem Wert, der nachweislich getragen wird.
+
+*Stand 25.08.: nicht umgesetzt — beide Cloud-Agenten laufen vorerst weiter auf
+`claude_local`.*
 
 **Dr-Knowledge verliert nichts.** Das Fachmodell zieht mit auf den Mac.

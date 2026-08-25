@@ -12,7 +12,13 @@ hier hinein — nur den Fundort nennen.
   Skript liegt als `tools/rtx-nachtbilanz.sh`. Erst nach einer vollen Nacht ist
   die Aussage belastbar — und die RTX laeuft seit 23.08. durch, das allein sollte
   die Quote deutlich druecken. **Reasoning scheidet als Ursache aus** (siehe
-  Korrektur unten). *(2026-08-23, ergaenzt 2026-08-25)*
+  Korrektur unten). **Achtung, Basis hat sich am 25.08. geaendert:** der
+  Klassifikator `google/gemma-4-12b-qat` wurde beim RTX-Aufraeumen geloescht, der
+  Proxy lief seither nur ueber seinen Fallback — also jede Anfrage mit einem
+  Fehlversuch davor, was die alte Quote nach oben verfaelscht. Seit 25.08. steht
+  `PII_PROXY_CLASSIFIER_MODEL` auf `google/gemma-4-12b` (Mac Studio, 65.536 × 6).
+  Neu messen, nicht gegen die alten Zahlen halten.
+  *(2026-08-23, ergaenzt 2026-08-25)*
 
   > **Korrektur zum entfernten Eintrag „Reasoning beim PII-Classifier abschalten":**
   > Die Praemisse war falsch gemessen. Ueber alle Vorhersagen der Server-Logs
@@ -25,38 +31,72 @@ hier hinein — nur den Fundort nennen.
   > Stichprobe aus drei Einzelaufrufen taugt nicht fuer eine Quotenaussage; die
   > Zahl steht in den Logs. *(2026-08-25, Chat: LLM-Report Spalten und Kontext-Deckel)*
 
-- [ ] **`gemma-4-12b-qat`: Kontextfenster auf 32768** — steht auf **16384**, das
-  30-Tage-Maximum liegt bei **17.955**. Das Fenster liegt also UNTER der Spitze;
-  p99 ist nur 2.089, es trifft die seltenen langen Anfragen. 32768 deckt sie mit
-  1,8x Puffer und kostet bei einem 12B-Q4_0 (7,15 GB) fast nichts. Muss **an der
-  Karte** gemacht werden (Default-Config liegt dort, kein SSH). Paperclip:
-  **WHI-5064**. *(2026-08-25, Chat: LLM-Report Spalten und Kontext-Deckel)*
+- [ ] **`BUDGET_LOOKUP_THRESHOLD_TOKENS` im lmstudio-Adapter senken** — die Konstante
+  steht auf **32.000** und ist gegen ein Mindestfenster von 98.304 kalibriert
+  (der Kommentar an der Stelle nennt „98304 × 0,8 = 78.643" ausdruecklich).
+  Unterhalb dieser **Schaetzung** wird weder das Fenster abgefragt noch gekuerzt,
+  und `chars/4` unterschaetzt JSON um Faktor 2,19 — bis zu **70.000 echte Token**
+  gehen ungekuerzt durch. Deshalb ist 98.304 derzeit die kleinste sichere
+  Fenstergroesse. Auf ~20.000 gesenkt (besser: aus dem tatsaechlichen Budget
+  abgeleitet statt hart verdrahtet) waeren 65.536 mit 8/12 Slots moeglich, also
+  rund **60 % mehr Bearbeitungsplaetze**. Braucht Build und Reload — nur im
+  Drain-Fenster, siehe Eintrag unter „Betrieb".
+  *(2026-08-25, Chat: LLM-Farm Übergangskonzept)*
 
-- [ ] **`abiray/qwen3.6-35b-a3b` steht auf 262144 / parallel 1** — war am 23.08.
-  noch 98304 / parallel 4. Aendert die VRAM-Rechnung der Karte spuerbar.
-  Rueckfrage an Walter offen, ob die Umstellung von ihm kam. Ebenso, ob
-  `gemma-4-12b-qat` bei `parallel 8` bleiben soll (stand am 23.08. auf 2).
-  Teil von **WHI-5064**. *(2026-08-25, Chat: LLM-Report Spalten und Kontext-Deckel)*
-
-- [ ] **Kontext-Deckel v1.3.2: Wirksamkeit ueber einen vollen Tag pruefen** —
-  `Context size has been exceeded` je Tag: 66 (21.08.) / 207 / 195 / **179**
-  (24.08.) / 81 vor 09:00 + 38 danach am 25.08. Der Deckel im lmstudio-Adapter
-  wurde zweimal nachgebessert (v1.3.1 Kalibrierung an `usage.prompt_tokens`,
-  v1.3.2 Schaetzung nach Rolle) und laeuft erst seit 25.08. 10:50 in der
-  endgueltigen Fassung. Tageszahl gegen die 179 halten, je Modell und Stunde.
-  Erwartung: deutlicher Rueckgang, nicht null — `trimMessages` behaelt bewusst
-  die juengste Austauschgruppe. Der ctx-Bericht zaehlt die Overflows seit 23.08.
-  selbst. Paperclip: **WHI-5065**.
-  *(2026-08-25, Chat: LLM-Report Spalten und Kontext-Deckel)*
+- [ ] **Kontextueberlaeufe nach einem vollen Tag neu bewerten** — Ursache ist seit
+  25.08. bekannt (Schwellenwert oben), das Fenster steht wieder auf 98.304 und
+  seit dem Rollback um 14:56 gab es **null** `Context size has been exceeded`
+  (vorher ~19/h). Verlauf zum Vergleich: 0/Tag bis 20.08., dann 66 (21.08.) /
+  139 / 101 / 73 / 114 (25.08.) — die Ueberlaeufe begannen am Tag des
+  RTX-Aufraeumens. Tageszahl am 26.08. gegenpruefen. Paperclip: **WHI-5065**.
+  *(2026-08-25, ergaenzt 2026-08-25, Chat: LLM-Farm Übergangskonzept)*
 
 - [ ] **`text-embedding-bge-m3` hatte 23 wartende Anfragen** — Ursache ungeklaert.
   Vermutlich ein Indexierungslauf, aber nicht verifiziert. Wenn es dauerhaft
   staut, gehoert das Modell groesser dimensioniert oder der Batch entzerrt.
   *(2026-08-23, Chat: LLM-Farm Umbau)*
 
-- [ ] **`ornith-1.0-9b` auf dem Studio klaeren** — taucht mit `parallel 4` in
-  `lms ps` auf, stammt nicht aus dieser Session und aus keiner bekannten
-  Zuordnung. Pruefen, wer es nutzt, sonst entladen. *(2026-08-23, Chat: LLM-Farm Umbau)*
+- [ ] **`openbiollm-llama3-8b` auf dem Mac Studio laden** — geht erst, **wenn das
+  MacBook aus ist**: beide Kopien tragen denselben `modelKey`, und `lms load`
+  kennt keinen Geraeteschalter. Die Datei liegt seit 25.08. lokal (aus
+  `/Volumes/WHITESTAG-ARCHIV/LM Studio Modelle/NicholasJohn/`, 5.732.986.720 Byte
+  byte-identisch geprueft). Ohne diesen Schritt hat **Dr-Knowledge kein Modell** —
+  der Agent mit 82 von 82 erfolgreichen Laeufen in 30 Tagen.
+  `~/.lmstudio/bin/lms load openbiollm-llama3-8b.gguf -c 8192 --parallel 2 -y`
+  *(2026-08-25, Chat: LLM-Farm Übergangskonzept)*
+
+- [ ] **Cloud-Rueckkehrer auf `lmstudio_local` umstellen** — n8n-Betriebsingenieur
+  (39 Laeufe/Tag, **77 % seiner Fehler sind 429er**) und Social Media & Community
+  laufen weiter auf `claude_local`. Der Wechsel des `adapter_type` ist der
+  riskanteste Schritt des Konzepts und wurde bewusst nicht auf eine gerade erst
+  stabilisierte Farm gestapelt. Ziel laut Spec: n8n-Betriebsingenieur auf
+  `abiray/qwen3.6-35b-a3b`, Social Media & Community auf `gemma4-31b-it`.
+  **VP Engineering bleibt auf `claude-sonnet-5`** (Entscheidung vom 25.08.).
+  *(2026-08-25, Chat: LLM-Farm Übergangskonzept)*
+
+- [ ] **`maxIterations`-Klemmung beobachten** — bei allen lmstudio-Agenten am 25.08.
+  auf hoechstens 12 gesenkt (16 Agenten lagen zwischen 20 und 40); wer darunter
+  lag, behielt seinen Wert. Begruendung war das damals aktive Ueberlaufproblem —
+  mehr Iterationen heisst laengere Historie. Mit dem wieder groesseren Fenster ist
+  dieser Grund schwaecher. Zwei Laeufe sind noch am selben Tag an
+  „Max iterations (12) reached without final answer" gescheitert. Wenn sich das
+  haeuft, fuer die betroffenen Agenten wieder anheben.
+  *(2026-08-25, Chat: LLM-Farm Übergangskonzept)*
+
+- [ ] **Timeout-Rest im Gemma-Pool nach einem vollen Tag bewerten** —
+  `gemma4-31b-it` traegt mit ~29 Agenten mehr als die halbe Flotte auf **8 Slots**
+  und ist das langsame dichte Modell (25 s Median-Prefill gegen 5 s bei der MoE).
+  Am 25.08. nach dem Umbau: 4 Timeouts in 20 Minuten, **alle** auf diesem Modell
+  (Akquise & Booking, CMO, Label Manager). Naechster Schritt laut Spec, falls es
+  bleibt: analytische Agenten auf die MoE ziehen — Vitals-Monitor,
+  LLM-Konfigurationsanalyst, Label Manager brauchen kein kreatives Deutsch.
+  *(2026-08-25, Chat: LLM-Farm Übergangskonzept)*
+
+- [ ] **Spec-Review Farm-Uebergangskonzept** — `docs/superpowers/specs/2026-08-25-farm-uebergangskonzept-design.md`
+  wurde geschrieben, umgesetzt und viermal nachkorrigiert, aber von Walter nie
+  durchgesehen. Enthaelt den Abschnitt „Was bei der Umsetzung anders kam" mit
+  vier belegten Abweichungen vom Entwurf.
+  *(2026-08-25, Chat: LLM-Farm Übergangskonzept)*
 
 - [ ] **RTF-Betriebsuebersicht um archivierte Modelle ergaenzen** —
   `docs/LLM-Farm Betriebsuebersicht 2026-08-22.rtf` listet nur geladene

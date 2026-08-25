@@ -84,6 +84,18 @@ function resolveRunActivity(props: RunChartProps): DashboardRunActivityDay[] {
   return [];
 }
 
+const runOutcomeColors = {
+  succeeded: "#10b981",
+  failed: "#ef4444",
+  other: "#737373",
+} as const;
+
+const runOutcomeLegend = [
+  { color: runOutcomeColors.succeeded, label: "Succeeded" },
+  { color: runOutcomeColors.failed, label: "Failed / Timed Out" },
+  { color: runOutcomeColors.other, label: "Other" },
+];
+
 export function RunActivityChart(props: RunChartProps) {
   const activity = resolveRunActivity(props);
   const days = activity.length > 0 ? activity.map((day) => day.date) : getLast14Days();
@@ -105,9 +117,9 @@ export function RunActivityChart(props: RunChartProps) {
             <div key={day} className="flex-1 h-full flex flex-col justify-end" title={`${day}: ${total} runs`}>
               {total > 0 ? (
                 <div className="flex flex-col-reverse gap-px overflow-hidden" style={{ height: `${heightPct}%`, minHeight: 2 }}>
-                  {entry.succeeded > 0 && <div className="bg-emerald-500" style={{ flex: entry.succeeded }} />}
-                  {entry.failed > 0 && <div className="bg-red-500" style={{ flex: entry.failed }} />}
-                  {entry.other > 0 && <div className="bg-neutral-500" style={{ flex: entry.other }} />}
+                  {entry.succeeded > 0 && <div style={{ flex: entry.succeeded, backgroundColor: runOutcomeColors.succeeded }} />}
+                  {entry.failed > 0 && <div style={{ flex: entry.failed, backgroundColor: runOutcomeColors.failed }} />}
+                  {entry.other > 0 && <div style={{ flex: entry.other, backgroundColor: runOutcomeColors.other }} />}
                 </div>
               ) : (
                 <div className="bg-muted/30 rounded-sm" style={{ height: 2 }} />
@@ -117,6 +129,7 @@ export function RunActivityChart(props: RunChartProps) {
         })}
       </div>
       <DateLabels days={days} />
+      <ChartLegend items={runOutcomeLegend} />
     </div>
   );
 }
@@ -241,6 +254,16 @@ export function IssueStatusChart({ issues }: { issues: { status: string; created
   );
 }
 
+const successRateBands = [
+  { color: "#10b981", min: 0.8, label: "≥ 80%" },
+  { color: "#eab308", min: 0.5, label: "50–79%" },
+  { color: "#ef4444", min: 0, label: "< 50%" },
+];
+
+function successRateColor(rate: number): string {
+  return successRateBands.find(band => rate >= band.min)!.color;
+}
+
 export function SuccessRateChart(props: RunChartProps) {
   const activity = resolveRunActivity(props);
   const days = activity.length > 0 ? activity.map((day) => day.date) : getLast14Days();
@@ -255,7 +278,7 @@ export function SuccessRateChart(props: RunChartProps) {
         {days.map(day => {
           const entry = grouped.get(day) ?? { date: day, succeeded: 0, failed: 0, other: 0, total: 0 };
           const rate = entry.total > 0 ? entry.succeeded / entry.total : 0;
-          const color = entry.total === 0 ? undefined : rate >= 0.8 ? "#10b981" : rate >= 0.5 ? "#eab308" : "#ef4444";
+          const color = entry.total === 0 ? undefined : successRateColor(rate);
           return (
             <div key={day} className="flex-1 h-full flex flex-col justify-end" title={`${day}: ${entry.total > 0 ? Math.round(rate * 100) : 0}% (${entry.succeeded}/${entry.total})`}>
               {entry.total > 0 ? (
@@ -268,6 +291,7 @@ export function SuccessRateChart(props: RunChartProps) {
         })}
       </div>
       <DateLabels days={days} />
+      <ChartLegend items={successRateBands.map(band => ({ color: band.color, label: band.label }))} />
     </div>
   );
 }

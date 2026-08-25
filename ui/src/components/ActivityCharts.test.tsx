@@ -106,4 +106,20 @@ describe("ActivityCharts", () => {
     expect(container.textContent).not.toContain("No runs yet");
     expect(container.querySelector("[title='2026-04-20: 2 runs']")).not.toBeNull();
   });
+
+  it("labels the run outcome colors so the stacked bars are readable without guessing", () => {
+    render(<RunActivityChart runs={[createRun({ status: "succeeded" })]} />);
+
+    expect(container.textContent).toContain("Succeeded");
+    expect(container.textContent).toContain("Failed / Timed Out");
+    expect(container.textContent).toContain("Other");
+  });
+
+  it("labels the success rate bands", () => {
+    render(<SuccessRateChart runs={[createRun({ status: "succeeded" })]} />);
+
+    expect(container.textContent).toContain("≥ 80%");
+    expect(container.textContent).toContain("50–79%");
+    expect(container.textContent).toContain("< 50%");
+  });
 });

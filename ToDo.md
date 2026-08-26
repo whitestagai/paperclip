@@ -52,13 +52,15 @@ hier hinein — nur den Fundort nennen.
   > Schaetzer nach Rolle (`chars/2` fuer Tool-Inhalte), die Unterschaetzung liegt
   > bei ~1,09 statt 2,19. *(2026-08-26)*
 
-- [ ] **Kontextueberlaeufe nach einem vollen Tag neu bewerten** — Ursache ist seit
-  25.08. bekannt (Schwellenwert oben), das Fenster steht wieder auf 98.304 und
-  seit dem Rollback um 14:56 gab es **null** `Context size has been exceeded`
-  (vorher ~19/h). Verlauf zum Vergleich: 0/Tag bis 20.08., dann 66 (21.08.) /
-  139 / 101 / 73 / 114 (25.08.) — die Ueberlaeufe begannen am Tag des
-  RTX-Aufraeumens. Tageszahl am 26.08. gegenpruefen. Paperclip: **WHI-5065**.
-  *(2026-08-25, ergaenzt 2026-08-25, Chat: LLM-Farm Übergangskonzept)*
+- [ ] **Kontextueberlaeufe nach einem vollen Tag neu bewerten** — Ursache seit
+  26.08. belegt: sie entstehen **beim Erzeugen von Tool-Calls** (Eintrag oben),
+  nicht beim Prompt. Das Fenster steht wieder auf 98.304 x 5/8. Zweimal bestaetigt:
+  25.08. 15:00 bis 26.08. 09:00 mit 98.304 **null** Ueberlaeufe, danach mit 65.536
+  binnen einer Stunde **71 % der Runs**, nach der erneuten Rueckstellung um 12:14
+  wieder null. Verlauf je Tag: 0 bis 20.08., dann 66 (21.08.) / 139 / 101 / 73 /
+  114 (25.08.). Tageszahl am 27.08. gegenpruefen — erst ein voller Tag auf 98.304
+  ist belastbar. Paperclip: **WHI-5065**.
+  *(2026-08-25, korrigiert 2026-08-26, Chat: LLM-Farm Übergangskonzept)*
 
 - [ ] **`deepseek/deepseek-v4-flash` auf der RTX klaeren** — 156,38 GB, MXFP4,
   256x8,4B MoE, max ctx 1.048.576, **nicht geladen**. Passt mit 156 GB nicht in

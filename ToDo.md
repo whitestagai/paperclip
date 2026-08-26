@@ -60,6 +60,13 @@ hier hinein — nur den Fundort nennen.
   RTX-Aufraeumens. Tageszahl am 26.08. gegenpruefen. Paperclip: **WHI-5065**.
   *(2026-08-25, ergaenzt 2026-08-25, Chat: LLM-Farm Übergangskonzept)*
 
+- [ ] **`deepseek/deepseek-v4-flash` auf der RTX klaeren** — 156,38 GB, MXFP4,
+  256x8,4B MoE, max ctx 1.048.576, **nicht geladen**. Passt mit 156 GB nicht in
+  96 GB VRAM und meldet **`trainedForToolUse: false`** — als Agentenmodell damit
+  unbrauchbar, unabhaengig von seiner Qualitaet. Herkunft und Zweck ungeklaert;
+  wenn es nicht gebraucht wird, sind 156 GB Plattenplatz auf der Karte frei.
+  *(2026-08-26, Chat: LLM-Farm Übergangskonzept)*
+
 - [ ] **`text-embedding-bge-m3` hatte 23 wartende Anfragen** — Ursache ungeklaert.
   Vermutlich ein Indexierungslauf, aber nicht verifiziert. Wenn es dauerhaft
   staut, gehoert das Modell groesser dimensioniert oder der Batch entzerrt.

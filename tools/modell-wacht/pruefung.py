@@ -8,9 +8,17 @@ verdrahtet hat, gegen den tatsächlichen Bestand halten. Ein Modellumzug macht
 solche Namen still ungültig — und zwar unsichtbar, weil ein toter Name in der
 Statistik „Aufrufe je Modell" gar nicht auftaucht. Er erscheint nur als
 `[ERROR] Invalid model identifier` ohne Modell-Präfix im LM-Studio-Log.
+
+Drei Prüfungen, drei Fehlerbilder — alle drei am 26.08. gleichzeitig aktiv:
+
+- `bewerte`         — zeigt eine Stelle auf einen Namen, den es nicht gibt?
+- `bewerte_laufzeit` — ist der Name richtig, das Modell aber falsch bedient
+                      (Fenster zu klein, Slotzahl abweichend)?
+- `bewerte_drift`   — steht in der Konfigurationsdatei etwas anderes als im
+                      laufenden Dienst?
 """
 
-from typing import Iterable, List, NamedTuple, Optional
+from typing import Dict, Iterable, List, NamedTuple, Optional, Tuple
 
 # Hinweis: launchd startet hier mit dem System-Python 3.9. Deshalb `Optional[x]`
 # statt `x | None` und `List[x]` statt `list[x]` — sonst scheitert der Import
@@ -44,6 +52,8 @@ class Referenz(NamedTuple):
 
 class Befund(NamedTuple):
     art: str  # "unbekannt" | "nicht_geladen" | "quelle_unlesbar"
+    # | "fenster_zu_klein" | "fenster_groesser" | "slots_abweichend"
+    # | "konfig_drift"
     schwere: str  # "hoch" | "niedrig"
     quelle: str
     feld: str
@@ -133,6 +143,142 @@ def bewerte(
             )
 
     return _sortiert(befunde)
+
+
+def bewerte_laufzeit(zustaende: Dict[str, Tuple], soll: Dict[str, Dict]) -> List[Befund]:
+    """Hält Fenstergröße und Slotzahl der geladenen Modelle gegen die Vorgabe.
+
+    Ein Modellname kann gültig und trotzdem falsch bedient sein: Am 26.08.
+    stand `gemma4-31b-it` von 10:00 bis 12:11 auf 65.536 statt 98.304. Die
+    Referenzprüfung sah davon nichts — die ID war ja korrekt und das Modell
+    geladen. Sichtbar wurde es nur an 109 Überläufen.
+
+    Slots werden nur bewertet, wenn das Fenster stimmt. Beide Werte gehören
+    zusammen (kleineres Fenster erlaubt mehr Slots im selben Speicher); bei
+    falschem Fenster ist die abweichende Slotzahl dessen Folge, keine zweite
+    Meldung.
+    """
+    befunde: List[Befund] = []
+    for modell, vorgabe in sorted(soll.items()):
+        ist = zustaende.get(modell)
+        if ist is None:
+            # Dass ein Modell fehlt, meldet bereits `bewerte()` über die
+            # Referenzen. Hier nochmal wäre eine Dublette in jedem Bericht.
+            continue
+        ctx_ist, slots_ist = ist
+        ctx_soll = vorgabe.get("contextLength")
+        slots_soll = vorgabe.get("parallel")
+
+        if ctx_soll is not None and ctx_ist is not None and ctx_ist != ctx_soll:
+            zu_klein = ctx_ist < ctx_soll
+            befunde.append(
+                Befund(
+                    art="fenster_zu_klein" if zu_klein else "fenster_groesser",
+                    schwere="hoch" if zu_klein else "niedrig",
+                    quelle="LM Studio «{}»".format(modell),
+                    feld="contextLength",
+                    modell=modell,
+                    text=(
+                        "«{}» läuft mit Fenster {} statt {}. Zu klein: der "
+                        "lmstudio-Adapter kürzt unterhalb seiner Schätzschwelle "
+                        "gar nicht, Überläufe sind die Folge.".format(
+                            modell, ctx_ist, ctx_soll
+                        )
+                        if zu_klein
+                        else "«{}» läuft mit Fenster {} statt {}. Größer als "
+                        "gefordert — kostet Speicher, sonst harmlos.".format(
+                            modell, ctx_ist, ctx_soll
+                        )
+                    ),
+                )
+            )
+        elif slots_soll is not None and slots_ist != slots_soll:
+            befunde.append(
+                Befund(
+                    art="slots_abweichend",
+                    schwere="niedrig",
+                    quelle="LM Studio «{}»".format(modell),
+                    feld="parallel",
+                    modell=modell,
+                    text=(
+                        "«{}» hat {} Bearbeitungsplätze statt {}. Betrifft den "
+                        "Durchsatz, nicht die Korrektheit.".format(
+                            modell, slots_ist, slots_soll
+                        )
+                    ),
+                )
+            )
+    return _sortiert(befunde)
+
+
+def bewerte_drift(datei: Iterable[Referenz], dienst: Iterable[Referenz]) -> List[Befund]:
+    """Vergleicht die Konfigurationsdatei mit dem, was der Dienst wirklich hat.
+
+    launchd liest eine geänderte plist nicht von selbst nach, und
+    `kickstart -k` startet nur den Prozess neu — nicht den Job. Eine Korrektur
+    kann deshalb tagelang „erledigt" aussehen und wirkungslos sein. Am 26.08.
+    kostete genau das 822 gescheiterte Klassifikator-Aufrufe an einem Tag.
+    Erst `bootout` + `bootstrap` übernimmt neue Werte.
+    """
+    laufend = {r.feld: r.modell for r in dienst}
+    if not laufend:
+        # Job entladen — die Nichtverfügbarkeit ist eine eigene Meldung, kein
+        # Drift. Als Drift gemeldet würde sie in die falsche Richtung weisen.
+        return []
+
+    befunde: List[Befund] = []
+    for ref in datei:
+        ist = laufend.get(ref.feld)
+        if ist is not None and ist != ref.modell:
+            befunde.append(
+                Befund(
+                    art="konfig_drift",
+                    schwere="hoch",
+                    quelle=ref.quelle,
+                    feld=ref.feld,
+                    modell=ist,
+                    text=(
+                        "{} ({}): Datei sagt «{}», der laufende Dienst nutzt "
+                        "«{}». Die Änderung wurde nie übernommen — launchd "
+                        "braucht bootout + bootstrap, kickstart genügt nicht.".format(
+                            ref.quelle, ref.feld, ref.modell, ist
+                        )
+                    ),
+                )
+            )
+    return _sortiert(befunde)
+
+
+def signatur(befunde: Iterable[Befund]) -> List[str]:
+    """Stabile Kennung der harten Befunde — Grundlage der Entprellung.
+
+    Bewusst OHNE den Meldetext: «Fenster 65.536 statt 98.304» und
+    «Fenster 32.768 statt 98.304» sind derselbe Fehler an derselben Stelle.
+    Stünde der Text darin, würde jedes Wackeln des Wertes als neuer Befund
+    gelten und erneut melden.
+
+    Niedrige Befunde gehören in den Bericht, wecken aber niemanden — sie
+    tauchen hier nicht auf.
+    """
+    return sorted(
+        "{}|{}|{}".format(b.art, b.quelle, b.feld)
+        for b in befunde
+        if b.schwere == "hoch"
+    )
+
+
+def meldung_faellig(jetzt: List[str], zuletzt: List[str]) -> bool:
+    """Melden nur bei Zustandswechsel.
+
+    Der Wächter läuft alle 30 Minuten. Ohne diese Bremse erzeugt ein Zustand,
+    der zwei Stunden anhält, vier gleichlautende Issues — und danach schaut
+    niemand mehr hin.
+
+    Der Aufrufer muss den Zustand bei JEDEM Lauf fortschreiben, auch wenn nicht
+    gemeldet wird. Sonst gilt ein behobener Fehler beim Wiederauftreten als
+    „schon gemeldet" und bleibt stumm — genau der flappende Fall vom 26.08.
+    """
+    return bool(jetzt) and jetzt != zuletzt
 
 
 def _sortiert(befunde: List[Befund]) -> List[Befund]:

@@ -1,0 +1,42 @@
+{
+  "_hinweis": [
+    "Soll-Zustand der geladenen Modelle: Fenstergröße und Bearbeitungsplätze.",
+    "Nur Modelle, die hier stehen, werden bewertet — openbiollm und die",
+    "Einbettungsmodelle haben bewusst kleine Fenster und gehören nicht hierher.",
+    "Wer einen Wert ändert, ändert ihn hier und nennt den Grund."
+  ],
+
+  "abiray/qwen3.6-35b-a3b": {
+    "contextLength": 98304,
+    "parallel": 5,
+    "begruendung": [
+      "98.304 ist die kleinste sichere Größe, solange im lmstudio-Adapter",
+      "BUDGET_LOOKUP_THRESHOLD_TOKENS = 32.000 steht: unterhalb dieser",
+      "Schätzung wird weder das Fenster abgefragt noch gekürzt, und chars/4",
+      "unterschätzt JSON um Faktor 2,19 — bis zu 70.000 echte Token gehen",
+      "ungekürzt durch. Der Versuch mit 65.536 am 25.08. trieb die Überläufe",
+      "auf 67 % und die Erfolgsquote auf 0."
+    ]
+  },
+
+  "gemma4-31b-it": {
+    "contextLength": 98304,
+    "parallel": 8,
+    "begruendung": [
+      "Gleiche Untergrenze wie oben. 8 Plätze, weil dieses dichte Modell mit",
+      "~29 Agenten mehr als die halbe Flotte trägt und mit 25 s Median-Prefill",
+      "deutlich langsamer ist als die MoE (5 s)."
+    ]
+  },
+
+  "google/gemma-4-12b": {
+    "contextLength": 65536,
+    "parallel": 6,
+    "begruendung": [
+      "Kein Agentenmodell, daher nicht an die 98.304 gebunden. 65.536 statt",
+      "der ursprünglich geplanten 16.384, weil das Maximum des Link-Detektors",
+      "bei 47.180 Token liegt — sein p50 von 0 wäre die falsche Bezugsgröße.",
+      "Seit 25.08. zusätzlich Klassifikator des PII-Proxys."
+    ]
+  }
+}

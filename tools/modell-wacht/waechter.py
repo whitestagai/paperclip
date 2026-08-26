@@ -20,7 +20,14 @@ import sys
 import urllib.request
 from typing import Any, Dict, List, Tuple
 
-from pruefung import Bestand, Referenz, bewerte
+from pruefung import (
+    SCHWERE_REIHENFOLGE,
+    Bestand,
+    Referenz,
+    bewerte,
+    bewerte_drift,
+    bewerte_laufzeit,
+)
 
 LM_STUDIO = os.environ.get("MODELL_WACHT_LMSTUDIO", "http://127.0.0.1:1234")
 PAPERCLIP_DSN = dict(host="127.0.0.1", port="54329", user="paperclip", dbname="paperclip")
@@ -34,6 +41,11 @@ REPO = os.environ.get(
 N8N_DB = os.path.expanduser("~/.n8n/database.sqlite")
 PII_PLIST = os.path.expanduser("~/Library/LaunchAgents/io.piiproxy.server.plist")
 DETEKTOR = os.path.join(VAULT, "projekte/obsidian/link-detektor-v11")
+LMS_BIN = os.path.expanduser("~/.lmstudio/bin/lms")
+SOLL_LAUFZEIT = os.environ.get(
+    "MODELL_WACHT_SOLL",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "soll-laufzeit.json"),
+)
 
 
 # ===================================================================== rein
@@ -126,6 +138,37 @@ def referenzen_aus_template(text: str, quelle: str) -> List[Referenz]:
 def referenzen_aus_satellit(text: str) -> List[Referenz]:
     m = re.search(r'^\s*CHAT_MODEL\s*=\s*"([^"]+)"', text, re.M)
     return [Referenz("Wake-Satellit", "sat_config.CHAT_MODEL", m.group(1))] if m else []
+
+
+def referenzen_aus_launchd_env(text: str, quelle: str) -> List[Referenz]:
+    """Modellnamen aus der Umgebung eines LAUFENDEN launchd-Jobs.
+
+    Der Vorfall vom 26.08.: Die plist auf der Platte war seit einem Tag
+    korrigiert, launchd hatte die Änderung aber nie eingelesen und hielt im
+    Job-Zustand weiter das gelöschte «google/gemma-4-12b-qat». `kickstart -k`
+    startet nur den Prozess neu, nicht den Job — der Fehler überlebt also
+    jeden scheinbaren Neustart. Wer nur die Datei prüft, sieht davon nichts.
+
+    Erwartet die Ausgabe von `launchctl print`, deren Umgebungszeilen die
+    Form `NAME => wert` haben.
+    """
+    refs = []
+    for name, wert in re.findall(r"^\s*(\S*MODEL)\s*=>\s*(\S+)\s*$", text, re.M):
+        refs.append(Referenz(quelle, name.replace("PII_PROXY_", ""), wert))
+    return refs
+
+
+def laufzeit_aus_lms_ps(eintraege: List[Dict[str, Any]]) -> Dict[str, Tuple]:
+    """Fenstergröße und Slotzahl je geladenem Modell aus `lms ps --json`.
+
+    Die Tabellenausgabe von `lms ps` taugt dafür nicht — sie ist auf
+    Spaltenbreite formatiert und lässt sich nicht stabil zerlegen.
+    """
+    return {
+        e["identifier"]: (e.get("contextLength"), e.get("parallel"))
+        for e in eintraege
+        if e.get("identifier")
+    }
 
 
 # ====================================================================== I/O
@@ -250,6 +293,41 @@ def hole_pii_proxy() -> List[Referenz]:
     return refs
 
 
+def hole_pii_proxy_dienst() -> List[Referenz]:
+    """Die Umgebung des LAUFENDEN Dienstes — nicht die der Datei.
+
+    Genau diese Quelle fehlte am 26.08.: Die Aufsicht meldete «keine
+    Inkonsistenzen», weil die plist stimmte, während der Dienst weiter auf ein
+    gelöschtes Modell zeigte.
+    """
+    out = subprocess.run(
+        ["launchctl", "print", "gui/{}/io.piiproxy.server".format(os.getuid())],
+        capture_output=True, text=True, timeout=20,
+    )
+    if out.returncode != 0:
+        raise RuntimeError("Dienst nicht geladen (launchctl rc={})".format(out.returncode))
+    return referenzen_aus_launchd_env(out.stdout, "PII-Proxy (laufender Dienst)")
+
+
+def hole_laufzeit() -> Dict[str, Tuple]:
+    """Fenster und Slots der geladenen Modelle.
+
+    `lms ps --json` statt der Tabellenausgabe — letztere ist auf Spaltenbreite
+    formatiert und nicht stabil zerlegbar.
+    """
+    out = subprocess.run(
+        [LMS_BIN, "ps", "--json"], capture_output=True, text=True, timeout=60
+    )
+    if out.returncode != 0:
+        raise RuntimeError((out.stderr or "").strip().split("\n")[-1][:160])
+    return laufzeit_aus_lms_ps(json.loads(out.stdout))
+
+
+def hole_soll() -> Dict[str, Dict]:
+    with open(SOLL_LAUFZEIT, "r", encoding="utf-8") as fh:
+        return {k: v for k, v in json.load(fh).items() if not k.startswith("_")}
+
+
 QUELLEN: Tuple = (
     (hole_agenten, "Paperclip-Agenten"),
     (hole_link_detektor, "Link-Detektor-Datenbanken"),
@@ -257,10 +335,16 @@ QUELLEN: Tuple = (
     (hole_tagger, "Obsidian-Tagger-Templates"),
     (hole_satellit, "Wake-Satellit"),
     (hole_pii_proxy, "PII-Proxy-Plist"),
+    (hole_pii_proxy_dienst, "PII-Proxy (laufender Dienst)"),
 )
 
 
-def main() -> int:
+def pruefe() -> Tuple[List, Dict[str, Any]]:
+    """Führt alle drei Prüfungen aus und liefert (Befunde, Ergebnis-JSON).
+
+    Getrennt von `main`, damit der Melder dieselbe Prüfung nutzen kann, ohne
+    stdout zu parsen.
+    """
     unlesbar: List[str] = []
     try:
         bestand = hole_bestand()
@@ -272,18 +356,44 @@ def main() -> int:
     for fn, name in QUELLEN:
         referenzen += _hole(fn, name, unlesbar)
 
+    laufzeit: Dict[str, Tuple] = {}
+    soll: Dict[str, Dict] = {}
+    try:
+        laufzeit = hole_laufzeit()
+        soll = hole_soll()
+    except Exception as exc:  # noqa: BLE001 - fail-closed wie bei den Quellen
+        unlesbar.append("LM-Studio-Laufzeit: {}".format(exc))
+
     befunde = bewerte(referenzen, bestand, unlesbar)
+    befunde += bewerte_laufzeit(laufzeit, soll)
+    befunde += bewerte_drift(
+        [r for r in referenzen if r.quelle == "PII-Proxy"],
+        [r for r in referenzen if r.quelle == "PII-Proxy (laufender Dienst)"],
+    )
+    befunde = sorted(befunde, key=lambda b: SCHWERE_REIHENFOLGE[b.schwere])
+
     ergebnis = {
         "ok": not befunde,
         "geprueft": len(referenzen),
         "quellen": len(QUELLEN),
         "bestand": {"vorhanden": len(bestand.vorhanden), "geladen": len(bestand.geladen)},
+        "laufzeit": {"geladen": len(laufzeit), "mit_sollwert": len(soll)},
+        "kopfzeile": (
+            "{} Referenzen aus {} Quellen gegen {} Modelle geprüft, "
+            "{} Laufzeit-Zustände gegen {} Sollwerte.".format(
+                len(referenzen), len(QUELLEN), len(bestand.vorhanden),
+                len(laufzeit), len(soll))
+        ),
         "befunde": [b._asdict() for b in befunde],
     }
+    return befunde, ergebnis
+
+
+def main() -> int:
+    befunde, ergebnis = pruefe()
 
     if "--text" in sys.argv:
-        print("{} Referenzen aus {} Quellen gegen {} Modelle geprüft.".format(
-            len(referenzen), len(QUELLEN), len(bestand.vorhanden)))
+        print(ergebnis["kopfzeile"])
         if not befunde:
             print("Kein Befund.")
         for b in befunde:

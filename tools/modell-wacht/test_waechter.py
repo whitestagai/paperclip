@@ -3,10 +3,78 @@
 from pruefung import Referenz
 from waechter import (
     bestand_aus_api,
+    laufzeit_aus_lms_ps,
     referenzen_aus_agenten,
+    referenzen_aus_launchd_env,
     referenzen_aus_n8n,
     referenzen_aus_template,
 )
+
+
+# ------------------------------------------------------- laufender Dienst
+
+LAUNCHCTL_AUSGABE = """\
+io.piiproxy.server = {
+	active count = 1
+	state = running
+	program = /Users/x/.nvm/versions/node/v22.22.0/bin/node
+	environment = {
+		PATH => /usr/bin:/bin
+		PII_PROXY_CLASSIFIER_MODEL => google/gemma-4-12b-qat
+		PII_PROXY_CLASSIFIER_FALLBACK_MODEL => google/gemma-4-12b
+	}
+	default environment = {
+		PATH => /usr/bin:/bin
+	}
+}
+"""
+
+
+def test_launchd_env_liest_das_modell_des_laufenden_dienstes():
+    """26.08.: Die plist auf der Platte stand seit einem Tag richtig, der
+    laufende Job trug weiter das geloeschte «gemma-4-12b-qat». Die Aufsicht
+    las nur die Datei und meldete deshalb «keine Inkonsistenzen», waehrend
+    jeder Klassifikator-Aufruf scheiterte."""
+    refs = referenzen_aus_launchd_env(LAUNCHCTL_AUSGABE, "PII-Proxy (laufender Dienst)")
+    assert Referenz(
+        "PII-Proxy (laufender Dienst)", "CLASSIFIER_MODEL", "google/gemma-4-12b-qat"
+    ) in refs
+    assert Referenz(
+        "PII-Proxy (laufender Dienst)", "CLASSIFIER_FALLBACK_MODEL", "google/gemma-4-12b"
+    ) in refs
+
+
+def test_launchd_env_ignoriert_nicht_modellbezogene_variablen():
+    refs = referenzen_aus_launchd_env(LAUNCHCTL_AUSGABE, "PII-Proxy (laufender Dienst)")
+    assert all("PATH" not in r.feld for r in refs)
+
+
+def test_launchd_env_ohne_dienst_ist_leer_nicht_kaputt():
+    """Ist der Job entladen, gibt launchctl gar keine Umgebung aus. Das ist
+    kein Parserfehler — die Nichtverfuegbarkeit meldet der Aufrufer."""
+    assert referenzen_aus_launchd_env("Could not find service", "PII-Proxy") == []
+
+
+# ------------------------------------------------------- Laufzeit-Fenster
+
+
+LMS_PS = [
+    {"identifier": "abiray/qwen3.6-35b-a3b", "contextLength": 98304, "parallel": 5},
+    {"identifier": "gemma4-31b-it", "contextLength": 65536, "parallel": 12},
+    {"identifier": "text-embedding-bge-m3", "contextLength": 8192, "parallel": None},
+]
+
+
+def test_laufzeit_liest_fenster_und_slots_je_modell():
+    z = laufzeit_aus_lms_ps(LMS_PS)
+    assert z["abiray/qwen3.6-35b-a3b"] == (98304, 5)
+    assert z["gemma4-31b-it"] == (65536, 12)
+
+
+def test_laufzeit_uebernimmt_auch_modelle_ohne_slots():
+    """Einbettungsmodelle melden `parallel: null`. Sie fallen sonst still aus
+    der Erfassung, obwohl ihr Fenster genauso kippen kann."""
+    assert laufzeit_aus_lms_ps(LMS_PS)["text-embedding-bge-m3"] == (8192, None)
 
 
 # --------------------------------------------------------------- Bestand

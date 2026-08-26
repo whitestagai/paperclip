@@ -31,17 +31,26 @@ hier hinein — nur den Fundort nennen.
   > Stichprobe aus drei Einzelaufrufen taugt nicht fuer eine Quotenaussage; die
   > Zahl steht in den Logs. *(2026-08-25, Chat: LLM-Report Spalten und Kontext-Deckel)*
 
-- [ ] **`BUDGET_LOOKUP_THRESHOLD_TOKENS` im lmstudio-Adapter senken** — die Konstante
-  steht auf **32.000** und ist gegen ein Mindestfenster von 98.304 kalibriert
-  (der Kommentar an der Stelle nennt „98304 × 0,8 = 78.643" ausdruecklich).
-  Unterhalb dieser **Schaetzung** wird weder das Fenster abgefragt noch gekuerzt,
-  und `chars/4` unterschaetzt JSON um Faktor 2,19 — bis zu **70.000 echte Token**
-  gehen ungekuerzt durch. Deshalb ist 98.304 derzeit die kleinste sichere
-  Fenstergroesse. Auf ~20.000 gesenkt (besser: aus dem tatsaechlichen Budget
-  abgeleitet statt hart verdrahtet) waeren 65.536 mit 8/12 Slots moeglich, also
-  rund **60 % mehr Bearbeitungsplaetze**. Braucht Build und Reload — nur im
-  Drain-Fenster, siehe Eintrag unter „Betrieb".
-  *(2026-08-25, Chat: LLM-Farm Übergangskonzept)*
+- [ ] **`maxPromptTokens` je Agent setzen, um die Slots zurueckzukaufen** — die
+  Kontextueberlaeufe entstehen **beim Generieren von Tool-Calls**, nicht beim
+  Einlesen des Prompts (ausgezaehlt 20.–26.08.: **316 gegen 9**). Der Prompt passt;
+  was ueberlaeuft, ist Prompt + Ausgabe. `DEFAULT_PROMPT_BUDGET_RATIO = 0.8` laesst
+  bei ctx 65.536 nur **13.108 Token** fuer die Antwort, bei 98.304 sind es 19.661 —
+  daher lief 98.304 achtzehn Stunden fehlerfrei, waehrend 65.536 binnen einer Stunde
+  bei 71 % Ueberlaeufen lag. **`maxPromptTokens` ist pro Agent konfigurierbar und
+  ueberschreibt die 80-%-Regel**, also ein Hebel OHNE Codeaenderung: bei ctx 65.536
+  und `maxPromptTokens: 40000` blieben 25.536 Token Luft, mehr als 98.304 heute
+  bietet. Damit waeren 65.536 × 8/12 tragbar = rund **60 % mehr Bearbeitungsplaetze
+  bei gleichem VRAM**. Vorher messen, wie gross die groessten legitimen
+  Tool-Call-Argumente wirklich sind — die 40.000 sind hergeleitet, nicht gemessen.
+  *(2026-08-25, korrigiert 2026-08-26, Chat: LLM-Farm Übergangskonzept)*
+
+  > **Verworfen: „`BUDGET_LOOKUP_THRESHOLD_TOKENS` senken".** Die Praemisse war
+  > falsch. Das Lauf-Log zeigt, dass der Schwellenwert ausloest und das Budget
+  > korrekt auf 52.428 gesetzt wird — die Konstante zu senken haette nichts
+  > geaendert. Zusaetzlich war die Begruendung veraltet: seit v1.3.2 wiegt der
+  > Schaetzer nach Rolle (`chars/2` fuer Tool-Inhalte), die Unterschaetzung liegt
+  > bei ~1,09 statt 2,19. *(2026-08-26)*
 
 - [ ] **Kontextueberlaeufe nach einem vollen Tag neu bewerten** — Ursache ist seit
   25.08. bekannt (Schwellenwert oben), das Fenster steht wieder auf 98.304 und

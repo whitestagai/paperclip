@@ -225,31 +225,58 @@ Gemessener Bedarf über 30 Tage:
 ¹ laut Konfiguration; **geladen** war das Modell mit 262.144.
 
 Der p99 liegt bei 54.072 bzw. 57.662 — nach dieser Zahl allein wäre 65.536 richtig
-gewesen. **Die bindende Grenze ist aber nicht der Modellbedarf, sondern der Adapter.**
+gewesen. **Die bindende Grenze ist aber nicht der Prompt, sondern die Luft für die
+Antwort.**
 
-In [execute.ts:484](../../../opensource/paperclip-adapter-lmstudio/src/server/execute.ts#L484):
+### Die Ursache, zweimal falsch diagnostiziert
 
-```ts
-// Der Wert liegt deutlich unter dem kleinsten Budget, das ueberhaupt
-// herauskommen kann (98304 × 0,8 = 78.643) …
-const BUDGET_LOOKUP_THRESHOLD_TOKENS = 32_000;
-```
-
-Unterhalb von 32.000 **geschätzten** Token wird weder das Fenster abgefragt noch gekürzt.
-Und die Schätzung ist `chars/4` — laut `context-budget.ts` unterschätzt sie JSON
-(1,89 Zeichen/Token) und Shell-Ausgaben (1,83) um bis zu **Faktor 2,19**. Der
-Korrekturfaktor `tokenFactor` startet bei 1 und wird erst *nach* einem erfolgreichen Aufruf
-aus `usage.prompt_tokens` kalibriert — ein gescheiterter Aufruf liefert keine Usage, der
-Faktor bleibt also auf 1 und der Lauf scheitert erneut.
+**Erste Fassung (25.08., falsch):** `BUDGET_LOOKUP_THRESHOLD_TOKENS = 32_000` lasse
+Prompts bis ~70.000 Token ungekürzt durch, weil `chars/4` JSON um Faktor 2,19
+unterschätze. **Widerlegt am 26.08.** durch das Lauf-Log eines gescheiterten Laufs:
 
 ```
-32.000 geschätzt × 2,19 = 70.080 echte Token, die ungekürzt durchgehen
-+ Platz für die Antwort                     ≈ 74.000 Mindestfenster
+Kontextbudget: gemma4-31b-it laeuft mit Fenster 65536;
+Prompt wird auf 52428 Token gedeckelt.
 ```
 
-**Damit ist 98.304 die kleinste sichere Fenstergröße, solange die Konstante 32.000 ist.**
-Wer das Fenster kleiner haben will, muss zuerst den Schwellenwert senken — siehe „Bewusst
-zurückgestellt".
+Der Schwellenwert **hat** ausgelöst, das Budget **war** korrekt gesetzt. Ihn zu senken
+hätte nichts geändert. Die Schätzung ist zudem seit v1.3.2 nach Rolle gewichtet
+(`chars/2` für `tool`-Inhalte und `tool_calls`-Argumente) — die Unterschätzung liegt bei
+~1,09, nicht bei 2,19.
+
+**Zweite Fassung (26.08., belegt):** Der Kontext reißt **beim Generieren eines
+Tool-Calls**, nicht beim Einlesen des Prompts. Die vollständige Meldung aus dem
+LM-Studio-Log lautet:
+
+```
+[ERROR][gemma4-31b-it] Failed to generate a tool call
+  (this tool call will be omitted from the response):
+  … "Context size has been exceeded."
+```
+
+Ausgezählt über alle Logs vom 20.–26.08., soweit eindeutig zuzuordnen:
+
+| Ort des Überlaufs | Fälle |
+|---|---|
+| **beim Erzeugen eines Tool-Calls** | **316** |
+| beim Einlesen des Prompts | 9 |
+
+**Der Prompt passt. Was überläuft, ist Prompt + generierte Ausgabe.**
+`DEFAULT_PROMPT_BUDGET_RATIO = 0.8` lässt vom Fenster genau ein Fünftel für die Antwort:
+
+| Fenster | Prompt-Budget | Luft für die Antwort |
+|---|---|---|
+| 65.536 | 52.428 | **13.108** |
+| 98.304 | 78.643 | **19.661** |
+
+Ein Tool-Call mit großem Argument — der CHO schreibt Briefings — sprengt 13.108 Token.
+Das erklärt die Beobachtung vollständig: 98.304 lief am 25./26.08. **18 Stunden ohne einen
+einzigen Überlauf**; nach der Rückstellung auf 65.536 waren sie binnen einer Stunde bei
+71 % der Runs.
+
+**Der eigentliche Hebel ist damit nicht das Fenster, sondern der Abstand zwischen
+Prompt-Budget und Fenster.** `maxPromptTokens` ist pro Agent konfigurierbar und
+überschreibt die 80-%-Regel — siehe „Bewusst zurückgestellt".
 
 `google/gemma-4-12b` bekommt **65.536 × 6**, nicht die im Entwurf genannten 16.384: Der
 Link-Detektor wurde wegen p50 = 0 als Kurzstrecke eingestuft, sein **Maximum liegt aber bei
@@ -554,7 +581,8 @@ Versuchen, Link-Detektor bei 32, Creative Assistant bei 29).
 
 | Punkt | Grund |
 |---|---|
-| **`BUDGET_LOOKUP_THRESHOLD_TOKENS` senken** | Die Konstante 32.000 im Adapter zwingt uns auf ein Mindestfenster von ~74.000 und kostet damit Slots. Auf ~20.000 gesenkt (oder besser: aus dem tatsächlichen Budget abgeleitet statt hart verdrahtet) wären 65.536 × 8 / × 12 wieder möglich — rund 60 % mehr Bearbeitungsplätze. Braucht Codeänderung, Build und Deploy im laufenden Betrieb. |
+| **`maxPromptTokens` je Agent setzen** | Der belegte Hebel gegen die Tool-Call-Überläufe, **ohne Codeänderung**. Bei ctx 65.536 und `maxPromptTokens: 40000` blieben 25.536 Token Luft für die Antwort — mehr als die 19.661, die 98.304 heute bietet. Damit wären 65.536 × 8 / × 12 tragbar, also rund 60 % mehr Bearbeitungsplätze bei gleichem VRAM. Vor dem Setzen prüfen, wie groß die größten legitimen Tool-Call-Argumente wirklich sind; 40.000 ist hergeleitet, nicht gemessen. |
+| **`BUDGET_LOOKUP_THRESHOLD_TOKENS` senken** | **Am 26.08. als Fix verworfen** — der Schwellenwert löst nachweislich aus, das Budget wird korrekt gesetzt. Die Konstante zu senken ändert an den Tool-Call-Überläufen nichts. Bleibt als theoretische Verbesserung für Läufe mit sehr kleinen Prompts, hat aber keine gemessene Wirkung. |
 | **Cloud-Rückkehrer** | n8n-Betriebsingenieur und Social Media & Community bleiben vorerst auf `claude_local`. Der Wechsel des `adapter_type` ist der riskanteste Schritt und wurde nicht auf eine gerade erst stabilisierte Farm gestapelt. Vom MacBook sind beide nicht betroffen. |
 | **Flottenweite Obergrenze (Stufe B)** | Braucht Servercode. Erst messen, ob 47 reicht. Entwurf: zusätzlicher Zähler über alle Agenten vor `startNextQueuedRunForAgent`, Startwert 12. |
 | **Prompt-Caching** | Größter bekannter Hebel (`cachedInputTokens: 0` überall), aber eigene Untersuchung — betrifft Adapter und LM-Studio-Slotverhalten. |

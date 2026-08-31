@@ -8,24 +8,39 @@
 
   "abiray/qwen3.6-35b-a3b": {
     "contextLength": 98304,
-    "parallel": 5,
+    "parallel": 4,
     "begruendung": [
       "98.304 ist die kleinste sichere Größe, solange im lmstudio-Adapter",
       "BUDGET_LOOKUP_THRESHOLD_TOKENS = 32.000 steht: unterhalb dieser",
       "Schätzung wird weder das Fenster abgefragt noch gekürzt, und chars/4",
       "unterschätzt JSON um Faktor 2,19 — bis zu 70.000 echte Token gehen",
       "ungekürzt durch. Der Versuch mit 65.536 am 25.08. trieb die Überläufe",
-      "auf 67 % und die Erfolgsquote auf 0."
+      "auf 67 % und die Erfolgsquote auf 0.",
+      "",
+      "4 statt 5 Plätze seit dem 30.08. — siehe Slot-Hinweis bei gemma4-31b-it."
     ]
   },
 
   "gemma4-31b-it": {
     "contextLength": 98304,
-    "parallel": 8,
+    "parallel": 4,
     "begruendung": [
-      "Gleiche Untergrenze wie oben. 8 Plätze, weil dieses dichte Modell mit",
-      "~29 Agenten mehr als die halbe Flotte trägt und mit 25 s Median-Prefill",
-      "deutlich langsamer ist als die MoE (5 s)."
+      "Gleiche Untergrenze wie oben.",
+      "",
+      "Am 26.08. standen hier 8 Plätze (und 5 bei der MoE). Zusammen ergab das",
+      "1.277.952 Slot-Token auf der RTX — bei 96 GB VRAM abzüglich 62,94 GB",
+      "Gewichten blieben davon nur 27 KB pro Token für den KV-Cache. Für ein",
+      "31B-Modell mit GQA und fp16-KV sind eher 100-200 KB nötig. llama.cpp",
+      "reserviert KV vorab und lädt bei Platzmangel nicht weniger davon,",
+      "sondern schiebt Layer auf die CPU: der GPU-Offload stand auf 24 von 40.",
+      "Sichtbar wurde das als Timeout-Welle am 26.08. (28 Timeouts in einer",
+      "Stunde), nachdem zuvor das kleinere Fenster Überläufe erzeugt hatte —",
+      "derselbe Engpass in zwei Ausprägungen.",
+      "",
+      "Mit 4/4 sind es 786.432 Slot-Token, also 38 % weniger. Ob das reicht,",
+      "ist NICHT belegt: der Offload-Wert lässt sich vom Mac aus nicht auslesen",
+      "(weder `lms ps --json` noch /api/v0/models führen ihn). Prüfbar nur in",
+      "der LM-Studio-GUI auf dem Windows-Rechner."
     ]
   },
 

@@ -1679,7 +1679,7 @@ Record the two UUIDs: `PUSHOVER_USER_KEY_REF=...`, `PUSHOVER_APP_TOKEN_REF=...`.
 - [ ] **Step 3: Install the plugin via local-path**
 
 ```bash
-TOKEN="pcp_board_985880896179574eedaddb10a734d3a65f1306778501e4f1"
+TOKEN=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.paperclip/auth.json')))['credentials']['http://localhost:3100']['token'])")
 /usr/bin/curl -X POST http://127.0.0.1:3100/api/plugins/install \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \

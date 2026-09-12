@@ -467,3 +467,33 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Worktree auflösen. Der Branch selbst ist auf `hetzner` gesichert und
       enthält 10+ Commits, die nicht in master sind.
       *(2026-09-05, Chat: Release-Kette repariert)*
+
+- [ ] **★★Zwei Upstream-Fixes neu aufsetzen — von `origin/master`, nicht von
+      `master`** — die PRs #12827 (Test-Mock-Fix: `broadcastBeforeAdapterExecute`
+      in den plugin-env-Heartbeat-Mocks) und #12732 (Heartbeat: Continuation nach
+      erschoepften transient-upstream-Retries blocken) enthielten je eine echte,
+      gewollte Aenderung. Beide wurden am 12.09. **geschlossen**, weil sie
+      versehentlich den kompletten Fork-Stand mitschleppten (723 bzw. 605
+      Dateien, zusammen ueber 315k Zeilen) statt des jeweiligen Ein-Datei-Fixes.
+      Die Fixes liegen damit nicht mehr im Upstream und muessen als **saubere
+      Ein-Commit-Branches von `origin/master`** neu eroeffnet werden.
+      **Ursache und Vermeidung:** #12827 war direkt vom eigenen `master`
+      eroeffnet, #12732 von einem Branch, der von `master` abgezweigt war. Fuer
+      Cherry-Picks gilt „nie von `origin/master` abzweigen" — **fuer Upstream-PRs
+      gilt das Umgekehrte.** Vor jedem `gh pr create` gegenpruefen:
+      `git rev-list --count origin/master..HEAD` muss einstellig sein.
+      **Mail-Falle im Schlepptau:** Ein PR mit Head-Branch `master` wird durch
+      jeden Push auf `master` aktualisiert — auch durch reine `docs(todo)`-
+      Commits — und erzeugt bei Rot jedes Mal eine GitHub-Fehlermail. Kommen
+      unerklaerliche Actions-Mails aus `paperclipai/paperclip`, ist das die erste
+      Spur: `gh pr list --repo paperclipai/paperclip --author whitestagai
+      --state open` und den `changedFiles`-Umfang pruefen; ein dreistelliger Wert
+      ist der Befund. *(2026-09-12, Chat: GitHub-Fehlermails Upstream-PRs)*
+
+- [ ] **`drizzle-orm@^0.38.4` in `packages/brain` hat eine High-Advisory** —
+      GHSA-gpj5-g38j-94v9 (SQL-Injection ueber unzureichend escapte
+      Identifier). Aufgefallen, weil die Dependency Review des Upstream daran
+      rot wurde. Betrifft ein **eigenes** Paket, ist also unabhaengig von den
+      PRs zu bewerten: pruefen, ob `packages/brain` die verwundbaren Pfade
+      ueberhaupt beruehrt, und ggf. auf eine gefixte Version heben.
+      *(2026-09-12, Chat: GitHub-Fehlermails Upstream-PRs)*

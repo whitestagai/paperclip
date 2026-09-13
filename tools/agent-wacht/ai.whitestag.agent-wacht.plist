@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>ai.whitestag.agent-wacht</string>
+
+	<!-- Zwei bewusste Entscheidungen, beide wie bei modell-wacht:
+	     1. Die gespiegelte Kopie unter ~/.paperclip/scripts, NICHT das Repo.
+	     2. Start über node, nicht direkt über python3 — macOS verweigert
+	        einem launchd-Job aus python/zsh den Zugriff auf die
+	        SynologyDrive-Freigabe (TCC); node hat die Berechtigung. -->
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/walterschoenenbroecher.de/.nvm/versions/node/v22.22.0/bin/node</string>
+		<string>/Users/walterschoenenbroecher.de/.paperclip/scripts/agent-wacht/run-melder.js</string>
+	</array>
+
+	<key>WorkingDirectory</key>
+	<string>/Users/walterschoenenbroecher.de/.paperclip/scripts/agent-wacht</string>
+
+	<key>EnvironmentVariables</key>
+	<dict>
+		<!-- /opt/homebrew/bin ist Pflicht: der Melder ruft `psql` ohne
+		     absoluten Pfad auf. Mit dem minimalen launchd-PATH liest er
+		     die Lage nicht und meldet stattdessen Unsinn. -->
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+
+	<!-- Alle 15 Minuten. Die Schwelle fürs Zurückholen liegt bei 20 Minuten;
+	     ein kürzerer Takt als die Schwelle stellt sicher, dass ein Agent nicht
+	     unnötig lange über der Schwelle liegt, bevor jemand nachsieht.
+	     Kostet nichts — reines Python ohne LLM. -->
+	<key>StartInterval</key>
+	<integer>900</integer>
+
+	<key>RunAtLoad</key>
+	<true/>
+
+	<key>StandardOutPath</key>
+	<string>/Users/walterschoenenbroecher.de/.paperclip/logs/agent-wacht.launchd.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/walterschoenenbroecher.de/.paperclip/logs/agent-wacht.launchd.log</string>
+</dict>
+</plist>

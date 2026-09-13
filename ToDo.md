@@ -37,6 +37,16 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       `400 blocked_by_pii_proxy:classifier_unavailable`. Der Eintrag gehoert
       damit inhaltlich zum PII-Proxy-Punkt weiter unten, nicht mehr zum
       Modell-Rename. *(2026-09-11, Chat: WHITESTAG Agenten-Aufsicht)*
+      **Stand 12.09.: der PII-Anteil ist weg, ein neues Muster tritt hervor.**
+      In 14 Tagen 2.120 `failed` gegen 24 `succeeded` (1,1 %), davon 641×
+      `classifier_unavailable` seit dem 01.09. — diese Ursache ist am 12.09.
+      behoben (siehe PII-Proxy-Punkt). **Seit dem Deploy um 21:11 kein einziger
+      `classifier_unavailable` mehr**, dafuer 2 von 4 Runs mit
+      `error_max_turns: Reached maximum number of turns (80)`; einer lief
+      29 Minuten in dieses Limit. `maxTurnsPerRun: 80` steht in seiner
+      `adapter_config`. Zu klaeren, ob das Limit zu niedrig ist oder der Agent
+      sich verrennt — erst eine Woche mit funktionierendem Proxy beobachten,
+      vorher ist jede Bewertung Blindflug. *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
 
 - [ ] **`max_iterations` bleibt als eigenes Muster** — die Infrastrukturfehler
       (`fetch failed`, `Engine protocol`) sind mit dem Circuit Breaker und der
@@ -55,6 +65,20 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Arbeitsweise (Einheit für Einheit, Ergebnis sofort wegschreiben) braucht per
       Konstruktion *mehr* Runden. Wer viele Tool-Aufrufe je Aufgabe macht, braucht
       ein hohes Limit; 60 hat sich bei R9 bewährt. *(2026-09-06, Chat: Kontaktrecherche-Agent Clara)*
+      **★Messung 13.09. — die Betroffenen sind andere als gedacht.** Anteil
+      `max_iterations` an allen Runs (14 Tage): **Lektorat 94 %** (227/242),
+      **Buchhaltung 92 %** (393/427), Recherche 64 %, **Online-Rechercheur 49 %
+      trotz Limit 30**, Akquise & Booking 38 %, Redaktion & PR 36 %, Creative
+      Assistant 33 %, Bueroleitung 22 %, Sekretaerin 18 %, CFO 8 % (Limit 8!),
+      **CTO 7 %, CEO 7 %**. Bei Lektorat und Buchhaltung ist das Scheitern also
+      der **Normalzustand**, nicht die Ausnahme — die Buchhaltung wurde am 05.09.
+      bereits von 8 auf 12 gehoben, ohne Wirkung. Umgekehrt sind CEO/CTO trotz
+      Limit 12 unauffaellig; dass beide in der Nacht zum 13.09. daran scheiterten,
+      war Zufall. **Naechster Schritt:** bei einem der beiden Dauerfaelle
+      nachsehen, wofuer die zwoelf Runden draufgehen (`heartbeat_run_events`) —
+      Hochdrehen allein hilft nachweislich nicht, siehe Online-Rechercheur.
+      Nachweis: `select a.name, a.adapter_config->>'maxIterations', count(*) filter (where r.error_code='max_iterations'), count(*) from heartbeat_runs r join agents a on a.id=r.agent_id where r.started_at > now() - interval '14 days' group by 1,2;`
+      *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
 
 - [ ] **`Process lost -- server may have restarted`** — 9 Treffer in einer
       Stunde am Abend des 02.09., Muster war vorher nicht da. Ursache offen:
@@ -73,21 +97,61 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Schritt: herausfinden, wer den dritten Run anlegt (Heartbeat-Kern).
       *(2026-09-05, Chat: Release-Kette repariert)*
 
-- [ ] **PII-Proxy blockt Cloud-Agenten** — 49 Calls am 02.09. mit
-      `API Error: 400 blocked_by_pii_proxy`, betroffen sind die Agenten auf
-      `claude-sonnet-4-6`/`claude-sonnet-5`. Laeuft durchgehend, auch nachdem
-      die LLM-Versorgung wieder stand. Die Frage, ob dem nachgegangen werden
-      soll, blieb offen. *(2026-09-02, Chat: Paperclip Issue-Bereinigung)*
-      **Groessenordnung 11.09.: 882 Treffer in 14 Tagen**, nicht 49 an einem
-      Tag — damit der drittgroesste Fehlerposten der Flotte. Fast alle tragen
-      denselben Grund: `blocked_by_pii_proxy:classifier_unavailable`, also
-      **nicht** ein erkannter PII-Fund, sondern ein Classifier, der nicht
-      antwortet (nur 27 Treffer lauten `art_9_data_detected`, das waere der
-      echte Fund). Der Proxy blockt damit ueberwiegend aus Nichterreichbarkeit
-      heraus. Ansatzpunkt ist `io.piiproxy.server` auf :4711, nicht die
-      Agenten-Konfiguration. Nachweis:
-      `select count(*) from heartbeat_runs where error like '%classifier_unavailable%' and started_at > now() - interval '14 days';`
-      *(2026-09-11, Chat: Routinen-Lastverteilung)*
+- [ ] **PII-Proxy: Ursache behoben, Wirkung über 24 h noch gegenzuprüfen** —
+      der Dauerposten `blocked_by_pii_proxy:classifier_unavailable` (882 Treffer
+      in 14 Tagen, drittgroesster Fehlerposten der Flotte) ist am **12.09.
+      ursaechlich behoben**: `buildBoundary()` wuerfelte den Trenner zwischen den
+      Nachrichten **pro Request neu**, dadurch bekam jeder Chunk mit einer
+      Nachrichtengrenze einen neuen sha256 — gemessen rund die **Haelfte aller
+      Chunks** (120 Runden: 122 von 248). Der Chunk-Cache lief damit ins Leere:
+      141.930 Eintraege, taeglich tausende neue (12.09.: 11.249), 63,2 s mittlere
+      Antwortzeit (Max 710,9 s), Client bricht ab, fail-closed blockt.
+      Fix: `FIXED_BOUNDARY` in beiden Passthrough-Routen, `buildBoundary()` bleibt
+      Kollisions-Ausweichung. Commit `dd1bbfd` auf `fix/stable-classifier-boundary`,
+      gebaut und per launchd deployed. Seit 21:11 kein Block mehr, erster Testlauf
+      nach Wochen wieder `succeeded`.
+      **Offen ist die Gegenprobe:** (1) taegliche neue Cache-Hashes gegen den Wert
+      vom 12.09. (11.249) stellen — sie muessen bei vergleichbarer Last deutlich
+      einbrechen; (2) Erfolgsquote der Cloud-Agenten ueber 24 h.
+      `select count(*) from heartbeat_runs where error like '%classifier_unavailable%' and started_at > now() - interval '24 hours';`
+      *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
+      **Teil (2) am 13.09. bestanden: 0 Treffer in 24 h** gegen **791 in sieben
+      Tagen**. Der Fehler ist damit weg, nicht nur seltener. **Teil (1) steht
+      weiterhin aus** — die Cache-Hashes wurden nicht gemessen; ohne sie ist
+      belegt, dass die Wirkung eintrat, aber nicht, dass der Cache jetzt
+      greift. *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
+
+## Selbstheilung und Agenten-Aufsicht
+
+- [ ] **★Vorfall-Abschluss nachziehen — Entscheidung offen** — er liegt weiter
+      **nur** in `feat/vorfall-abschluss`, waehrend die plist des Dev-Servers
+      `INCIDENT_CLOSURE_ENABLED=true` setzt: eine Variable fuer Code, der im
+      laufenden Stand nicht existiert. Am 13.09. bewusst **nicht** mit der
+      Selbstheilung uebernommen, weil er damit **sofort scharf** gewesen waere —
+      er gibt geparkte Arbeit frei und war bei gestoerter Farm schon einmal ein
+      Laufband (104 Issues zu, 74 neu). Bei aktuell 87 blockierten Issues eine
+      eigene Entscheidung. **Wenn nachgezogen: vorher `INCIDENT_CLOSURE_ENABLED`
+      auf `false`**, dann bewusst einschalten und den ersten Lauf beobachten.
+      Dateien: `server/src/services/recovery/incident-closure*.ts` plus
+      `config.incidentClosure` (Default dort ist `=== "true"`, also AUS).
+      *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
+
+- [ ] **Der neue Waechter hat noch nie einen Ernstfall gemeldet** — der
+      **Meldeweg** ist end-to-end belegt (Testmail 13.09., n8n-Ausfuehrung
+      08:51:16 `success`), die **Befundlogik im Feld** aber noch nicht ausgeloest
+      worden: Bei jedem bisherigen Lauf war die Lage `ruhig`. Beim ersten echten
+      Befund gegenlesen, ob Betreff und Text taugen und ob die
+      Zustandswechsel-Erkennung wirklich nur einmal mailt.
+      Log: `~/.paperclip/logs/agent-wacht.launchd.log`,
+      Zustand: `~/.paperclip/logs/agent-wacht-last.json`.
+      *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
+
+- [ ] **Zwei zurueckgeholte Agenten haben gar keine Arbeit** — Buchhaltung haengt
+      nur an **drei blockierten** Issues, Recherche an **keinem**. Beide stehen
+      nach dem Resume auf `idle` und laufen mangels `todo` nicht an; ein Resume
+      allein bringt sie also nicht zurueck in den Betrieb. Zu klaeren, ob ihre
+      Routinen noch feuern oder ob die Arbeit anderswo haengt.
+      *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
 
 ## Recovery-Mechanismus
 
@@ -111,6 +175,14 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Tages 65 neue Recovery-Issues. Die **wirksame** Gegenmassnahme war nicht
       das Abraeumen, sondern das Beseitigen der Fehlerquelle, die das Stranden
       ausloest (siehe Lessons-Schleife unten).
+      **Stand 13.09.: Halde wieder bei 87** (von 44 am 11.09. abends), davon
+      **15 Recovery-Issues** (gegen 1) und 72 regulaere Arbeit. **Elf Paare
+      blockieren erneut ihr eigenes Rettungsziel.** Aus der Nacht selbst stammen
+      allerdings nur **5** neue — das Wachstum liegt ueberwiegend im Zeitraum
+      11.–12.09. Zu pruefen, ob die am 13.09. reparierte Selbstheilung das
+      Nachwachsen daempft: sie beseitigt eine Quelle des Strandens (Agenten, die
+      in `error` liegen bleiben, waehrend ihre Issues offen sind).
+      *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
 
 
 - [ ] **★★Lessons-Schleife entschaerft — Wirkung erst ab dem Nachtlauf 02:00
@@ -134,18 +206,30 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       nein, ist das Iterationsbudget immer noch zu klein — dann Faustregel
       `max_runs x 5 Schritte < maxIterations` nachziehen.
       *(2026-09-11, Chat: WHITESTAG Agenten-Aufsicht)*
+      **Antwort 13.09.: ja, aber teuer.** WHI-8091 („Lessons aus Reibungs-Runs
+      vom 2026-09-12") steht auf `done`, abgeschlossen um 03:33. Der Weg dahin
+      kostete jedoch **sechs Runs, davon vier in `max_iterations`** (Limit 30),
+      und nebenbei entstand ein Recovery-Issue (WHI-8093). Die Faustregel
+      `max_runs x 5 < maxIterations` waere mit 3 x 5 = 15 < 30 erfuellt und
+      stimmt trotzdem nicht — der Rechercheur braucht real mehr Runden je Run.
+      Passt zum Gesamtbild: er scheitert zu **49 % an `max_iterations` trotz
+      Limit 30** (382 von 782 Runs, 14 Tage). Hochdrehen allein loest es nicht.
+      *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
 
-- [ ] **Agenten kommen aus `error` nicht von selbst zurueck** — in einer einzigen
-      Sitzung mussten **sechs** Agenten per `POST /api/agents/:id/resume` geholt
-      werden (VP Engineering, Lektorat, Online-Rechercheur, Buchhaltung,
-      n8n-Betriebsingenieur, Sekretaerin). Die Buchhaltung stand dabei **ueber
-      zwei Tage** still (letzter Heartbeat 09.09. 15:47, bemerkt am 11.09.), ohne
-      dass irgendetwas Alarm geschlagen haette. Der bekannte Selbstheilungs-Pfad
-      greift hier nicht, und `escalateToHuman` ist nur eine Log-Zeile. Ein
-      Waechter, der `agents.status='error'` periodisch prueft und entweder
-      resumed oder meldet, waere die naheliegende Luecke.
-      Nachweis: `select name, status, last_heartbeat_at from agents where status='error';`
-      *(2026-09-11, Chat: WHITESTAG Agenten-Aufsicht)*
+- [x] **~~Agenten kommen aus `error` nicht von selbst zurueck~~ — Ursache am
+      13.09. gefunden und behoben.** Der Selbstheilungs-Pfad griff nicht, **weil
+      es ihn im laufenden Stand nicht mehr gab**: Am **02.09. um 20:57** wechselte
+      der Watch-Tree von `feat/vorfall-abschluss` auf `master` (reflog
+      `80ce1cc55`), und der Code lag nur im Feature-Branch. Letzter Eintrag in
+      `agent_self_heal_ledger`: **02.09. 20:57:11** — auf die Minute. Elf Tage
+      lautlos, weil ein fehlender Waechter nichts meldet. Behoben mit
+      `52875b766` (Code nach master) und `20fcb39f3` (externer launchd-Waechter
+      `tools/agent-wacht/`, 15-Min-Takt, mailt bei Befund). Belegt: um 08:40 holte
+      die interne Selbstheilung den CTO selbstaendig zurueck; zum Feierabend
+      0 Agenten in `error`. **Merksatz:** Was nur in einem Feature-Branch lebt,
+      ist nicht deployed — Gegenprobe ist der Ledger, nie die Erinnerung:
+      `select max(updated_at) from agent_self_heal_ledger;`
+      *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
 
 ## WHITESTAG.ACADEMY
 
@@ -246,6 +330,66 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Uhr komplett" geplante Drei-Node-Betrieb laeuft damit auf zwei Knoten.
       Ursache ungeklaert — LM Link getrennt, Geraet aus oder bewusst umgezogen?
       *(2026-09-07, Chat: Kontext-Bedarf und MLX-Autofit)*
+      **Ersetzt seit 12.09.:** neuer Node **WHITESTAG-AI** (RTX 5090 + RTX 3090,
+      56 GB, 24/7, kostet keinen Strom) traegt jetzt den Primaerpfad. Die Pro 6000
+      laeuft wieder nur tagsueber und ist als Coding-Node vorgesehen.
+      *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
+
+- [ ] **★★qwen passt nicht neben gemma auf den GeForce-Node** — beide Q4_K_M
+      zusammen 40,76 GB von 56 GB, rechnerisch bleibt Platz. Praktisch laeuft
+      **gemma sauber** (98304 × 4, **35 tok/s**, Prefill 1.510 tok/s, 8 parallele
+      Anfragen fehlerfrei), waehrend **qwen bei 7–9 tok/s** haengt — also im
+      System-RAM statt im VRAM. Gegengeprueft und **nicht** die Ursache:
+      Kontextfenster (98304 / 65536 / 49152 / 32768 alle gleich langsam),
+      Slot-Zahl (4 und 2) und Ladereihenfolge (beide Richtungen). Es liegt an den
+      **Gewichten**, nicht am KV-Cache.
+      **Verdacht: LM Studio nutzt nur die 5090.** 18,69 GB gemma + 22,07 GB qwen
+      passen nicht zusammen auf eine 32-GB-Karte. Ob die 3090 in den
+      Multi-GPU-Einstellungen aktiv ist, laesst sich **nur in der GUI am Node**
+      pruefen (`Ctrl+Shift+H`) — per CLI gibt es dafuer nichts, und eine
+      Per-Modell-GPU-Zuweisung kennt LM Studio ueberhaupt nicht (offener
+      Feature-Request lmstudio-bug-tracker#2300).
+      **Aktueller Zustand:** qwen ist **entladen**, die 12 Agenten laufen im
+      Fallback `gemma-4-31b-it-mlx` (Mac Studio, ~16 tok/s — immer noch doppelt
+      so schnell wie die 8 tok/s auf dem Node).
+      *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
+      **Stand 13.09.: qwen ist wieder geladen und traegt den Primaerpfad** —
+      `qwen3.6-35b-a3b`, 22,07 GB, ctx 98304 x 4 auf WHITESTAG-AI; der
+      Mac-Studio-Fallback bekam seit dem 12.09. 19:14 **keinen einzigen Call**
+      mehr. Die Langsamkeit besteht aber fort: gemessen **12,9–18,7 tok/s gegen
+      33,6–40,7 tok/s bei gemma** (je zwei Laeufe, 150-Wort-Prompt). Das bleibt
+      verkehrt herum — qwen ist ein MoE mit 3B aktiven Parametern und muesste
+      ein 31B-Dense **schlagen**, nicht halb so schnell sein. Der Verdacht
+      „LM Studio nutzt nur die 5090" ist damit **nicht ausgeraeumt**; pruefbar
+      nur in der GUI am Node (`Ctrl+Shift+H`).
+      *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
+
+- [ ] **★KV-Quantisierung ist die Bedingung fuer 4 Slots — und per CLI nicht
+      setzbar** — `gemma-4-31b-it` mit ctx 98304 × 4 passt nur mit K- und
+      V-Cache auf `q8_0` ins VRAM. Fehlt die Einstellung, faellt das Modell
+      **ohne jede Fehlermeldung** von 37 tok/s auf **0,2 tok/s** (CPU-Offload)
+      und 4 von 6 parallelen Anfragen laufen in den Timeout. Die Einstellung
+      haengt an den Per-Modell-Defaults in der **GUI am Node**; `lms load` hat
+      kein Flag dafuer. Ein Node-Neustart am 12.09. hat sie ueberstanden — das ist
+      belegt, aber kein Verlass. Nach jedem Neustart einmal nachmessen statt
+      annehmen. *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
+
+- [ ] **Preload-Skript fuer WHITESTAG-AI ist ungetestet** — `~/Desktop/n8n.sh`
+      wurde am 12.09. um einen Geraete-Block erweitert (beide Flottenmodelle,
+      ctx 98304 × 4, Aufwaermlauf per curl, Warnung wenn der Node fehlt).
+      `bash -n` ist sauber und die Geraete-Erkennung trocken geprueft, **der
+      Ladepfad selbst lief nie**. Sicherung: `n8n.sh.bak-20260912-203132`.
+      Falle, die dabei entschaerft wurde: der `load`-Helper grept ungeankert —
+      ohne `^…​ ` haette `gemma-4-31b-it` auf `gemma-4-31b-it-mlx` mitgematcht und
+      das Laden stumm uebersprungen. Beim naechsten `n8n.sh`-Lauf ins Log sehen:
+      `~/Library/Logs/*/lmstudio-preload.log`.
+      *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
+
+- [ ] **Erster Aufruf nach jedem Modell-Laden kostet ~2 Minuten** — beobachtet
+      am 12.09.: 120 s bis 197 s beim ersten Request, danach unter 1 s. Der erste
+      Agent, der nach einem Reload zugreift, laeuft damit in sein Timeout. Im
+      Preload ist deshalb ein Aufwaermlauf ergaenzt; bei manuellen Ladevorgaengen
+      daran denken. *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
 
 - [ ] **KW36-Bericht (Montag 31.08.) ist ersatzlos ausgefallen** — kein
       `ctx-report-2026-08-31.json` in `ctx-stats/state/`, in einer seit dem
@@ -489,6 +633,38 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Spur: `gh pr list --repo paperclipai/paperclip --author whitestagai
       --state open` und den `changedFiles`-Umfang pruefen; ein dreistelliger Wert
       ist der Befund. *(2026-09-12, Chat: GitHub-Fehlermails Upstream-PRs)*
+
+- [ ] **Migrationsplan ist untracked** — `docs/superpowers/plans/2026-09-11-llm-farm-umzug-geforce-node.md`
+      liegt uncommittet im Repo (ebenso `docs/superpowers/HANDOFF-upstream-rueckkehr-2026-08-22.md`).
+      Beim Committen gleich vermerken, dass **Task 0 uebersprungen** wurde: der
+      einwoechige Probelauf auf der Pro 6000 entfiel, es wurde direkt umgestellt.
+      Hat funktioniert, aendert aber die Voraussetzung der spaeteren Aufgaben.
+      *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
+
+- [ ] **Entscheidung vertagt: wie VP Engineering an den lokalen Coder kommt** —
+      die Pro 6000 soll Coding-Node werden, VP Engineering damit lokale Projekte
+      bearbeiten. Drei Wege, keiner entschieden: (1) **eigener neuer Agent** fuer
+      den Coder, VP Engineering bleibt `claude_local` — seine 13 Skills und die
+      Nachtschicht bleiben unangetastet; (2) **Anthropic-kompatibler Proxy** vor
+      LM Studio, Adaptertyp bleibt; (3) **voller Wechsel auf `lmstudio_local`** —
+      kostet die 13 Skills doppelt: technisch faellt `paperclipSkillSync` beim
+      Adaptertyp-Wechsel heraus, und konzeptionell erreicht einen
+      `lmstudio_local`-Agenten ohnehin nur seine `AGENTS.md`.
+      **Empfehlung aus dem Chat:** erst eine Woche mit funktionierendem PII-Proxy
+      abwarten — bei 1,1 % Erfolgsquote war jede Bewertung Blindflug. Gegen
+      lokal spricht die Nacht (968 Nacht-Runs in 14 Tagen, Karte laeuft nur
+      tagsueber), fuer lokal spricht der Wegfall der Classifier-Abhaengigkeit.
+      Kosten sind **kein** Argument: ~350 Calls/30 Tage, nach Erfahrungsregel
+      35–95 €/Monat. *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
+
+- [ ] **DeepSeek V4 Flash liegt ungenutzt auf der Pro 6000** — 156,38 GB MXFP4.
+      Laeuft dort nicht: `lms load --estimate-only` meldet **145,64 GiB**
+      GPU-Bedarf bei 96 GB Karte, und die Metadaten melden
+      `trainedForToolUse: false` — fuer einen Paperclip-Agenten damit doppelt
+      disqualifiziert. Entweder loeschen (Plattenplatz) oder bewusst behalten.
+      Empfohlener Ersatz als Coding-Modell: `qwen3-coder-next` (80B MoE, ~40 GB
+      bei Q4, SWE-bench Pass@5 64,6 %), lag bis zum 21.08. schon auf der Karte.
+      *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
 
 - [ ] **`drizzle-orm@^0.38.4` in `packages/brain` hat eine High-Advisory** —
       GHSA-gpj5-g38j-94v9 (SQL-Injection ueber unzureichend escapte

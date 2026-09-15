@@ -1,9 +1,14 @@
-// Einstiegspunkt der Agenten-Aufsicht für launchd.
+// Einstiegspunkt des Modell-Aufsicht-Melders für launchd.
 //
-// Gleicher Grund wie bei modell-wacht und backup-waechter: macOS verweigert
-// einem launchd-Job aus zsh/bash/python den Zugriff auf die SynologyDrive-
-// Freigabe — der Mount ist sichtbar, Lesen scheitert mit „Operation not
-// permitted" (TCC). node hat die Berechtigung und vererbt sie an Kindprozesse.
+// Gleicher Grund wie bei tools/backup-waechter: macOS verweigert einem
+// launchd-Job aus zsh/bash/python den Zugriff auf die SynologyDrive-Freigabe —
+// der Mount ist sichtbar, Lesen scheitert mit „Operation not permitted" (TCC).
+// node hat die Berechtigung und vererbt sie an Kindprozesse.
+//
+// Ohne diesen Umweg sind zwei Quellen (Obsidian-Tagger-Templates und
+// Wake-Satellit) unlesbar. Der Wächter ist fail-closed, meldet das also als
+// zwei harte Befunde — und der Melder macht daraus ein Fehlalarm-Issue.
+// Beim ersten Probelauf am 26.08. ist genau das passiert.
 //
 // node ist reiner Türöffner und enthält bewusst keine Logik.
 const { spawnSync } = require('child_process');
@@ -19,17 +24,17 @@ const path = require('path');
 //
 // Homebrew-Python hängt nicht an dieser Lizenz. Der Shim bleibt als Rückfall,
 // falls Homebrew fehlt. Die Skripte sind 3.9-kompatibel geschrieben und laufen
-// damit unter beiden (gegengeprüft: 24 Tests unter 3.14.6 grün).
+// damit unter beiden (gegengeprüft: 37 Tests unter 3.14.6 grün).
 const PYTHON = ['/opt/homebrew/bin/python3', '/usr/bin/python3'].find(existsSync);
 if (!PYTHON) {
-  console.error('Kein python3 gefunden — weder Homebrew noch /usr/bin.');
+  console.error('Melder nicht startbar: kein python3 gefunden.');
   process.exit(1);
 }
 
 const skript = path.join(__dirname, 'melder.py');
 const r = spawnSync(PYTHON, [skript, ...process.argv.slice(2)], {
   stdio: 'inherit',
-  cwd: __dirname,          // damit `import pruefung` greift
+  cwd: __dirname,          // damit `import pruefung` / `import waechter` greift
   env: process.env,
 });
 

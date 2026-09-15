@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>ai.whitestag.modell-wacht</string>
+
+	<!-- Zwei bewusste Entscheidungen:
+	     1. Die gespiegelte Kopie unter ~/.paperclip/scripts, NICHT das Repo.
+	     2. Start über node, nicht direkt über python3. macOS verweigert einem
+	        launchd-Job aus python/zsh den Zugriff auf die SynologyDrive-
+	        Freigabe (TCC); node hat die Berechtigung und vererbt sie. Ohne
+	        das sind Tagger-Templates und Wake-Satellit unlesbar und der
+	        Melder erzeugt ein Fehlalarm-Issue — am 26.08. genau so passiert. -->
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/walterschoenenbroecher.de/.nvm/versions/node/v22.22.0/bin/node</string>
+		<string>/Users/walterschoenenbroecher.de/.paperclip/scripts/modell-wacht/run-melder.js</string>
+	</array>
+
+	<key>WorkingDirectory</key>
+	<string>/Users/walterschoenenbroecher.de/.paperclip/scripts/modell-wacht</string>
+
+	<key>EnvironmentVariables</key>
+	<dict>
+		<!-- /opt/homebrew/bin ist Pflicht: der Wächter ruft `psql` ohne
+		     absoluten Pfad auf. Ohne diesen PATH sind zwei Quellen
+		     unlesbar und der Melder erzeugt ein Fehlalarm-Issue. -->
+		<key>PATH</key>
+		<string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+	</dict>
+
+	<!-- Alle 30 Minuten. Der Vorfall vom 26.08. lief von 10:00 bis 12:11;
+	     der tägliche 07:30-Lauf der Paperclip-Routine hätte ihn komplett
+	     verpasst. Prüfen kostet nichts — es ist reines Python ohne LLM. -->
+	<key>StartInterval</key>
+	<integer>1800</integer>
+
+	<key>RunAtLoad</key>
+	<true/>
+
+	<key>StandardOutPath</key>
+	<string>/Users/walterschoenenbroecher.de/.paperclip/logs/modell-wacht.launchd.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/walterschoenenbroecher.de/.paperclip/logs/modell-wacht.launchd.log</string>
+</dict>
+</plist>

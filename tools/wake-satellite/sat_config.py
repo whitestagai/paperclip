@@ -77,7 +77,12 @@ TTS_FORMAT = "mp3_44100_128"
 # damit ebenfalls ins Leere. Der Primaerpfad hier liegt auf der RTX und damit
 # hinter LM Link — genau dessen Ausfall soll der Fallback abfangen, also muss
 # er lokal liegen. Zurueck geht es mit einer Zeile.
-CHAT_MODEL = "gemma4-31b-it"
+#
+# 15.09.2026: Die ID war "gemma4-31b-it" — der Bindestrich nach "gemma" fehlte.
+# LM Studio kennt sie nicht und antwortet auf JEDEN Aufruf mit «Invalid model
+# identifier», der Sprachpfad lief also ins Leere. Gegengeprobt: "gemma-4-31b-it"
+# antwortet (finish_reason "stop").
+CHAT_MODEL = "gemma-4-31b-it"
 
 # Mandant fest verdrahtet.
 TENANT = {

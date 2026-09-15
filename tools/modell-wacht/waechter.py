@@ -17,8 +17,10 @@ import re
 import sqlite3
 import subprocess
 import sys
+import urllib.error
+import urllib.parse
 import urllib.request
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from pruefung import (
     SCHWERE_REIHENFOLGE,
@@ -103,6 +105,14 @@ def referenzen_aus_n8n(workflows: List[Dict[str, Any]]) -> List[Referenz]:
     - Die Chat-Knoten beziehen ihr Modell über `={{ ... }}` aus einem
       Konfigurationsknoten. Der Ausdruck ist statisch nicht auflösbar; der
       literale Wert steht im `set`-Knoten und wird dort abgegriffen.
+
+    Die dritte Falle kam am 15.09. dazu: Nicht jeder Chat-Knoten holt sein
+    Modell über einen Ausdruck. Fünf taten es literal in
+    `parameters.model.value` — darunter Luna, die Sekretärin, und der Content
+    Creator. Weil hier nur `set`-Knoten gelesen wurden, blieben sie
+    unsichtbar, während der Bericht 42 harmlose `defaultModel`-Einträge
+    auflistete. Untererfassung ist der teurere Fehler: einen Geist prüft man
+    und verwirft ihn, einen Übersehenen nie.
     """
     refs = []
     for wf in workflows:
@@ -113,6 +123,7 @@ def referenzen_aus_n8n(workflows: List[Dict[str, Any]]) -> List[Referenz]:
                 continue
             nname = node.get("name", "?")
             params = node.get("parameters") or {}
+
             zuweisungen = ((params.get("assignments") or {}).get("assignments")) or []
             for a in zuweisungen:
                 name = a.get("name") or ""
@@ -127,6 +138,19 @@ def referenzen_aus_n8n(workflows: List[Dict[str, Any]]) -> List[Referenz]:
                             wert,
                         )
                     )
+
+            # Ausführende LLM-Knoten: `{"model": {"value": "..."}}` bei neueren
+            # Knotenversionen, `{"model": "..."}` bei älteren.
+            roh = params.get("model")
+            wert = roh.get("value") if isinstance(roh, dict) else roh
+            if isinstance(wert, str) and wert and not wert.startswith("="):
+                refs.append(
+                    Referenz(
+                        "n8n «{}»".format(wfname),
+                        "{}.model".format(nname),
+                        wert,
+                    )
+                )
     return refs
 
 
@@ -199,6 +223,28 @@ def _psql(dsn, sql, passwort):
 def hole_bestand() -> Bestand:
     with urllib.request.urlopen(LM_STUDIO + "/api/v0/models", timeout=20) as r:
         return bestand_aus_api(json.loads(r.read().decode()))
+
+
+def loese_id_auf(modell: str) -> Optional[bool]:
+    """Gegenprobe für eine ID, die in der Bestandsliste fehlt.
+
+    `GET /api/v0/models/<id>` antwortet 400 auf eine ungültige Kennung und 200
+    auf eine gültige — auch dann, wenn das Modell auf einem anderen
+    LM-Link-Knoten liegt und deshalb in der Liste fehlt. Der Aufruf lädt NICHT:
+    ein Probeaufruf gegen `/v1/chat/completions` würde das Modell in den
+    Speicher ziehen und könnte ein anderes verdrängen.
+
+    True = gibt es, False = gibt es nicht, None = keine Auskunft (der Aufrufer
+    bleibt dann fail-closed).
+    """
+    url = "{}/api/v0/models/{}".format(LM_STUDIO, urllib.parse.quote(modell, safe=""))
+    try:
+        with urllib.request.urlopen(url, timeout=10) as r:
+            return 200 <= r.status < 300
+    except urllib.error.HTTPError as e:
+        return False if e.code == 400 or e.code == 404 else None
+    except Exception:  # noqa: BLE001 - Dienst weg, Zeitüberschreitung
+        return None
 
 
 def hole_agenten() -> List[Referenz]:
@@ -364,7 +410,7 @@ def pruefe() -> Tuple[List, Dict[str, Any]]:
     except Exception as exc:  # noqa: BLE001 - fail-closed wie bei den Quellen
         unlesbar.append("LM-Studio-Laufzeit: {}".format(exc))
 
-    befunde = bewerte(referenzen, bestand, unlesbar)
+    befunde = bewerte(referenzen, bestand, unlesbar, aufloeser=loese_id_auf)
     befunde += bewerte_laufzeit(laufzeit, soll)
     befunde += bewerte_drift(
         [r for r in referenzen if r.quelle == "PII-Proxy"],

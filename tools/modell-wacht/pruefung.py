@@ -69,6 +69,7 @@ def bewerte(
     referenzen: Iterable[Referenz],
     bestand: Bestand,
     unlesbare_quellen: Iterable[str],
+    aufloeser=None,
 ) -> List[Befund]:
     """Vergleicht alle Referenzen mit dem Bestand.
 
@@ -77,6 +78,20 @@ def bewerte(
     antwortete. Dann darf NICHT geprüft werden, sonst wären auf einen Schlag
     alle Referenzen „unbekannt" und der Bericht ertränkt den echten Befund in
     vierzig Fehlalarmen.
+
+    `aufloeser` ist die Gegenprobe für eine ID, die in der Liste fehlt — seit
+    dem 15.09. Der Anlass: `qwen3.6-35b-a3b-mlx` stand nicht in
+    `/api/v0/models`, wurde vom Dienst aber bedient; das Modell liegt auf einem
+    anderen LM-Link-Knoten. Die Liste zeigt nur, was der Dienst gerade sieht,
+    und ist damit KEIN vollständiges Verzeichnis der gültigen Kennungen.
+
+    Die Gegenprobe darf das Modell nicht laden — ein Probeaufruf gegen
+    `/v1/chat/completions` zieht es in den Speicher und kann andere verdrängen.
+    Deshalb `GET /api/v0/models/<id>`: 400 bei echtem Unsinn, 200 sonst, ohne
+    Ladevorgang.
+
+    Rückgabe des Aufrufs: True = gibt es, False = gibt es nicht, None = keine
+    Auskunft. Ohne `aufloeser` bleibt es beim reinen Listenvergleich.
     """
     befunde: List[Befund] = []
 
@@ -112,6 +127,10 @@ def bewerte(
         if not ref.modell or _ist_fremd(ref.modell):
             continue
         if ref.modell not in bestand.vorhanden:
+            # Fehlt sie in der Liste, entscheidet die Gegenprobe. Nur ein
+            # ausdrückliches True entlastet; keine Auskunft bleibt ein Befund.
+            if aufloeser is not None and aufloeser(ref.modell) is True:
+                continue
             befunde.append(
                 Befund(
                     art="unbekannt",

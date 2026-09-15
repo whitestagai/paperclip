@@ -248,3 +248,56 @@ def test_befunde_stehen_schwerste_zuerst():
         [],
     )
     assert [b.schwere for b in befunde] == ["hoch", "niedrig"]
+
+
+# ------------------------------------------ Gegenprobe bei unbekannter ID
+
+
+def test_id_fehlt_in_der_liste_wird_aber_bestaetigt_und_ist_kein_befund():
+    """15.09.: `qwen3.6-35b-a3b-mlx` stand nicht in `/api/v0/models`, wurde vom
+    Dienst aber anstandslos bedient — das Modell liegt auf einem anderen
+    LM-Link-Knoten. Die Liste ist also KEIN vollständiges Verzeichnis der
+    gültigen Kennungen; zwei Agenten wurden deshalb grundlos als tot gemeldet.
+    Wer die Liste allein befragt, erzeugt Rauschen, das den echten Befund
+    zudeckt."""
+    befunde = bewerte(
+        [Referenz("Agent SEO/GEO", "model", "qwen3.6-35b-a3b-mlx")],
+        _bestand(),
+        [],
+        aufloeser=lambda m: True,
+    )
+    assert befunde == []
+
+
+def test_id_fehlt_in_der_liste_und_wird_widerlegt_bleibt_harter_befund():
+    befunde = bewerte(
+        [Referenz("Wake-Satellit", "CHAT_MODEL", "gemma4-31b-it-tippfehler")],
+        _bestand(),
+        [],
+        aufloeser=lambda m: False,
+    )
+    assert len(befunde) == 1
+    assert befunde[0].art == "unbekannt"
+    assert befunde[0].schwere == "hoch"
+
+
+def test_gegenprobe_nicht_erreichbar_bleibt_fail_closed():
+    """Keine Auskunft heißt melden, nicht schweigen — sonst deckt ein
+    ausgefallener Dienst jede tote ID zu."""
+    befunde = bewerte(
+        [Referenz("Agent CTO", "model", "irgendwas-totes")],
+        _bestand(),
+        [],
+        aufloeser=lambda m: None,
+    )
+    assert len(befunde) == 1
+    assert befunde[0].schwere == "hoch"
+
+
+def test_ohne_aufloeser_bleibt_das_alte_verhalten():
+    """Rückwärtskompatibel: Aufrufer ohne Gegenprobe bekommen die Liste."""
+    befunde = bewerte(
+        [Referenz("Agent CTO", "model", "irgendwas-totes")], _bestand(), []
+    )
+    assert len(befunde) == 1
+    assert befunde[0].art == "unbekannt"

@@ -206,3 +206,48 @@ def test_template_liest_das_modell_aus_dem_llm_block():
 
 def test_template_ohne_modellzeile_ist_leer_nicht_kaputt():
     assert referenzen_aus_template("basis:\n  title:\n", "Tagger X") == []
+
+
+def test_n8n_liest_literale_modelle_aus_ausfuehrenden_llm_knoten():
+    """15.09.: Der Wächter sah nur `set`-Knoten und übersah damit fünf echte
+    Treffer in `lmChatOpenAi`-Knoten — darunter Luna, die Sekretärin. Die
+    Modell-ID steht dort direkt in `parameters.model.value`, nicht als Ausdruck
+    über einen Konfigurationsknoten. Untererfassung ist schlimmer als ein
+    Fehlalarm: ein Geist wird geprüft und verworfen, ein Übersehener nie."""
+    nodes = [
+        {
+            "name": "OpenAI Chat Model",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "parameters": {"model": {"value": "gemma4-31b-it"}},
+        }
+    ]
+    refs = referenzen_aus_n8n(_wf(nodes))
+    assert {(r.feld, r.modell) for r in refs} == {
+        ("OpenAI Chat Model.model", "gemma4-31b-it")
+    }
+
+
+def test_n8n_modell_als_blanker_string_wird_auch_gelesen():
+    """Ältere Knotenversionen tragen den Namen direkt statt in {"value": ...}."""
+    nodes = [
+        {
+            "name": "OpenAI Chat Model",
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "parameters": {"model": "qwen3.6-35b-a3b"},
+        }
+    ]
+    assert [(r.feld, r.modell) for r in referenzen_aus_n8n(_wf(nodes))] == [
+        ("OpenAI Chat Model.model", "qwen3.6-35b-a3b")
+    ]
+
+
+def test_n8n_sticky_note_mit_modell_feld_bleibt_stumm():
+    """Die Sticky-Regel gilt auch für den neuen Pfad."""
+    nodes = [
+        {
+            "name": "Sticht B",
+            "type": "n8n-nodes-base.stickyNote",
+            "parameters": {"model": {"value": "gemma4-31b-it"}},
+        }
+    ]
+    assert referenzen_aus_n8n(_wf(nodes)) == []

@@ -1320,6 +1320,21 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
       .then((rows) => rows[0] ?? null);
   }
 
+  async function countRecoveryIssuesForSource(companyId: string, sourceIssueId: string) {
+    const rows = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(issues)
+      .where(
+        and(
+          eq(issues.companyId, companyId),
+          eq(issues.originKind, STRANDED_ISSUE_RECOVERY_ORIGIN_KIND),
+          eq(issues.originId, sourceIssueId),
+          isNull(issues.hiddenAt),
+        ),
+      );
+    return rows[0]?.count ?? 0;
+  }
+
   async function resolveStrandedIssueRecoveryOwnerAgentId(issue: typeof issues.$inferSelect) {
     const candidateIds: string[] = [];
     if (issue.assigneeAgentId) {
@@ -1435,6 +1450,19 @@ export function recoveryService(db: Db, deps: { enqueueWakeup: RecoveryWakeup })
 
     const existing = await findOpenStrandedIssueRecoveryIssue(input.issue.companyId, input.issue.id);
     if (existing) return existing;
+
+    // Deckel pro QUELL-Issue. Der In-Place-Zaehler haengt an der Recovery-Issue-Id
+    // und greift nur, solange dieselbe Recovery haengen bleibt. Gelingt sie dagegen
+    // (Status `done`), gilt sie weder als offen noch traegt sie einen Zaehlerstand:
+    // der naechste Fehlschlag legt eine frische Recovery mit Zaehler 0 an und die
+    // Kaskade laeuft endlos weiter. Abgeschlossene Recoveries muessen deshalb
+    // mitzaehlen. `null` heisst: kein neues Recovery-Issue — der Aufrufer setzt die
+    // Quelle trotzdem auf `blocked`, damit ein Mensch uebernehmen kann.
+    const priorRecoveriesForSource = await countRecoveryIssuesForSource(
+      input.issue.companyId,
+      input.issue.id,
+    );
+    if (priorRecoveriesForSource >= MAX_RECOVERY_IN_PLACE_CYCLES) return null;
 
     const ownerAgentId = await resolveStrandedIssueRecoveryOwnerAgentId(input.issue);
     if (!ownerAgentId) return null;

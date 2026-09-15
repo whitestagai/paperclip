@@ -79,6 +79,7 @@ import {
   SUCCESSFUL_RUN_HANDOFF_REQUIRED_NOTICE_BODY,
   SUCCESSFUL_RUN_MISSING_STATE_REASON,
 } from "../services/recovery/index.ts";
+import { MAX_RECOVERY_IN_PLACE_CYCLES } from "../services/recovery/service.ts";
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
 
@@ -2449,6 +2450,47 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       ));
     expect(recoveries).toHaveLength(1);
     await expect(sourceBlockerIssueIds(companyId, issueId)).resolves.toEqual([recoveries[0]?.id]);
+  });
+
+  it("stops creating fresh recovery issues for the same source once the cycle cap is reached, even after prior recoveries completed", async () => {
+    const { companyId, issueId } = await seedStrandedIssueFixture({
+      status: "in_progress",
+      runStatus: "failed",
+      retryReason: "issue_continuation_needed",
+    });
+    const heartbeat = heartbeatService(db);
+
+    // Jede Runde bildet den Live-Ablauf ab: die Recovery gelingt und wird `done`,
+    // danach scheitert der Assignee erneut und die Quelle strandet wieder.
+    const rounds = MAX_RECOVERY_IN_PLACE_CYCLES + 2;
+    for (let round = 0; round < rounds; round += 1) {
+      await heartbeat.reconcileStrandedAssignedIssues();
+      await db
+        .update(issues)
+        .set({ status: "done" })
+        .where(and(
+          eq(issues.companyId, companyId),
+          eq(issues.originKind, "stranded_issue_recovery"),
+          eq(issues.originId, issueId),
+        ));
+      await db.delete(issueRelations).where(
+        and(
+          eq(issueRelations.companyId, companyId),
+          eq(issueRelations.relatedIssueId, issueId),
+        ),
+      );
+      await db.update(issues).set({ status: "in_progress" }).where(eq(issues.id, issueId));
+    }
+
+    const recoveries = await db
+      .select()
+      .from(issues)
+      .where(and(
+        eq(issues.companyId, companyId),
+        eq(issues.originKind, "stranded_issue_recovery"),
+        eq(issues.originId, issueId),
+      ));
+    expect(recoveries.length).toBeLessThanOrEqual(MAX_RECOVERY_IN_PLACE_CYCLES);
   });
 
   it("blocks stranded recovery issues in place instead of creating nested recovery issues", async () => {

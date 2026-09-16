@@ -142,3 +142,47 @@ def test_grenze_der_repo_pruefung_deckt_einen_ganzen_monat():
     assert waechter.GRENZE_REPO_PRUEFUNG > timedelta(days=31)
     # Aber nicht so weit, dass ein ganz ausgefallener Termin gedeckt waere.
     assert waechter.GRENZE_REPO_PRUEFUNG < timedelta(days=62)
+
+
+def test_grund_nennt_den_gescheiterten_lauf(tmp_path):
+    """Gegenstück zu `status_stand`: dort ist ein gescheiterter Lauf zu Recht
+    „kein Stand", hier bekommt er endlich einen Namen. Ohne das meldete der
+    Wächter am 16.09.2026 „Statusdatei nicht abfragbar" für eine Datei, die er
+    gerade problemlos gelesen hatte."""
+    import json
+    s = tmp_path / "status.json"
+    s.write_text(json.dumps({"stand": "fehler", "zeit": "2026-09-16 03:37:19",
+                             "grund": "1 Quelle(n) mit rsync-Fehler"}))
+    grund = waechter.status_grund(str(s))
+    assert grund is not None
+    assert "rsync-Fehler" in grund
+    assert "2026-09-16 03:37:19" in grund
+
+
+def test_grund_kommt_auch_ohne_begruendungsfeld(tmp_path):
+    """Nicht jede Statusdatei fuehrt ein `grund`-Feld. Dass der Lauf
+    gescheitert ist, muss trotzdem gesagt werden."""
+    import json
+    s = tmp_path / "status.json"
+    s.write_text(json.dumps({"stand": "fehler", "zeit": "2026-09-16 03:37:19"}))
+    grund = waechter.status_grund(str(s))
+    assert grund is not None and "Fehler" in grund
+
+
+def test_kein_grund_bei_erfolgreichem_lauf(tmp_path):
+    import json
+    s = tmp_path / "status.json"
+    s.write_text(json.dumps({"stand": "ok", "zeit": "2026-09-16 03:37:19"}))
+    assert waechter.status_grund(str(s)) is None
+
+
+def test_kein_grund_wenn_die_datei_fehlt(tmp_path):
+    """Hier ist „nicht abfragbar" die richtige Auskunft — der Wächter soll
+    dann bei seinem allgemeinen Text bleiben, nicht einen erfinden."""
+    assert waechter.status_grund(str(tmp_path / "gibtsnicht.json")) is None
+
+
+def test_kein_grund_bei_kaputter_datei(tmp_path):
+    s = tmp_path / "status.json"
+    s.write_text("kein json")
+    assert waechter.status_grund(str(s)) is None

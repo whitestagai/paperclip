@@ -18,6 +18,10 @@ class Pruefling(NamedTuple):
     stand: Optional[datetime]   # None = nicht ermittelbar
     grenze: timedelta           # ab hier gilt sie als überfällig
     quelle: str                 # woher der Stand kommt, für die Fehlermeldung
+    # Warum kein Stand vorliegt, sofern die Quelle es sagen konnte. Nur für
+    # die Meldung — am Urteil ändert er nichts, `stand is None` bleibt ein
+    # Problem. Fehlt er, bleibt es beim allgemeinen „nicht abfragbar".
+    grund: Optional[str] = None
 
 
 class Befund(NamedTuple):
@@ -53,9 +57,19 @@ def bewerte(jetzt: datetime, prueflinge) -> Befund:
     probleme, zeilen = [], []
     for pr in prueflinge:
         if pr.stand is None:
-            zeilen.append(f"{pr.name}: KEINE Angabe ({pr.quelle} nicht erreichbar)")
-            probleme.append(f"{pr.name}: Stand unbekannt — "
-                            f"{pr.quelle} nicht abfragbar.")
+            # „Quelle nicht erreichbar" und „Lauf gescheitert" enden beide
+            # hier — das Urteil ist dasselbe, die Meldung darf es nicht sein.
+            # Am 16.09.2026 stand „Statusdatei nicht abfragbar" im Bericht,
+            # während die Datei einwandfrei lesbar war und den gescheiterten
+            # rsync-Lauf meldete. Der Alarm stimmte, die Fahrtrichtung nicht.
+            if pr.grund:
+                zeilen.append(f"{pr.name}: KEINE Angabe ({pr.grund})")
+                probleme.append(f"{pr.name}: {pr.grund}.")
+            else:
+                zeilen.append(f"{pr.name}: KEINE Angabe "
+                              f"({pr.quelle} nicht erreichbar)")
+                probleme.append(f"{pr.name}: Stand unbekannt — "
+                                f"{pr.quelle} nicht abfragbar.")
             continue
         # Negatives Alter durch Uhrzeitversatz zwischen Mac und NAS nicht als
         # „uralt" oder gar als Fehler auslegen.

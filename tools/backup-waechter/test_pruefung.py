@@ -217,3 +217,44 @@ def test_unbekannte_belegung_alarmiert_nicht_doppelt():
     p, zeile = pruefung.bewerte_platz(None, 3000 * GB)
     assert p is None
     assert "nicht ermittelbar" in zeile.lower()
+
+
+def test_gescheiterter_lauf_wird_als_fehler_gemeldet_nicht_als_unbekannt():
+    """Am 16.09.2026 meldete der Wächter „SSD-Sicherung (lokal): Stand
+    unbekannt — Statusdatei nicht abfragbar", während die Statusdatei
+    einwandfrei lesbar war und `"stand":"fehler"` enthielt: der nächtliche
+    rsync war an sieben Ordnern gescheitert.
+
+    Ursache: Datei fehlt, Datei unlesbar und Lauf gescheitert enden alle drei
+    in `stand is None` und liefen darum in denselben Text. Der Alarm kam, zeigte
+    aber in die falsche Richtung — die Fehlersuche begann bei einer Datei, die
+    nichts hatte. Ein Wächter, der falsch zeigt, kostet genau die Zeit, die im
+    Ernstfall fehlt."""
+    b = pruefung.bewerte(JETZT, [
+        pruefung.Pruefling("SSD-Sicherung (lokal)", None, 30 * STD,
+                           "Statusdatei",
+                           "letzter Lauf (2026-09-16 03:37:19) meldet Fehler: "
+                           "1 Quelle(n) mit rsync-Fehler"),
+    ])
+    assert not b.ok
+    assert len(b.probleme) == 1
+    assert "rsync-Fehler" in b.probleme[0], b.probleme
+    assert "nicht abfragbar" not in b.probleme[0], b.probleme
+
+
+def test_ohne_grund_bleibt_es_beim_allgemeinen_text():
+    """Die Unterscheidung darf den echten Fall „Quelle nicht erreichbar" nicht
+    verschlucken: ist kein Grund bekannt, bleibt die alte Meldung."""
+    b = pruefung.bewerte(JETZT, [p("Datenbank (NAS)", None)])
+    assert not b.ok
+    assert "nicht abfragbar" in b.probleme[0], b.probleme
+
+
+def test_grund_steht_auch_in_der_berichtszeile():
+    """Der Bericht wird gelesen, bevor jemand in die Logs schaut — die Zeile
+    muss dieselbe Auskunft geben wie die Problemliste."""
+    b = pruefung.bewerte(JETZT, [
+        pruefung.Pruefling("SSD-Sicherung (lokal)", None, 30 * STD,
+                           "Statusdatei", "letzter Lauf meldet Fehler: rsync"),
+    ])
+    assert "rsync" in b.zeilen[0], b.zeilen

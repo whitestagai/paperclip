@@ -198,6 +198,35 @@ def status_stand(pfad):
         return None
 
 
+def status_grund(pfad):
+    """Warum eine Statusdatei keinen Stand liefert — oder None.
+
+    `status_stand()` antwortet auf drei verschiedene Lagen mit `None`: Datei
+    fehlt, Datei unlesbar, letzter Lauf gescheitert. Fuers Urteil ist das
+    richtig, fuer die Meldung nicht. Am 16.09.2026 meldete der Waechter
+    „SSD-Sicherung (lokal): Stand unbekannt — Statusdatei nicht abfragbar",
+    obwohl er die Datei im selben Durchgang gelesen und ihre Kennzahlen in
+    den Bericht uebernommen hatte; drin stand „fehler" mit dem Grund. Die
+    Fehlersuche begann daraufhin bei einer Datei, die voellig in Ordnung war.
+
+    Diese Funktion trennt den dritten Fall ab. Fuer die ersten beiden bleibt
+    sie still — dort IST „nicht abfragbar" die richtige Auskunft, und ein
+    erfundener Grund waere schlimmer als ein allgemeiner.
+    """
+    try:
+        with open(pfad, encoding="utf-8") as fh:
+            d = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    if d.get("stand") == "ok":
+        return None
+    zeit = str(d.get("zeit") or "").strip()
+    grund = str(d.get("grund") or "").strip()
+    text = f"letzter Lauf ({zeit}) meldet Fehler" if zeit \
+        else "letzter Lauf meldet Fehler"
+    return f"{text}: {grund}" if grund else text
+
+
 def snapshots():
     """Alle restic-Snapshots, oder None wenn das Repo nicht abfragbar ist.
 
@@ -426,7 +455,8 @@ def main():
                            GRENZE_TAEGLICH, "restic"),
         pruefung.Pruefling("Vault-Spiegel (NAS)",
                            status_stand(VAULT_SYNC_STATUS),
-                           GRENZE_TAEGLICH, "Statusdatei"),
+                           GRENZE_TAEGLICH, "Statusdatei",
+                           status_grund(VAULT_SYNC_STATUS)),
         pruefung.Pruefling("Claude-Code-Spiegel (NAS)",
                            ordner_stand(SYNOLOGY_SPIEGEL),
                            GRENZE_SYNOLOGY, "Synology Drive"),
@@ -437,12 +467,14 @@ def main():
         # GESCHRIEBEN wurde — diese sagt, dass es sich auch LESEN laesst.
         pruefung.Pruefling("Repo-Pruefung (Hetzner)",
                            status_stand(REPO_PRUEF_STATUS),
-                           GRENZE_REPO_PRUEFUNG, "Statusdatei"),
+                           GRENZE_REPO_PRUEFUNG, "Statusdatei",
+                           status_grund(REPO_PRUEF_STATUS)),
         # Seit 04.09.2026. Die SSD haengt dauerhaft am Mac; faellt der Lauf
         # aus, ist das kein Sonderfall, sondern ein Ausfall wie jeder andere.
         pruefung.Pruefling("SSD-Sicherung (lokal)",
                            status_stand(SSD_STATUS),
-                           GRENZE_TAEGLICH, "Statusdatei"),
+                           GRENZE_TAEGLICH, "Statusdatei",
+                           status_grund(SSD_STATUS)),
         pruefung.Pruefling("Systemgeheimnisse (Nextcloud)",
                            aus_repo(TAG_SECRETS),
                            GRENZE_TAEGLICH, "restic"),

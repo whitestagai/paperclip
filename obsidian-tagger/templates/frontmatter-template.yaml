@@ -126,7 +126,17 @@ ignoriere:
 # 5) LLM-VERHALTEN
 # ---------------------------------------------------------------------
 llm:
-  modell: "gemma-4-31b-it-mlx"
+  modell: "google/gemma-4-31b"
+  # 19.09.2026 von "gemma-4-31b-it-mlx" umgestellt: SELBE Modelldatei
+  # (lmstudio-community/gemma-4-31B-it-MLX-8bit), nur neuer Identifier.
+  # LM Studio hat sie auf "google/gemma-4-31b" umbenannt; unter dem alten
+  # Namen antwortet /api/v0/models/<id> mit "not found", und jeder Aufruf
+  # scheiterte mit HTTP 400. Der naechtliche Lauf war dadurch vom 16.09.
+  # bis 19.09. tot — vier Naechte mit ok=0 (fail=3/5/6/7), 21 Notizen
+  # ungetaggt. Gegenprobe vor dem Eintragen ist Pflicht:
+  #   curl -s localhost:1234/api/v0/models/<id>
+  # Die Begruendung von unten gilt unveraendert weiter.
+  #
   # 04.09.2026 von "qwen3.6-35b-a3b-mlx" umgestellt: Das MacBook ist aus der
   # Farm genommen, damit war die dortige MLX-Kopie nicht mehr aufloesbar
   # ("Invalid model identifier"). Die Modelle wurden auf die Studio geholt —

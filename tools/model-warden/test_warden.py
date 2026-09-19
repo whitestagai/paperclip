@@ -17,7 +17,7 @@ def test_loads_missing_and_skips_absent_rtx():
     ps = "[]"  # nichts geladen
     notified = []
     res = run(make_run_cmd(calls), lambda: LINK, lambda: ps,
-              os.path.join(HERE, "resident-set.json"),
+              os.path.join(HERE, "test-resident-set.json"),
               lambda t, b: notified.append((t, b)))
     loaded_keys = {c[2] for c in calls if c[:2] == ["lms", "load"]}
     # studio+macbook always-Modelle geladen, RTX (day-only) NICHT (abwesend)
@@ -31,7 +31,7 @@ def test_failure_triggers_notify():
     notified = []
     res = run(make_run_cmd(calls, fail_keys={"gemma-4-31b-it-mlx"}),
               lambda: LINK, lambda: "[]",
-              os.path.join(HERE, "resident-set.json"),
+              os.path.join(HERE, "test-resident-set.json"),
               lambda t, b: notified.append((t, b)))
     assert res["failures"]
     assert notified and "gemma-4-31b-it-mlx" in notified[0][1]

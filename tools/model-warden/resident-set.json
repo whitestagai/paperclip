@@ -1,11 +1,39 @@
 {
+  "_hinweis": [
+    "Welche Modelle DAUERHAFT geladen sein sollen, je Geraet.",
+    "",
+    "Zwei Leser mit entgegengesetzter Richtung:",
+    "  warden.py      laedt, was hier steht und fehlt  (laeuft derzeit NICHT)",
+    "  evict_main.py  entlaedt auf 'studio', was hier NICHT steht",
+    "",
+    "Wer hier einen Eintrag streicht, sagt damit: darf weg. Wer einen",
+    "ergaenzt, sagt: gehoert rund um die Uhr in den Speicher. Modelle, die",
+    "nur zeitweise gebraucht werden, gehoeren NICHT hierher — die holt man",
+    "mit 'lms load --ttl', dann raeumt LM Studio sie selbst weg und der",
+    "Waerter fasst sie nicht an (so macht es der naechtliche Vault-Tagger",
+    "mit google/gemma-4-31b).",
+    "",
+    "Stand 19.09.2026: macbook- und rtx-Eintraege sind unveraendert aus dem",
+    "Juli uebernommen und NICHT geprueft — der Entlade-Waerter ruehrt nur",
+    "'studio' an."
+  ],
   "devices": ["studio", "macbook", "rtx"],
   "models": [
-    {"device": "studio",  "ps_key": "gemma-4-31b-it-mlx",        "load_key": "gemma-4-31b-it-mlx",        "ctx": 65000, "parallel": 4, "when": "always"},
-    {"device": "studio",  "ps_key": "google/gemma-4-12b",        "load_key": "google/gemma-4-12b",        "ctx": 65024, "parallel": 4, "when": "always"},
-    {"device": "studio",  "ps_key": "qwen/qwen3-coder-30b",      "load_key": "qwen/qwen3-coder-30b",      "ctx": 90000, "parallel": 4, "when": "always"},
-    {"device": "studio",  "ps_key": "openbiollm-llama3-8b.gguf", "load_key": "openbiollm-llama3-8b.gguf", "ctx": 8192,  "parallel": 4, "when": "always"},
-    {"device": "studio",  "ps_key": "text-embedding-bge-m3",     "load_key": "text-embedding-bge-m3",     "ctx": null,  "parallel": null, "when": "always"},
+    {"device": "studio",  "ps_key": "google/gemma-4-12b",        "load_key": "google/gemma-4-12b",        "ctx": 65536, "parallel": 6, "when": "always",
+     "begruendung": "Fallback der 25 gemma-Agenten (seit 19.09.), Klassifikator des PII-Proxys, Modell des Clara-Taggers. Klein genug, um immer zu passen. ctx/parallel siehe modell-wacht/soll-laufzeit.json."},
+
+    {"device": "studio",  "ps_key": "openbiollm-llama3-8b.gguf", "load_key": "openbiollm-llama3-8b.gguf", "ctx": 8192,  "parallel": 4, "when": "always",
+     "begruendung": "Medizinisches Modell eines Health-Agenten. Bewusst kleines Fenster."},
+
+    {"device": "studio",  "ps_key": "qwen/qwen3-coder-30b",      "load_key": "qwen/qwen3-coder-30b",      "ctx": 90000, "parallel": 4, "when": "always",
+     "begruendung": "Aus dem Juli uebernommen. Am 19.09.2026 war es nicht geladen und keine Konfiguration zeigte darauf — bewusst stehen gelassen, weil ein Eintrag hier nur SCHUETZT und nichts kostet, solange warden.py nicht laeuft. Vor dem Scharfschalten des Laders pruefen, ob es noch gebraucht wird."},
+
+    {"device": "studio",  "ps_key": "text-embedding-bge-m3",     "load_key": "text-embedding-bge-m3",     "ctx": null,  "parallel": null, "when": "always",
+     "begruendung": "Einbettungen fuer die n8n-RAG-Ketten (WHITESTAG Chat/RAG/DE/FILM)."},
+
+    {"device": "studio",  "ps_key": "text-embedding-nomic-embed-text-v1.5", "load_key": "text-embedding-nomic-embed-text-v1.5", "ctx": null, "parallel": null, "when": "always",
+     "begruendung": "Zweites Einbettungsmodell, 84 MB. Ergaenzt 19.09.2026, weil es geladen war und im Set fehlte."},
+
     {"device": "macbook", "ps_key": "qwen3.6-35b-a3b-mlx",       "load_key": "qwen3.6-35b-a3b-mlx",       "ctx": 98304, "parallel": 4, "when": "always"},
     {"device": "rtx",     "ps_key": "qwen/qwen3-coder-next",     "load_key": "qwen/qwen3-coder-next",     "ctx": 131328, "parallel": 4, "when": "day-only"},
     {"device": "rtx",     "ps_key": "google/gemma-4-12b-qat",    "load_key": "google/gemma-4-12b-qat",    "ctx": 65024, "parallel": 4, "when": "day-only"}

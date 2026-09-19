@@ -3,7 +3,7 @@ from config import load_resident_set
 from audit_agents import resident_model_keys, violations
 
 HERE = os.path.dirname(__file__)
-ALLOWED = resident_model_keys(load_resident_set(os.path.join(HERE, "resident-set.json")))
+ALLOWED = resident_model_keys(load_resident_set(os.path.join(HERE, "test-resident-set.json")))
 
 def test_allowed_contains_set_and_cloud():
     assert "gemma-4-31b-it-mlx" in ALLOWED

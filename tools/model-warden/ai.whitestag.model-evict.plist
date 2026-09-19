@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.whitestag.model-evict</string>
+
+  <!-- Entlaedt auf der Studio Modelle, die im resident-set nicht stehen.
+       Quelle liegt im Repo unter tools/model-warden, hier laeuft die
+       Spiegelung — launchd soll nicht auf den SynologyDrive-Pfad angewiesen
+       sein. Drift-Test: diff -rq tools/model-warden ~/.paperclip/scripts/model-warden
+
+       BEWUSST homebrew-python: /usr/bin/python3 bricht nach jedem
+       Xcode-Update mit Exit 69 ab, bevor eine Zeile Code laeuft. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/python3</string>
+    <string>/Users/walterschoenenbroecher.de/.paperclip/scripts/model-warden/evict_main.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/walterschoenenbroecher.de/.paperclip/scripts/model-warden</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>600</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/walterschoenenbroecher.de/.paperclip/logs/model-evict.launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/walterschoenenbroecher.de/.paperclip/logs/model-evict.launchd.log</string>
+</dict>
+</plist>

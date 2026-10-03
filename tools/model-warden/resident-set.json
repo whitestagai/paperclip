@@ -39,6 +39,7 @@
 
     {"device": "macbook", "ps_key": "qwen3.6-35b-a3b-mlx",       "load_key": "qwen3.6-35b-a3b-mlx",       "ctx": 98304, "parallel": 4, "when": "always"},
     {"device": "rtx",     "ps_key": "qwen/qwen3-coder-next",     "load_key": "qwen/qwen3-coder-next",     "ctx": 131328, "parallel": 4, "when": "day-only"},
-    {"device": "rtx",     "ps_key": "google/gemma-4-12b-qat",    "load_key": "google/gemma-4-12b-qat",    "ctx": 65024, "parallel": 4, "when": "day-only"}
+    {"device":     "rtx",     "ps_key": "google/gemma-4-12b-qat",    "load_key": "google/gemma-4-12b-qat",    "ctx": 65024, "parallel": 4, "when": "always",
+     "begruendung": "Fallback-Klassifikator des PII-Proxys (PII_PROXY_CLASSIFIER_FALLBACK_MODEL, gesetzt 03.10.2026). Vorher stand der Fallback auf demselben google/gemma-4-12b wie das Primaermodell — entity-classifier.ts haengt ein identisches Fallback NICHT an (Zeile 70: fallbackModel !== model), es gab also faktisch keinen. Faellt die Studio aus, blockiert der Proxy fail-closed und reisst auch Cloud-Agenten mit (blocked_by_pii_proxy). Deshalb MUSS dieses Modell auf der RTX liegen — anderes Geraet als das Primaermodell. Von day-only auf always gehoben, weil die Karte seit 23.08.2026 durchlaeuft und ein Fallback nachts nicht fehlen darf. Gemessen 03.10.2026 am Produktions-Payload (json_schema strict, reasoning_effort none): 1,92 s Median, 5/5 Entitaeten inkl. ART_9, 0/5 JSON-Fehler — damit rund 6x schneller als das Primaermodell auf der Studio (11,45 s Median, max 36,7 s). NICHT wegraeumen, auch wenn die Aufrufzahlen klein aussehen: der Fallback wird nur im Stoerfall gebraucht."}
   ]
 }

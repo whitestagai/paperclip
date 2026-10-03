@@ -22,6 +22,9 @@
     {"device": "studio",  "ps_key": "google/gemma-4-12b",        "load_key": "google/gemma-4-12b",        "ctx": 65536, "parallel": 6, "when": "always",
      "begruendung": "Fallback der 25 gemma-Agenten (seit 19.09.), Klassifikator des PII-Proxys, Modell des Clara-Taggers. Klein genug, um immer zu passen. ctx/parallel siehe modell-wacht/soll-laufzeit.json."},
 
+    {"device": "studio",  "ps_key": "google/gemma-4-31b",        "load_key": "google/gemma-4-31b",        "ctx": 98304, "parallel": 4, "when": "always",
+     "begruendung": "Hauptmodell von 27 Agenten (adapterConfig.model) und des cheap-Profils von 11 weiteren. Ergaenzt 03.10.2026: die Konfigurationen zeigten auf die nicht existierende ID 'gemma-4-31b-it' und fielen deshalb ALLE still auf google/gemma-4-12b zurueck — das war die Ursache von 204 max_iterations-Fehlern in 14 Tagen. 98304 ist die belegte Untergrenze fuer Agentenmodelle (siehe modell-wacht/soll-laufzeit.json): der Versuch mit 65536 am 25.08.2026 trieb die Ueberlaeufe auf 67 % und die Erfolgsquote auf 0, weil der Adapter unterhalb BUDGET_LOOKUP_THRESHOLD_TOKENS=32000 gar nicht kuerzt. Hinweis: dieses Modell ist MLX (safetensors) — LM Studios context auto-fit ignoriert -c und laedt es tatsaechlich mit 262144. Das ist oberhalb der Untergrenze und damit unkritisch, nur speicherhungrig; ein Schalter dagegen existiert in MLX nicht."},
+
     {"device": "studio",  "ps_key": "openbiollm-llama3-8b.gguf", "load_key": "openbiollm-llama3-8b.gguf", "ctx": 8192,  "parallel": 4, "when": "always",
      "begruendung": "Medizinisches Modell eines Health-Agenten. Bewusst kleines Fenster."},
 

@@ -21,7 +21,7 @@
     ]
   },
 
-  "gemma4-31b-it": {
+  "google/gemma-4-31b": {
     "contextLength": 98304,
     "parallel": 4,
     "begruendung": [
@@ -41,6 +41,20 @@
       "ist NICHT belegt: der Offload-Wert lässt sich vom Mac aus nicht auslesen",
       "(weder `lms ps --json` noch /api/v0/models führen ihn). Prüfbar nur in",
       "der LM-Studio-GUI auf dem Windows-Rechner."
+,
+      "",
+      "03.10.2026 umbenannt: der Schluessel hiess hier «gemma4-31b-it». Diese ID",
+      "gibt es in LM Studio nicht — das Modell heisst «google/gemma-4-31b». Es war",
+      "der vierte Fundort desselben toten Namens (neben adapterConfig.model bei 27",
+      "Agenten und modelProfiles.cheap bei 11). Alle Aufrufe fielen still auf",
+      "google/gemma-4-12b zurueck; das war die Ursache von 204 max_iterations-",
+      "Fehlern in 14 Tagen.",
+      "",
+      "Das Modell ist MLX (safetensors): context auto-fit ignoriert die",
+      "angeforderte Groesse und laedt mit 262144. Die Aufsicht meldet das als",
+      "«fenster_groesser» mit Schwere niedrig — korrekt, denn 262144 liegt ueber",
+      "der Untergrenze 98304. Nicht auf 262144 hochschreiben: der Wert hier ist",
+      "die Anforderung, nicht das Messergebnis."
     ]
   },
 

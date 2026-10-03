@@ -678,3 +678,27 @@ export async function resolveSelfHealLedgerForAgent(
     .returning({ id: agentSelfHealLedger.id });
   return rows.length;
 }
+
+/**
+ * Bindeglied fuer den Run-Abschluss: quittiert das Ledger, wenn der Ausgang die
+ * Stoerung beendet. Gibt die Anzahl geschlossener Zeilen zurueck (0, wenn der
+ * Ausgang nichts quittiert).
+ *
+ * Ohne diesen Aufruf bleibt `resolved_at` fuer immer leer und `attempt_count`
+ * waechst unbegrenzt weiter. Das ist nicht bloss unsaubere Buchhaltung: die
+ * Politik in `agent-self-heal-policy.ts` eskaliert `convergence` schon ab
+ * `attemptCount >= 1` an den Menschen. Ein Zaehler, der nie zurueckfaellt,
+ * macht daraus eine Einbahnstrasse — nach dem ersten `max_iterations` bekommt
+ * der Agent fuer diesen Fingerprint nie wieder einen Manager-Versuch. Genau so
+ * stand es am 03.10.2026 in der Flotte: Vault-Maintainer bei 77 Versuchen,
+ * CHO und Lektorat bei 57, kein einziges `resolved_at` gesetzt.
+ */
+export async function applySelfHealLedgerResolutionForRunOutcome(
+  db: Db,
+  agentId: string,
+  outcome: "succeeded" | "failed" | "cancelled" | "timed_out",
+  now: Date,
+): Promise<number> {
+  if (!decideLedgerResolution(outcome)) return 0;
+  return await resolveSelfHealLedgerForAgent(db, agentId, now);
+}

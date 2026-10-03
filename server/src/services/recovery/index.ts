@@ -13,6 +13,11 @@ export type {
   RecoveryReasonKind,
 } from "./origins.js";
 export {
+  applySelfHealLedgerResolutionForRunOutcome,
+  decideLedgerResolution,
+  resolveSelfHealLedgerForAgent,
+} from "./agent-self-heal.js";
+export {
   classifyIssueGraphLiveness,
 } from "./issue-graph-liveness.js";
 export type {

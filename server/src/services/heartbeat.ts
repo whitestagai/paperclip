@@ -132,6 +132,7 @@ import {
   FINISH_SUCCESSFUL_RUN_HANDOFF_REASON,
   SUCCESSFUL_RUN_MISSING_STATE_REASON,
   RUN_LIVENESS_CONTINUATION_REASON,
+  applySelfHealLedgerResolutionForRunOutcome,
   buildRunLivenessContinuationIdempotencyKey,
   buildFinishSuccessfulRunHandoffIdempotencyKey,
   buildSuccessfulRunHandoffRequiredNotice,
@@ -7935,6 +7936,12 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         finishedAt: new Date(),
         error: runErrorMessage,
       });
+
+      // Ein geglueckter Lauf beendet die Stoerung: offene Ledger-Zeilen der
+      // Selbstheilung schliessen, damit ein spaeterer Ausfall wieder bei
+      // attempt_count 0 beginnt. Ohne das bleibt `convergence` ab dem ersten
+      // max_iterations dauerhaft beim Menschen (siehe agent-self-heal.ts).
+      await applySelfHealLedgerResolutionForRunOutcome(db, run.agentId, outcome, new Date());
 
       const finalizedRun = persistedRun ?? (await getRun(run.id));
       if (finalizedRun) {

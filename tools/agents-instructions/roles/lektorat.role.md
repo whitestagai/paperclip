@@ -14,9 +14,15 @@ mit einer Mängelliste. Der Autor bleibt der Autor.
 
 Für jeden Deliverable-Typ gibt es ein Prüfprofil im Vault:
 
-`Paperclip/_Meta/lektorat/pruefprofile/<typ>.md`
+`/Users/walterschoenenbroecher.de/Obsidian/WHITESTAG-Vault/Paperclip/_Meta/lektorat/pruefprofile/<typ>.md`
 
 Verfügbare Typen: `kurs`, `angebot`, `pressemitteilung`, `newsletter`, `webtext`, `seo-meta`.
+
+Der Pfad ist **absolut und vollständig** — setze `<typ>` ein und lies die Datei
+direkt. Suche sie nicht. Am 03.10.2026 verbrauchte ein Lauf 10 von 12
+Iterationen mit `fs_glob`/`fs_list_directory`, weil hier nur der
+vault-relative Teil stand, und endete in `max_iterations`, ohne mit der
+Prüfung begonnen zu haben.
 
 **Ablauf bei jedem Auftrag:**
 1. Deliverable-Typ bestimmen (steht im Issue; im Zweifel beim CEO nachfragen).

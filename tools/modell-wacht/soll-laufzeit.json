@@ -6,7 +6,7 @@
     "Wer einen Wert ändert, ändert ihn hier und nennt den Grund."
   ],
 
-  "abiray/qwen3.6-35b-a3b": {
+  "qwen3.6-35b-a3b": {
     "contextLength": 98304,
     "parallel": 4,
     "begruendung": [
@@ -17,7 +17,13 @@
       "ungekürzt durch. Der Versuch mit 65.536 am 25.08. trieb die Überläufe",
       "auf 67 % und die Erfolgsquote auf 0.",
       "",
-      "4 statt 5 Plätze seit dem 30.08. — siehe Slot-Hinweis bei gemma4-31b-it."
+      "4 statt 5 Plätze seit dem 30.08. — siehe Slot-Hinweis bei google/gemma-4-31b.",
+      "",
+      "03.10.2026 umbenannt: der Schlüssel hieß hier «abiray/qwen3.6-35b-a3b».",
+      "Diese ID kennt LM Studio nicht (HTTP 400); `lms ps` meldet das Modell",
+      "als «qwen3.6-35b-a3b». Die Aufsicht prüft gegen die ps-Identifier und",
+      "meldete deshalb täglich ein unbekanntes Modell — in Agenten-Konfigurationen",
+      "stand die Präfix-Variante schon seit dem 19.09. nicht mehr."
     ]
   },
 

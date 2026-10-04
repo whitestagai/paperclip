@@ -82,7 +82,18 @@ TTS_FORMAT = "mp3_44100_128"
 # LM Studio kennt sie nicht und antwortet auf JEDEN Aufruf mit «Invalid model
 # identifier», der Sprachpfad lief also ins Leere. Gegengeprobt: "gemma-4-31b-it"
 # antwortet (finish_reason "stop").
-CHAT_MODEL = "gemma-4-31b-it"
+# 04.10.2026: Die ID "gemma-4-31b-it" kennt LM Studio nicht mehr — das Modell
+# heisst "google/gemma-4-31b". Gegengeprobt: alte ID -> HTTP 400, neue -> 200.
+# Der Satellit lief mit laufendem launchd-Job auf der toten ID; der Sprachpfad
+# ging ins Leere (sichtbar im Log an llm(chat)=0,1 s, also sofortigem Fehler).
+# Es war der sechste Fundort derselben Umbenennung.
+#
+# ACHTUNG, diese Datei wird von der Modell-Aufsicht GELESEN (waechter.py ->
+# hole_satellit liest tools/wake-satellite/sat_config.py, NICHT die Live-Datei
+# unter ~/.paperclip/scripts/). Wer nur live korrigiert, meldet die Aufsicht
+# weiter als Befund — und umgekehrt wirkt eine Korrektur nur hier gar nicht.
+# Beide Stellen anfassen.
+CHAT_MODEL = "google/gemma-4-31b"
 
 # Mandant fest verdrahtet.
 TENANT = {

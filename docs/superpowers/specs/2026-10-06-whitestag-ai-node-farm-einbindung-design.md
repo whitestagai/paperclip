@@ -1,19 +1,55 @@
-# WHITESTAG-AI als dritter Node der LLM-Farm
+# WHITESTAG-AI als Redundanz-Node der LLM-Farm
 
 **Stand:** 2026-10-06
 **Status:** Entwurf zur Freigabe
 **Betrifft:** `~/.paperclip/scripts/model-warden/`, `~/.paperclip/scripts/modell-wacht/`,
-`agents.adapter_config` in der Paperclip-DB, LM-Studio-Ladezustand auf dem Node
+`agents.adapter_config.fallbackModel` in der Paperclip-DB, LM-Studio-Ladezustand am Node
 
 ## Ziel
 
-Der LM-Link-Node **WHITESTAG-AI** ist angeschlossen, hält zwei Modelle im
-Speicher und traegt **null Last** — in den letzten sieben Tagen null Aufrufe,
-null Agenten. Er soll zwei Rollen uebernehmen:
+Der LM-Link-Node **WHITESTAG-AI** ist angeschlossen, haelt zwei Modelle im
+Speicher und traegt null Last. Er wird **Fallback-Geraet fuer beide
+Modellfamilien** — die Primaerlast bleibt vollstaendig dort, wo sie heute
+liegt.
 
-1. **RTX Pro 6000 entlasten** — dort haengen alle 12 qwen-Agenten.
-2. **Mac Studio entlasten** — dort haengen 25 gemma-Agenten plus 37 Fallbacks,
-   der PII-Fallback-Klassifikator, der Clara-Tagger und beide Einbettungsmodelle.
+Das loest ein konkretes Problem: **fuer 25 von 37 Agenten liegt der Fallback
+heute auf derselben Maschine wie das Primaermodell.** Faellt das Studio aus
+oder ist es ueberlastet, greift ihr Fallback ins Leere.
+
+### Warum nicht Lastverteilung
+
+Die zuerst verfolgte Variante (Agenten auf den Node umziehen) wurde nach der
+Messung verworfen:
+
+- Der Node ist das **schwaechste Geraet** der Farm: 56 GB VRAM gegen 96 GB
+  (rtx) und 128 GB (studio), qwen in Q6_K statt Q8_0.
+- Bei 48,99 GB Gewichten bleiben ~6,5 GiB fuer zwei KV-Caches mit je 98.304
+  Fenster — realistisch 2 Slots je Modell. Die 12 qwen-Agenten laufen heute
+  auf **4** Slots an der rtx. Ein Umzug waere eine Halbierung der Kapazitaet
+  bei gleichzeitig niedrigerer Quantisierung, also keine Entlastung.
+- Als Fallback-Geraet sind 2 Slots dagegen angemessen: Fallback-Last ist
+  selten und kurz.
+
+**Preis dieser Entscheidung:** Der Node traegt im Normalbetrieb weiterhin
+nahe null Last. Entlastung von rtx und studio wird gegen Ausfallsicherheit
+getauscht.
+
+### Warum nicht beide Modelle auf die rtx
+
+Der Gedanke, die Primaerlast beider Familien tagsueber auf der rtx zu
+bedienen, scheitert am VRAM: 38,69 (qwen Q8_0) + 7,15 (gemma-4-12b-qat) +
+18,69 (gemma-31b) = **64,53 GB Gewichte**. Am 2026-08-26 loeste die rtx bei
+**62,94 GB** die Timeout-Welle aus (28 Timeouts in einer Stunde, GPU-Offload
+24 von 40 Layern). Der Vorschlag wuerde den Vorfall mit mehr Gewichten als
+damals reproduzieren. gemma-31b bleibt auf dem studio.
+
+### Warum kein Tag/Nacht-Betrieb
+
+Das `when`-Feld im Resident-Set (`always` / `day-only`) wird **von keinem
+Code gelesen** — in `warden.py` und `evict.py` gibt es keine Zeitlogik, und
+fuer den Lader existiert keine plist, er laeuft nicht. Eine Zeitsteuerung
+muesste gebaut werden. Fuer ein Fallback-Geraet ist sie unerwuenscht: der
+Fallback soll greifen, wenn das Primaermodell wegbricht — nachts ebenso.
 
 ## Ist-Stand (gemessen am 2026-10-06)
 
@@ -26,209 +62,196 @@ null Agenten. Er soll zwei Rollen uebernehmen:
 | **neu** | **WHITESTAG-AI** | **Windows, RTX 5090 (32 GB) + RTX 3090 (24 GB) = 56 GB VRAM** | `55fb4392eb9f978c1bc68abfef0c4b59` |
 
 WHITESTAG-AI ist **nicht** das Geraet, das im Resident-Set als `macbook`
-steht. Der dortige Eintrag (`qwen3.6-35b-a3b-mlx`) ist unverändert aus dem
-Juli und betrifft eine andere Maschine.
+steht; jener Eintrag (`qwen3.6-35b-a3b-mlx`) ist unveraendert aus dem Juli.
 
-### Lastverteilung, 7 Tage
+### Fallback-Verdrahtung
 
-| Geraet | Modell | Aufrufe | kTok | Agenten |
-|---|---|---|---|---|
-| studio | `google/gemma-4-12b` | 526 | 52.233 | Fallback von 37, PII-Fallback, Clara-Tagger |
-| studio | `google/gemma-4-31b` | 220 | 23.273 | 25 |
-| rtx | `qwen3.6-35b-a3b` | 155 | 37.077 | 12 (inkl. gesamter C-Suite) |
-| — | `claude-sonnet-4-6` | 25 | 196 | 4 |
-| **whitestag-ai** | beide geladen | **0** | **0** | **0** |
+39 Agenten laufen mit `adapter_type = lmstudio_local`, 9 mit `claude_local`.
+Primaer- und Fallback-URL sind bei 38 Agenten **identisch**
+(`http://localhost:1234`) — die Geraetewahl erfolgt also ausschliesslich
+ueber die Modell-ID, nicht ueber die URL. `fallbackUrl` muss nicht angefasst
+werden.
 
-### Geladener Zustand auf dem Node
+| Agenten | Primaer | Fallback | Geraetetrennung |
+|---|---|---|---|
+| 25 | `google/gemma-4-31b` (studio) | `google/gemma-4-12b` (studio) | **nein** |
+| 12 | `qwen3.6-35b-a3b` (rtx) | `google/gemma-4-12b` (studio) | ja |
+| 2 | openbiollm / gemma-4-12b | kein Fallback | — |
 
-| Identifier | modelKey | Groesse | ctx | parallel |
-|---|---|---|---|---|
-| `gemma-4-31b-it` | `gemma-4-31b-it@q4_k_m` | 18,69 GB | 98.304 | 4 |
-| `abiray/qwen3.6-35b-a3b` | dito | 30,30 GB | 98.304 | 4 |
-
-Summe Gewichte **48,99 GB bei 56 GB VRAM**. Die beiden Modelle fordern
-zusammen 1,57 Mio Slot-Token (2 × 98.304 × 4) aus den verbleibenden ~7 GB.
+Die Auflösung sitzt in `endpoint-resolver.ts`: `model: p.fallbackModel ||
+p.primaryModel`. Ist `fallbackModel` leer, wird das Primaermodell erneut
+versucht — dann gibt es faktisch keinen Fallback (derselbe Fehler wie beim
+PII-Proxy vor dem 2026-10-04).
 
 ### Quantisierungen weichen je Geraet ab
 
-Ein Umzug ist nicht nur ein Geraete-, sondern ein **Qualitaetswechsel**:
-
-| Modell | heute | auf dem Node | Sprung |
+| Familie | Primaer heute | am Node | Sprung |
 |---|---|---|---|
-| qwen3.6-35b-a3b | rtx: **Q8_0**, 36,03 GiB | **Q6_K**, 28,22 GiB | moderat |
-| gemma-4-31b | studio: **MLX 8-bit** | **GGUF Q4_K_M**, 18,69 GB | **8 bit -> 4 bit** |
+| qwen3.6-35b-a3b | rtx: **Q8_0**, 36,03 GiB | **Q6_K**, 28,22 GiB | eine Stufe |
+| gemma-4-31b | studio: **MLX 8-bit** | **GGUF Q4_K_M**, 17,40 GiB | 8 bit -> 4 bit |
+
+Fuer die Fallback-Rolle ist das hinnehmbar: der Fallback ersetzt heute ein
+**12B**-Modell. Ein 31B in Q4_K_M bzw. ein 35B in Q6_K ist in beiden Faellen
+ein deutlicher Qualitaetsgewinn gegenueber dem Status quo.
 
 Auf dem Node liegt zusaetzlich `lmstudio-community/qwen3.6-35b-a3b` in
-**Q4_K_M** mit 20,55 GiB (nicht geladen). Sie wuerde gegenueber der geladenen Q6_K-Variante
-**8,2 GB VRAM freigeben** — von 48,99 auf 40,76 GB Gewichte, womit sich der
-KV-Spielraum von ~7 auf ~15 GB mehr als verdoppelt. Preis ist eine weitere
-Quantisierungsstufe. Das ist der wirksamste Hebel fuer die Slot-Zahl und
-als offene Entscheidung unten vermerkt.
+Q4_K_M (20,55 GiB, nicht geladen). **Entscheidung: Q6_K bleibt** — als
+Fallback ist die Kapazitaet nicht der Engpass.
 
-**Falle:** `gemma-4-31b-it@q8_0` auf dem Node ist mit 1,26 GB ein
-Fragment — ein 31B in Q8 muesste rund 33 GB haben. Nicht laden.
+**Falle:** `gemma-4-31b-it@q8_0` am Node ist mit 1,26 GB ein Fragment
+(ein 31B in Q8 waere rund 33 GB). Nicht laden.
 
 ### Geschwindigkeit (Medianwerte, je 3-4 Laeufe)
 
 | Modell | Generierung | Zeit bis fertige Antwort |
 |---|---|---|
-| `gemma-4-31b-it` | 42,4 tok/s (±1) | 2,98 s |
-| `abiray/qwen3.6-35b-a3b` | 81-89 tok/s | 9,86 s |
-| dto., Reasoning abgeschaltet | 81 tok/s | **1,85 s** |
+| `gemma-4-31b-it` (Node) | 42,4 tok/s (±1) | 2,98 s |
+| `abiray/qwen3.6-35b-a3b` (Node) | 81-89 tok/s | 9,86 s |
+| dto., Reasoning abgeschaltet | 81 tok/s | 1,85 s |
 
-Die Generierungsrate ist ueber alle Laeufe auf ±1 tok/s reproduzierbar.
-Das **Prefill schwankt um Faktor 3** (gemma 406-1.211 tok/s, im Wechsel
-gemessen) — der Verdacht ist KV-Platzmangel mit Layer-Offload auf die CPU,
-also derselbe Engpass wie auf der RTX am 2026-08-26 (28 Timeouts in einer
-Stunde bei GPU-Offload 24 von 40 Layern).
+Die Generierungsrate ist auf ±1 tok/s reproduzierbar. Das **Prefill schwankt
+um Faktor 3** (gemma 406-1.211 tok/s, im Wechsel gemessen) — Verdacht auf
+KV-Platzmangel mit Layer-Offload. Fuer die Fallback-Rolle unkritisch, aber
+Teil der Abnahme.
 
 ## Randbedingungen
 
-1. **ctx 98.304 ist Untergrenze, nicht Zielwert.** Solange im
-   lmstudio-Adapter `BUDGET_LOOKUP_THRESHOLD_TOKENS = 32000` steht, wird
-   unterhalb dieser Schaetzung weder das Fenster abgefragt noch gekuerzt.
-   Der Versuch mit 65.536 am 2026-08-25 trieb die Ueberlaeufe auf 67 % und
-   die Erfolgsquote auf 0. **VRAM darf nicht ueber kleinere Fenster
-   gespart werden** — der einzige Hebel ist `parallel`.
+1. **ctx 98.304 ist Untergrenze, nicht Zielwert.** Solange im Adapter
+   `BUDGET_LOOKUP_THRESHOLD_TOKENS = 32000` steht, wird unterhalb dieser
+   Schaetzung weder das Fenster abgefragt noch gekuerzt. Der Versuch mit
+   65.536 am 2026-08-25 trieb die Ueberlaeufe auf 67 % und die Erfolgsquote
+   auf 0. Gilt auch fuer Fallback-Modelle — ein Fallback mit zu kleinem
+   Fenster ist keiner.
 
 2. **LM Link verteilt keine Last.** `preferredDeviceIdentifier` ist ein
-   globaler Einzelwert fuer die Modellauflösung, kein Lastverteiler. Zwei
-   Geraete mit derselben Modell-ID bedeuten: alles geht an das bevorzugte
-   Geraet. Lastteilung ist nur ueber **eindeutige IDs plus explizite
-   Agent-Zuordnung** erreichbar.
+   globaler Einzelwert fuer die Modellauflösung. Eindeutige IDs sind deshalb
+   Pflicht, damit ein Fallback nachweisbar auf dem Node landet.
 
 3. **`lms load` hat kein Geraete-Flag.** Es laedt auf das preferred device.
-   Ein Rename vom Studio aus erfordert das globale Umschalten und ein
-   Zeitfenster, in dem jeder andere Ladevorgang auf dem Node landet —
-   bei einem Entlade-Waerter im 10-Minuten-Takt ein Risiko.
+   Der Rename geschieht darum **am Windows-PC**, nicht vom studio aus.
 
 4. **`--estimate-only` taugt nicht zur Kapazitaetsplanung.** Es meldet fuer
    `gemma-4-31b-it@q4_k_m` bei ctx 98.304 und `--parallel 2` genau
-   17,40 GiB — die reine Gewichtsgroesse. KV-Cache und `parallel` gehen
-   nicht ein, `Confidence: LOW`, und geschaetzt wird gegen die lokale
-   Maschine, nicht gegen den Node.
+   17,40 GiB — die reine Gewichtsgroesse, ohne KV und ohne `parallel`,
+   `Confidence: LOW`, und geschaetzt gegen die lokale Maschine.
 
 5. **Der Entlade-Waerter ist unkritisch.** `evict.py` filtert auf
    `device == "studio"` und ueberspringt Instanzen mit gesetztem
-   `deviceIdentifier`. Er fasst den Node nicht an. Aber `config.py`
-   wirft `ValueError: Unbekanntes device`, wenn ein Eintrag ein Geraet
-   nennt, das nicht in `devices` steht.
+   `deviceIdentifier`. Aber `config.py` wirft `ValueError: Unbekanntes
+   device`, wenn ein Eintrag ein Geraet nennt, das nicht in `devices` steht.
 
 6. **Die beiden Node-IDs sind historisch verbrannt.** `gemma-4-31b-it` und
    `abiray/qwen3.6-35b-a3b` wurden am 2026-10-03 als nicht existierende IDs
    aus allen Konfigurationen entfernt; sie waren die Ursache von 204
-   `max_iterations`-Fehlern in 14 Tagen. Derzeit zeigt **keine** Konfiguration
-   auf sie — deshalb ist jetzt der einzige gefahrlose Zeitpunkt fuer einen
-   Rename.
+   `max_iterations`-Fehlern in 14 Tagen. Derzeit zeigt keine Konfiguration
+   auf sie — deshalb ist jetzt der einzige gefahrlose Zeitpunkt zum Rename.
+
+## Voraussetzung: der Node muss always-on sein
+
+Ein Fallback auf ein Geraet, das zeitweise aus ist, ist **schlechter** als
+der heutige Fallback auf `google/gemma-4-12b` am dauerhaft laufenden studio.
+Die Nacht-Architektur vom 2026-08-23 fuehrt studio, macbook und rtx als
+always-on — WHITESTAG-AI steht dort nicht.
+
+**Diese Umstellung ist nur sinnvoll, wenn der Node dauerhaft laeuft und
+erreichbar bleibt.** Ist das nicht gegeben, bleibt der 12B-Fallback die
+bessere Wahl. Zu bestaetigen vor Schritt 1.
 
 ## Entscheidungen
 
 | Frage | Entscheidung | Begruendung |
 |---|---|---|
-| Namen | **Rename auf `gemma-4-31b-win` / `qwen3.6-35b-win`** | Suffix nennt das Geraet; vermeidet die Kollision mit den verbrannten IDs. Jetzt gefahrlos, weil nichts darauf zeigt. |
-| Ausfuehrung | **Walter am Windows-PC** | Kein globaler `set-preferred-device`-Schalter, keine Kollision mit dem Waerter. |
-| C-Suite | **zieht mit um** (alle 12 qwen-Agenten) | Entscheidung Walters am 2026-10-06. Die Empfehlung lautete, CEO/CTO/CPO/CRO/CHO auf der RTX zu lassen, weil die Slot-Kapazitaet des Node unbekannt ist. Konsequenz: die Kapazitaetsmessung wird **Vorbedingung** statt Begleitmaßnahme, und der Rueckweg muss vor der ersten Umstellung stehen. |
-| Fallbacks | bleiben auf `google/gemma-4-12b` (studio) | Anderes Geraet als das Primaermodell — Lehre vom 2026-09-22. |
-
-## Offene Entscheidung
-
-**Quantisierung von qwen auf dem Node.** Drei Stufen stehen zur Wahl:
-Q8_0 (36,03 GiB, was die C-Suite heute auf der rtx nutzt, passt hier
-nicht), die geladene Q6_K (28,22 GiB, laesst ~6,5 GiB fuer KV) und die
-bereitliegende Q4_K_M (20,55 GiB, laesst ~14 GiB). Weil die C-Suite mitzieht und heute Q8_0 auf der RTX
-nutzt, ist die Frage nicht nur Kapazitaet, sondern Antwortqualitaet der
-Leitungsebene. Zu klaeren vor Schritt 1.
+| Rolle | **reines Fallback-Geraet**, keine Primaerlast | Hardware taugt fuer seltene Last; behebt die fehlende Geraetetrennung bei 25 Agenten |
+| Namen | Rename auf `gemma-4-31b-win` / `qwen3.6-35b-win` | Suffix nennt das Geraet; vermeidet Kollision mit den verbrannten IDs; jetzt gefahrlos, weil nichts darauf zeigt |
+| Ausfuehrung | Walter am Windows-PC | kein globaler `set-preferred-device`-Schalter, keine Kollision mit dem Waerter |
+| Quantisierung | qwen bleibt **Q6_K** | als Fallback ist Kapazitaet nicht der Engpass; Qualitaet geht vor |
+| Slots | `--parallel 2` je Modell | konservativ; 4+4 fordern 1,57 Mio Slot-Token aus ~6,5 GiB |
+| PII-Proxy | **nicht anfassen** | dessen Geraetetrennung ist bereits bewusst gesetzt |
 
 ## Zielzustand
 
-- Node fuehrt `gemma-4-31b-win` und `qwen3.6-35b-win`, beide ctx 98.304,
-  `parallel` nach Messergebnis.
+- Node fuehrt `gemma-4-31b-win` und `qwen3.6-35b-win`, je ctx 98.304,
+  `parallel 2`.
 - Resident-Set kennt das Geraet `whitestag-ai` mit beiden Modellen.
-- `soll-laufzeit.json` fuehrt beide Modelle mit begruendeten Werten; die
-  Modell-Aufsicht laeuft ohne Befund durch.
-- Alle 12 qwen-Agenten zeigen auf `qwen3.6-35b-win`.
-- Beide Vault-Maintainer zeigen auf `gemma-4-31b-win`; weitere der 25
-  gemma-Agenten nach Bedarf und Messlage.
-- Fallback jedes umgezogenen Agenten liegt auf einem anderen Geraet.
+- `soll-laufzeit.json` fuehrt beide Modelle begruendet; die Modell-Aufsicht
+  laeuft ohne Befund durch.
+- Die 25 gemma-Agenten haben `fallbackModel = gemma-4-31b-win`.
+- Die 12 qwen-Agenten haben `fallbackModel = qwen3.6-35b-win`.
+- Kein Agent hat Primaermodell und Fallback auf demselben Geraet.
+- Primaerlast unveraendert: 25 gemma-Agenten am studio, 12 qwen-Agenten an
+  der rtx, C-Suite weiterhin Q8_0 mit 4 Slots.
 
 ## Vorgehen
 
-### Schritt 0 — Rueckweg sichern (vor allem anderen)
+### Schritt 0 — Rueckweg sichern
 
-`agent_config_revisions` (1.131 Eintraege) haelt `before_config` je Aenderung.
-Vor der ersten Umstellung wird der Ist-Stand der betroffenen
-`adapter_config`-Felder separat als JSON abgelegt, damit der Rueckweg nicht
-von der Revisionstabelle allein abhaengt.
+`agent_config_revisions` (1.131 Eintraege) haelt `before_config` je
+Aenderung. Zusaetzlich wird der Ist-Stand der 37 betroffenen
+`fallbackModel`-Werte separat als JSON abgelegt, damit der Rueckweg nicht
+allein von der Revisionstabelle abhaengt.
 
-### Schritt 1 — Rename mit konservativem Start, dann messen
+### Schritt 1 — Rename am Node
 
-`parallel` laesst sich nur beim Laden setzen, und Laden kann nur am Node
-geschehen. Messung und Rename sind damit **ein** Vorgang, nicht zwei: der
-Rename laedt direkt mit `--parallel 2` (konservativ, weil 4+4 heute 1,57 Mio
-Slot-Token aus ~7 GB fordert), danach wird vom Studio aus unter Last
-gemessen und nur bei nachgewiesener Luft auf 3 oder 4 erhoeht.
-
-Gemessen werden Generierungsrate und Prefill-Streuung bei parallelen
-Anfragen. **Abbruchkriterium:** Prefill-Streuung ueber Faktor 2 oder
-Generierungsrate unter 35 tok/s (gemma) bzw. 70 tok/s (qwen) deutet auf
-Layer-Offload; dann eine Stufe zurueck.
-
-### Schritt 2 — Die Befehle am Node
-
-Auf dem Windows-PC, je Modell entladen und mit neuem Identifier laden:
+Am Windows-PC, je Modell entladen und mit neuem Identifier laden:
 
     lms unload gemma-4-31b-it
     lms load gemma-4-31b-it@q4_k_m --identifier gemma-4-31b-win -c 98304 --parallel 2 -y
     lms unload abiray/qwen3.6-35b-a3b
     lms load abiray/qwen3.6-35b-a3b --identifier qwen3.6-35b-win -c 98304 --parallel 2 -y
 
-Faellt die Entscheidung fuer die kleinere qwen-Quantisierung, lautet der
-modelKey im zweiten Ladebefehl `lmstudio-community/qwen3.6-35b-a3b`.
-
-Gegenprobe vom Studio: `lms link status` und `GET /api/v0/models/<id>` je
+Gegenprobe vom studio: `lms link status` und `GET /api/v0/models/<id>` je
 neuer ID — `/api/v0/models` allein ist unvollstaendig.
 
-### Schritt 3 — Waechter-Dateien nachziehen
+### Schritt 2 — Waechter-Dateien nachziehen
 
 `resident-set.json`: `whitestag-ai` in `devices`, beide Modelle mit
 Begruendung. `soll-laufzeit.json`: beide Modelle mit `contextLength` und
-`parallel`. Die Tests unter `model-warden/` (`test_config.py`,
-`test_evict.py`) muessen gruen bleiben; `modell-wacht/pruefung.py` muss
-mit Exit 0 durchlaufen.
+`parallel`. Die Tests unter `model-warden/` muessen gruen bleiben;
+`modell-wacht/pruefung.py` muss mit Exit 0 durchlaufen.
 
-### Schritt 4 — Umzug in zwei Wellen
+### Schritt 3 — Fallback nachweislich ausloesen (vor der Umstellung)
 
-**Welle A:** die 7 unkritischen qwen-Agenten (Blender, Bueroleitung,
-Online-Rechercheur, Recherche, SEO/GEO-Spezialist, Sekretaerin,
-Trainingscoach) plus beide Vault-Maintainer. 24 Stunden beobachten.
+Ein unerprobter Fallback ist wertlos, und dieser Codepfad hatte am
+2026-07-07 bereits einen Bug (RAM-Guardrail-400 schaltete nicht um). Vor der
+Umstellung aller Agenten wird an **einem** unkritischen Agenten geprueft:
+`fallbackModel` auf die Node-ID setzen, Primaermodell kurz unerreichbar
+machen, und im Lauf-Log nachweisen, dass `usingFallback` greift und der Lauf
+auf dem Node erfolgreich endet.
 
-**Welle B:** die C-Suite (CEO, CTO, CPO, CRO, CHO) — erst wenn Welle A
-die Erfolgskriterien erfuellt.
+### Schritt 4 — Umstellung in zwei Wellen
+
+**Welle A:** die 25 gemma-Agenten auf `gemma-4-31b-win`. 24 Stunden
+beobachten.
+**Welle B:** die 12 qwen-Agenten auf `qwen3.6-35b-win`.
 
 ## Erfolgskriterien
 
-1. Keine neuen `max_iterations`-Fehler bei den umgezogenen Agenten
-   gegenueber der Vorwoche.
-2. Prefill-Streuung unter Last kleiner als Faktor 2.
-3. Aufrufe je Geraet nachweisbar verschoben (`cost_events` nach Modell).
+1. Schritt 3 belegt einen Fallback-Lauf auf dem Node mit erfolgreichem
+   Abschluss — nicht nur eine gesetzte Konfiguration.
+2. Kein Agent mit Primaermodell und Fallback auf demselben Geraet
+   (heute: 25 Verstoesse).
+3. Keine neuen `max_iterations`-Fehler gegenueber der Vorwoche.
 4. `modell-wacht/pruefung.py` ohne Befund.
-5. Kein Agent mit Primaermodell und Fallback auf demselben Geraet.
+5. Primaerlast unveraendert — `cost_events` je Modell zeigt nach 7 Tagen
+   dieselbe Verteilung wie heute (526 / 220 / 155).
 
 ## Risiken
 
 | Risiko | Gegenmittel |
 |---|---|
-| Node traegt die C-Suite-Last nicht | Schritt 1 als Vorbedingung; Welle B erst nach 24 h Welle A |
+| Node zeitweise aus -> Fallback schlechter als heute | Always-on-Voraussetzung vor Schritt 1 bestaetigen |
+| Fallback-Pfad schaltet nicht um (Bug vom 07.07.) | Schritt 3 als Nachweis vor jeder Massenumstellung |
 | Verwechslung der neuen IDs mit den verbrannten | Geraete-Suffix im Namen; Eintrag in beiden Waechter-Dateien |
-| Stiller Fallback bei Tippfehler in der ID | Gegenprobe `GET /api/v0/models/<id>`; Aufrufe je Modell nach 24 h pruefen |
-| Node faellt aus (Windows, WLAN) | Fallback liegt auf dem Studio; bei Ausfall greift `google/gemma-4-12b` |
+| Tippfehler in der ID -> stiller Rueckfall aufs Primaermodell | `fallbackModel || primaryModel` beachten; Gegenprobe per `GET /api/v0/models/<id>` |
+| KV-Platzmangel am Node unter Fallback-Last | `parallel 2`; Prefill-Streuung bei der Abnahme messen |
 
 ## Nicht Teil dieser Arbeit
 
 - **Reasoning-Abschaltung bei qwen3.6.** Gemessen: ein leerer
   `<think></think>`-Block als Assistant-Prefill senkt die Antwortzeit von
   9,86 s auf 1,85 s; `reasoning_effort: none` wirkt bei diesem Modell nicht
-  (eher gegenteilig), `/no_think` wird ignoriert. Der Hebel sitzt im
-  lmstudio-Adapter und ist ein eigener Vorgang.
-- **`maxConcurrentRuns`.** Bei allen 48 Agenten derzeit nicht gesetzt.
-  Eigener Befund, eigener Vorgang.
+  (eher gegenteilig), `/no_think` wird ignoriert. Hebel sitzt im Adapter.
+- **`maxConcurrentRuns`.** Nur bei **1** von 48 Agenten gesetzt.
+- **`when`-Feld ohne Wirkung.** Das Resident-Set fuehrt `day-only`, aber
+  kein Code liest es und `warden.py` laeuft nicht.
+- **Die 2 Agenten ohne Fallback** (openbiollm, gemma-4-12b).

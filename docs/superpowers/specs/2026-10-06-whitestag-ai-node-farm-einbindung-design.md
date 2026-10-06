@@ -214,9 +214,17 @@ Begruendung. `soll-laufzeit.json`: beide Modelle mit `contextLength` und
 Ein unerprobter Fallback ist wertlos, und dieser Codepfad hatte am
 2026-07-07 bereits einen Bug (RAM-Guardrail-400 schaltete nicht um). Vor der
 Umstellung aller Agenten wird an **einem** unkritischen Agenten geprueft:
-`fallbackModel` auf die Node-ID setzen, Primaermodell kurz unerreichbar
-machen, und im Lauf-Log nachweisen, dass `usingFallback` greift und der Lauf
-auf dem Node erfolgreich endet.
+
+1. `fallbackModel` dieses Agenten auf die Node-ID setzen.
+2. Sein `model`-Feld **nur bei diesem Agenten** auf eine nicht existierende
+   ID setzen. Damit faellt genau er aus, waehrend alle anderen Agenten
+   unberuehrt weiterlaufen.
+3. Einen Lauf ausloesen und im Lauf-Log nachweisen, dass `usingFallback`
+   greift und der Lauf auf dem Node erfolgreich endet.
+4. Beide Felder zurueckschreiben.
+
+**Nicht** das Primaermodell am studio entladen — das wuerde alle 25
+gemma-Agenten gleichzeitig treffen.
 
 ### Schritt 4 — Umstellung in zwei Wellen
 
@@ -232,8 +240,10 @@ beobachten.
    (heute: 25 Verstoesse).
 3. Keine neuen `max_iterations`-Fehler gegenueber der Vorwoche.
 4. `modell-wacht/pruefung.py` ohne Befund.
-5. Primaerlast unveraendert — `cost_events` je Modell zeigt nach 7 Tagen
-   dieselbe Verteilung wie heute (526 / 220 / 155).
+5. Primaerlast unveraendert — `cost_events` zeigt nach 7 Tagen keine
+   nennenswerte Last auf den Node-IDs. Einzelne Aufrufe dort sind der
+   erwartete Fall (ein greifender Fallback), ein dauerhafter Anteil waere
+   ein Hinweis auf ein stillschweigend abgewandertes Primaermodell.
 
 ## Risiken
 

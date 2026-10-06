@@ -17,7 +17,7 @@
     "Juli uebernommen und NICHT geprueft — der Entlade-Waerter ruehrt nur",
     "'studio' an."
   ],
-  "devices": ["studio", "macbook", "rtx"],
+  "devices": ["studio", "macbook", "rtx", "whitestag-ai"],
   "models": [
     {"device": "studio",  "ps_key": "google/gemma-4-12b",        "load_key": "google/gemma-4-12b",        "ctx": 65536, "parallel": 6, "when": "always",
      "begruendung": "Fallback der 25 gemma-Agenten (seit 19.09.), FALLBACK-Klassifikator des PII-Proxys (PII_PROXY_CLASSIFIER_FALLBACK_MODEL; war bis zum Rollentausch am 04.10.2026 der Primaer-Klassifikator, ist dafuer aber zu langsam: 11,2 s End-to-End gegen 1,71 s auf der RTX), Modell des Clara-Taggers. Klein genug, um immer zu passen. ctx/parallel siehe modell-wacht/soll-laufzeit.json."},
@@ -40,6 +40,12 @@
     {"device": "macbook", "ps_key": "qwen3.6-35b-a3b-mlx",       "load_key": "qwen3.6-35b-a3b-mlx",       "ctx": 98304, "parallel": 4, "when": "always"},
     {"device": "rtx",     "ps_key": "qwen/qwen3-coder-next",     "load_key": "qwen/qwen3-coder-next",     "ctx": 131328, "parallel": 4, "when": "day-only"},
     {"device":     "rtx",     "ps_key": "google/gemma-4-12b-qat",    "load_key": "google/gemma-4-12b-qat",    "ctx": 32768, "parallel": 8, "when": "always",
-     "begruendung": "PRIMAER-Klassifikator des PII-Proxys (PII_PROXY_CLASSIFIER_MODEL), seit dem Rollentausch am 04.10.2026 — davor war es der Fallback. Gemessen am Produktions-Payload (json_schema strict, reasoning_effort none): End-to-End durch den Proxy 1,71 s gegen vorher 11,2 s mit dem Studio-Modell, Faktor ~6,5; 5/5 Entitaeten inkl. ART_9. Der Fallback liegt bewusst auf google/gemma-4-12b auf der STUDIO — anderes Geraet, siehe die WLAN-Lektion vom 22.09.2026. ctx 32768 ist ABSICHT und reicht belegt: der Proxy chunkt bei MAX_CHUNK_CHARS = 4000 Zeichen, ein Aufruf braucht mit System-Prompt rund 1.800 Token. Das Soll stand bis 04.10. auf 65024, geladen war aber 32768 — angeglichen, damit warden.py beim Scharfschalten nicht unnoetig VRAM reserviert. NICHT wegraeumen: faellt dieses Modell aus, blockiert der Proxy fail-closed und reisst auch Cloud-Agenten mit (blocked_by_pii_proxy)."}
+     "begruendung": "PRIMAER-Klassifikator des PII-Proxys (PII_PROXY_CLASSIFIER_MODEL), seit dem Rollentausch am 04.10.2026 — davor war es der Fallback. Gemessen am Produktions-Payload (json_schema strict, reasoning_effort none): End-to-End durch den Proxy 1,71 s gegen vorher 11,2 s mit dem Studio-Modell, Faktor ~6,5; 5/5 Entitaeten inkl. ART_9. Der Fallback liegt bewusst auf google/gemma-4-12b auf der STUDIO — anderes Geraet, siehe die WLAN-Lektion vom 22.09.2026. ctx 32768 ist ABSICHT und reicht belegt: der Proxy chunkt bei MAX_CHUNK_CHARS = 4000 Zeichen, ein Aufruf braucht mit System-Prompt rund 1.800 Token. Das Soll stand bis 04.10. auf 65024, geladen war aber 32768 — angeglichen, damit warden.py beim Scharfschalten nicht unnoetig VRAM reserviert. NICHT wegraeumen: faellt dieses Modell aus, blockiert der Proxy fail-closed und reisst auch Cloud-Agenten mit (blocked_by_pii_proxy)."},
+
+    {"device": "whitestag-ai", "ps_key": "gemma-4-31b-win", "load_key": "gemma-4-31b-it@q4_k_m", "ctx": 98304, "parallel": 2, "when": "always",
+     "begruendung": "Fallback der 25 gemma-Agenten seit 06.10.2026. Vorher stand ihr Fallback auf google/gemma-4-12b — demselben Geraet wie ihr Primaermodell google/gemma-4-31b, der Fallback griff also bei einem Studio-Ausfall ins Leere. Geraet ist ein Windows-PC mit RTX 5090 (32 GB) + RTX 3090 (24 GB) = 56 GB VRAM. parallel 2 statt 4: bei 48,99 GB Gewichten beider Modelle bleiben nur ~6,5 GiB fuer zwei KV-Caches, und 4+4 forderten 1,57 Mio Slot-Token — dieselbe Ueberbuchung, die auf der rtx am 26.08.2026 die Timeout-Welle ausloeste. ctx 98304 ist die belegte Untergrenze fuer Agentenmodelle. Q4_K_M gegen MLX 8-bit am studio ist ein Qualitaetsabstieg, aber der ersetzte Fallback war ein 12B."},
+
+    {"device": "whitestag-ai", "ps_key": "qwen3.6-35b-win", "load_key": "abiray/qwen3.6-35b-a3b", "ctx": 98304, "parallel": 2, "when": "always",
+     "begruendung": "Fallback der 12 qwen-Agenten inkl. C-Suite seit 06.10.2026, vorher google/gemma-4-12b (ein 12B als Fallback eines 35B). Bewusst Q6_K (28,22 GiB) und NICHT die kleinere Q4_K_M-Variante (lmstudio-community/qwen3.6-35b-a3b, 20,55 GiB), die ebenfalls am Node liegt: als Fallback ist Kapazitaet nicht der Engpass, Qualitaet geht vor. Primaermodell bleibt qwen3.6-35b-a3b in Q8_0 auf der rtx."}
   ]
 }

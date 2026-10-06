@@ -1,0 +1,261 @@
+[
+  {
+    "id": "358a70ad-927e-499f-85fe-d823d16d76a4",
+    "name": "Adobe",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 22
+  },
+  {
+    "id": "1ebb9ce4-3c14-4a8f-9488-6d0eeb41f4f2",
+    "name": "Akquise & Booking",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 21
+  },
+  {
+    "id": "c73aceb3-63a5-4927-bff4-c595b408cd83",
+    "name": "Buchhaltung",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 22
+  },
+  {
+    "id": "408f7e88-1ab6-4c9a-988b-68040fd28c13",
+    "name": "CFO",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 22
+  },
+  {
+    "id": "bbf38291-1129-43db-97de-c03c998b691e",
+    "name": "CMO",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 21
+  },
+  {
+    "id": "8a87a173-ffdb-4b67-b957-ed849cff3c51",
+    "name": "Creative Assistant",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 20
+  },
+  {
+    "id": "4920b0be-b197-45ae-a169-54b99082c4ea",
+    "name": "Creative Director",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 20
+  },
+  {
+    "id": "790bcaf2-83d8-4e04-8c43-914a96db7bd8",
+    "name": "DPO",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 19
+  },
+  {
+    "id": "478fad75-48b1-4248-9dc5-5f3980a961fd",
+    "name": "Drehbuch",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 20
+  },
+  {
+    "id": "cd2a58ce-e1e8-4ce8-afe4-36f06ad95c1b",
+    "name": "Kontaktrecherche Booker",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 7
+  },
+  {
+    "id": "efe7168d-a813-4d82-9cfa-f1b887f1ebeb",
+    "name": "LLM-Konfigurationsanalyst",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 15
+  },
+  {
+    "id": "d673ba70-c557-4b4b-be73-320d7780e1fe",
+    "name": "Label Manager",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 21
+  },
+  {
+    "id": "3deca5b4-af4b-43a3-93f4-2cc4fc1bd08d",
+    "name": "Lektorat",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 19
+  },
+  {
+    "id": "ea38630c-5da8-4719-8e4a-1f0478c4bc40",
+    "name": "Marken-Spezialist",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 20
+  },
+  {
+    "id": "56f7167b-b594-4533-9243-411947306907",
+    "name": "Mistika VR",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 22
+  },
+  {
+    "id": "5cd046f2-d46e-44d0-9539-d8ff56fb8e02",
+    "name": "Office & Admin",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 21
+  },
+  {
+    "id": "6d595481-8cbb-49bf-8ffb-8685c071d557",
+    "name": "Produktentwicklung",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 22
+  },
+  {
+    "id": "5ec7648d-a055-42de-a7a2-270c552d572d",
+    "name": "Redaktion & PR",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 20
+  },
+  {
+    "id": "56b3be42-f428-4163-96da-7d7a5c8121ce",
+    "name": "Schlafcoach",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 20
+  },
+  {
+    "id": "410a78b9-8472-4503-8232-0ff97bafa2f8",
+    "name": "Social Media Specialist",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 20
+  },
+  {
+    "id": "3067ea1d-5050-4032-aff5-1f759f544160",
+    "name": "Vault-Maintainer",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 24
+  },
+  {
+    "id": "500a1656-be93-4e79-a01c-e33cba023815",
+    "name": "Vault-Maintainer",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 16
+  },
+  {
+    "id": "6bbbfe93-7fa8-44cb-8e21-23e81a9bb4dd",
+    "name": "Vermögensverwaltung",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 22
+  },
+  {
+    "id": "89ac59e1-713b-4248-835b-52e0f6060bcc",
+    "name": "Vitals-Monitor",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 21
+  },
+  {
+    "id": "605c7900-c6f7-4fb3-9bed-1fcd36fcfdca",
+    "name": "Web-Design Specialist",
+    "model": "google/gemma-4-31b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 21
+  },
+  {
+    "id": "8d8ab6da-d527-408d-b78f-de16a265c4ee",
+    "name": "Blender",
+    "model": "qwen3.6-35b-a3b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 22
+  },
+  {
+    "id": "64ad7d03-ce64-46aa-ae79-d17ff26f5d4f",
+    "name": "Büroleitung",
+    "model": "qwen3.6-35b-a3b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 21
+  },
+  {
+    "id": "506c873e-3a40-4483-9a45-0eb0fa1554bb",
+    "name": "CEO",
+    "model": "qwen3.6-35b-a3b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 22
+  },
+  {
+    "id": "6ddf2bfa-fe1c-4e26-a316-091b6ef3c182",
+    "name": "CHO",
+    "model": "qwen3.6-35b-a3b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 23
+  },
+  {
+    "id": "d4bdef1a-84fb-4393-8491-0eeaebcb3270",
+    "name": "CPO",
+    "model": "qwen3.6-35b-a3b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 23
+  },
+  {
+    "id": "aa036cf5-0af7-4ed1-b04e-c7a54f71e553",
+    "name": "CRO",
+    "model": "qwen3.6-35b-a3b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 21
+  },
+  {
+    "id": "5b7cb8a7-945f-4861-b3a7-4ae84d242d1e",
+    "name": "CTO",
+    "model": "qwen3.6-35b-a3b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 23
+  },
+  {
+    "id": "d80fe6b9-b2ac-4d58-8525-8bbbb1d0caf7",
+    "name": "Online-Rechercheur",
+    "model": "qwen3.6-35b-a3b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 21
+  },
+  {
+    "id": "f2d73a54-dce9-493a-998a-71e7c127f61e",
+    "name": "Recherche",
+    "model": "qwen3.6-35b-a3b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 21
+  },
+  {
+    "id": "9d279c4d-99d6-4797-b28c-cbe5fad996d6",
+    "name": "SEO/GEO-Spezialist",
+    "model": "qwen3.6-35b-a3b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 18
+  },
+  {
+    "id": "e24b8d9d-143e-4141-b413-4361aa618771",
+    "name": "Sekretärin",
+    "model": "qwen3.6-35b-a3b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 18
+  },
+  {
+    "id": "1d16d7a3-35ee-4f35-9872-9885b181f9c8",
+    "name": "Trainingscoach",
+    "model": "qwen3.6-35b-a3b",
+    "fallbackModel": "google/gemma-4-12b",
+    "adapter_config_keys": 20
+  }
+]

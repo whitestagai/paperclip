@@ -393,20 +393,48 @@ from paperclip_client import load_token; print(load_token())")" \
 
 Expected: eine Run-ID oder eine Bestaetigung, dass der Lauf angestossen wurde.
 
-- [ ] **Step 4: Im Lauf-Log nachweisen, dass der Fallback griff**
+- [ ] **Step 4: Nachweisen, dass der Fallback griff**
 
-Die Lauf-Logs stecken als JSON im Feld `chunk`:
+Der direkte Nachweis steht in `cost_events`: dort wird das tatsaechlich
+benutzte Modell je Lauf gebucht.
 
 ```bash
 export PGPASSWORD=paperclip
-psql -h 127.0.0.1 -p 54329 -U paperclip -d paperclip -t -A -c "
-SELECT chunk FROM run_logs
-WHERE run_id = (SELECT id FROM runs WHERE agent_id = '<AGENT_ID>'
-                ORDER BY created_at DESC LIMIT 1)
-ORDER BY created_at" | grep -iE "usingFallback|fallback|gemma-4-31b-win" | head -20
+psql -h 127.0.0.1 -p 54329 -U paperclip -d paperclip -t -A -F'|' -c "
+SELECT model, count(*) AS buchungen, max(occurred_at) AS zuletzt
+FROM cost_events
+WHERE agent_id = '<AGENT_ID>' AND occurred_at > now() - interval '20 minutes'
+GROUP BY 1 ORDER BY 2 DESC;"
 ```
 
-Expected: ein Treffer, der `usingFallback` bzw. das Modell `gemma-4-31b-win` nennt, und ein Lauf, der nicht an einem Modellfehler scheitert. **Bleibt der Nachweis aus, endet die Umsetzung hier** — dann schaltet der Fallback-Pfad nicht um und Task 6/7 wuerden 37 Agenten auf einen Fallback stellen, der nicht greift.
+Expected: eine Zeile mit `model = gemma-4-31b-win`. Erscheint stattdessen nur
+`gemma-4-31b-gibt-es-nicht` oder gar nichts, hat der Fallback **nicht**
+gegriffen.
+
+Ergaenzend der Lauf-Status und die Ereignisse (die Tabelle heisst
+`heartbeat_runs`, nicht `runs`; die Volltext-Logs liegen ausserhalb der DB
+unter `log_store`/`log_ref`):
+
+```bash
+export PGPASSWORD=paperclip
+psql -h 127.0.0.1 -p 54329 -U paperclip -d paperclip -t -A -F'|' -c "
+SELECT id, status, error, log_store, log_ref
+FROM heartbeat_runs WHERE agent_id = '<AGENT_ID>'
+ORDER BY created_at DESC LIMIT 1;"
+psql -h 127.0.0.1 -p 54329 -U paperclip -d paperclip -t -A -F'|' -c "
+SELECT seq, event_type, level, left(message, 160)
+FROM heartbeat_run_events
+WHERE run_id = (SELECT id FROM heartbeat_runs WHERE agent_id = '<AGENT_ID>'
+                ORDER BY created_at DESC LIMIT 1)
+ORDER BY seq;"
+```
+
+Expected: ein Lauf mit `status = succeeded`, der nicht an einem Modellfehler
+scheitert.
+
+**Bleibt der Nachweis in `cost_events` aus, endet die Umsetzung hier** — dann
+schaltet der Fallback-Pfad nicht um, und Task 6/7 wuerden 37 Agenten auf
+einen Fallback stellen, der nicht greift.
 
 - [ ] **Step 5: Beide Felder zurueckschreiben und vergleichen**
 
@@ -546,8 +574,9 @@ Expected: `google/gemma-4-31b|gemma-4-31b-win|25`, die 12 qwen-Agenten noch auf 
 ```bash
 export PGPASSWORD=paperclip
 psql -h 127.0.0.1 -p 54329 -U paperclip -d paperclip -t -A -F'|' -c "
-SELECT date_trunc('day', created_at) AS tag, count(*)
-FROM runs WHERE status = 'failed' AND created_at > now() - interval '8 days'
+SELECT date_trunc('day', created_at)::date AS tag, count(*)
+FROM heartbeat_runs WHERE status = 'failed'
+  AND created_at > now() - interval '8 days'
 GROUP BY 1 ORDER BY 1;"
 psql -h 127.0.0.1 -p 54329 -U paperclip -d paperclip -t -A -F'|' -c "
 SELECT model, count(*) FROM cost_events

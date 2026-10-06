@@ -259,10 +259,31 @@ git commit -m "feat(model-warden): whitestag-ai als Fallback-Geraet ins Resident
 **Interfaces:**
 - Consumes: die Modell-IDs aus Task 2.
 
-- [ ] **Step 1: Aufsicht im Ist-Zustand laufen lassen**
+- [ ] **Step 1: Aufsicht im Ist-Zustand trocken laufen lassen**
 
-Run: `cd ~/.paperclip/scripts/modell-wacht && /usr/bin/python3 pruefung.py; echo "exit=$?"`
-Expected: `exit=1` mit einem Befund zu `gemma-4-31b-win` bzw. `qwen3.6-35b-win` als unbekanntem Modell — die Modelle laufen, stehen aber noch nicht im Soll. Exit 1 bedeutet Befunde, nicht Absturz.
+`pruefung.py` hat **keinen** `__main__`-Block — ein direkter Aufruf tut
+nichts und endet mit Exit 0. Einstiegspunkt ist `melder.py`, das bei
+faelligen Befunden aber ein Paperclip-Issue anlegt und den Zustand
+fortschreibt. Zum Verifizieren wird darum `pruefe()` direkt gerufen:
+
+```bash
+cd ~/.paperclip/scripts/modell-wacht && /usr/bin/python3 -c "
+import sys; sys.path.insert(0, '.')
+from melder import pruefe
+befunde, ergebnis = pruefe()
+print('Kopfzeile:', ergebnis.get('kopfzeile'))
+print('Befunde  :', len(befunde))
+for b in befunde:
+    print(' ', b.schwere, b.art, b.modell)
+"
+```
+
+Expected: die Kopfzeile nennt `gegen 3 Sollwerte`, und unter den Befunden
+kommt **kein** `gemma-4-31b-win` oder `qwen3.6-35b-win` vor. Die Aufsicht
+prueft nur Modelle, die im Soll stehen; ein fehlender Soll-Eintrag erzeugt
+keinen Befund. Erwartet sind die drei bekannten Befunde der Schwere
+`niedrig` (ein nicht geladenes n8n-Modell, zwei Fenster groesser als
+gefordert).
 
 - [ ] **Step 2: Soll-Eintraege ergaenzen**
 
@@ -305,10 +326,25 @@ In `soll-laufzeit.json` zwei Schluessel auf oberster Ebene hinzufuegen:
 Run: `/usr/bin/python3 -c "import json; d=json.load(open('$HOME/.paperclip/scripts/modell-wacht/soll-laufzeit.json')); print(sorted(k for k in d if not k.startswith('_')))"`
 Expected: `['gemma-4-31b-win', 'google/gemma-4-12b', 'google/gemma-4-31b', 'qwen3.6-35b-a3b', 'qwen3.6-35b-win']`
 
-- [ ] **Step 4: Aufsicht muss ohne Befund durchlaufen**
+- [ ] **Step 4: Aufsicht muss die neuen Modelle ohne harten Befund pruefen**
 
-Run: `cd ~/.paperclip/scripts/modell-wacht && /usr/bin/python3 pruefung.py; echo "exit=$?"`
-Expected: `exit=0` und keine Ausgabe. Meldet sie `fenster_groesser` mit Schwere niedrig, ist das in Ordnung (der geladene Wert liegt dann ueber der Anforderung); jeder andere Befund blockiert den naechsten Task.
+```bash
+cd ~/.paperclip/scripts/modell-wacht && /usr/bin/python3 -c "
+import sys; sys.path.insert(0, '.')
+from melder import pruefe, signatur
+befunde, ergebnis = pruefe()
+print('Kopfzeile:', ergebnis.get('kopfzeile'))
+for b in befunde:
+    print(' ', b.schwere, b.art, b.modell)
+print('harte Befunde:', len(signatur(befunde)))
+"
+```
+
+Expected: die Kopfzeile nennt jetzt `gegen 5 Sollwerte` (vorher 3) — das
+belegt, dass die neuen Eintraege gelesen werden. `harte Befunde: 0`.
+Befunde der Schwere `niedrig` zu den neuen Modellen sind in Ordnung
+(etwa `fenster_groesser`, wenn LM Studio ueber die Anforderung hinaus
+laedt); jeder Befund hoeherer Schwere blockiert den naechsten Task.
 
 - [ ] **Step 5: Commit**
 
@@ -635,11 +671,16 @@ und die zwei Agenten ohne Fallback (openbiollm, gemma-4-12b) unveraendert. Kein 
 - [ ] **Step 5: Aufsicht und Waechter-Tests ein letztes Mal**
 
 ```bash
-cd ~/.paperclip/scripts/modell-wacht && /usr/bin/python3 pruefung.py; echo "wacht exit=$?"
+cd ~/.paperclip/scripts/modell-wacht && /usr/bin/python3 -c "
+import sys; sys.path.insert(0, '.')
+from melder import pruefe, signatur
+b, e = pruefe()
+print(e.get('kopfzeile')); print('harte Befunde:', len(signatur(b)))
+"
 cd ~/.paperclip/scripts/model-warden && /usr/bin/python3 -m pytest -q; echo "tests exit=$?"
 ```
 
-Expected: `wacht exit=0`, `tests exit=0`.
+Expected: `harte Befunde: 0` und `tests exit=0`.
 
 - [ ] **Step 6: Deploy-Luecke schliessen und committen**
 

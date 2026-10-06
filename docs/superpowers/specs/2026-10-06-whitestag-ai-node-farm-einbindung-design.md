@@ -49,6 +49,25 @@ Juli und betrifft eine andere Maschine.
 Summe Gewichte **48,99 GB bei 56 GB VRAM**. Die beiden Modelle fordern
 zusammen 1,57 Mio Slot-Token (2 × 98.304 × 4) aus den verbleibenden ~7 GB.
 
+### Quantisierungen weichen je Geraet ab
+
+Ein Umzug ist nicht nur ein Geraete-, sondern ein **Qualitaetswechsel**:
+
+| Modell | heute | auf dem Node | Sprung |
+|---|---|---|---|
+| qwen3.6-35b-a3b | rtx: **Q8_0**, 36,03 GiB | **Q6_K**, 28,22 GiB | moderat |
+| gemma-4-31b | studio: **MLX 8-bit** | **GGUF Q4_K_M**, 18,69 GB | **8 bit -> 4 bit** |
+
+Auf dem Node liegt zusaetzlich `lmstudio-community/qwen3.6-35b-a3b` mit
+22,07 GB (nicht geladen). Sie wuerde gegenueber der geladenen Q6_K-Variante
+**8,2 GB VRAM freigeben** — von 48,99 auf 40,76 GB Gewichte, womit sich der
+KV-Spielraum von ~7 auf ~15 GB mehr als verdoppelt. Preis ist eine weitere
+Quantisierungsstufe. Das ist der wirksamste Hebel fuer die Slot-Zahl und
+als offene Entscheidung unten vermerkt.
+
+**Falle:** `gemma-4-31b-it@q8_0` auf dem Node ist mit 1,26 GB ein
+Fragment — ein 31B in Q8 muesste rund 33 GB haben. Nicht laden.
+
 ### Geschwindigkeit (Medianwerte, je 3-4 Laeufe)
 
 | Modell | Generierung | Zeit bis fertige Antwort |
@@ -111,6 +130,14 @@ Stunde bei GPU-Offload 24 von 40 Layern).
 | C-Suite | **zieht mit um** (alle 12 qwen-Agenten) | Entscheidung Walters am 2026-10-06. Die Empfehlung lautete, CEO/CTO/CPO/CRO/CHO auf der RTX zu lassen, weil die Slot-Kapazitaet des Node unbekannt ist. Konsequenz: die Kapazitaetsmessung wird **Vorbedingung** statt Begleitmaßnahme, und der Rueckweg muss vor der ersten Umstellung stehen. |
 | Fallbacks | bleiben auf `google/gemma-4-12b` (studio) | Anderes Geraet als das Primaermodell — Lehre vom 2026-09-22. |
 
+## Offene Entscheidung
+
+**Quantisierung von qwen auf dem Node.** Die geladene Q6_K-Variante
+(28,22 GiB) laesst ~7 GB fuer KV; die bereitliegende 22,07-GB-Variante
+liesse ~15 GB. Weil die C-Suite mitzieht und heute Q8_0 auf der RTX
+nutzt, ist die Frage nicht nur Kapazitaet, sondern Antwortqualitaet der
+Leitungsebene. Zu klaeren vor Schritt 1.
+
 ## Zielzustand
 
 - Node fuehrt `gemma-4-31b-win` und `qwen3.6-35b-win`, beide ctx 98.304,
@@ -132,23 +159,30 @@ Vor der ersten Umstellung wird der Ist-Stand der betroffenen
 `adapter_config`-Felder separat als JSON abgelegt, damit der Rueckweg nicht
 von der Revisionstabelle allein abhaengt.
 
-### Schritt 1 — Slot-Kapazitaet messen
+### Schritt 1 — Rename mit konservativem Start, dann messen
 
-Der tragbare Wert fuer `parallel` ist vom Mac aus nicht auslesbar und muss
-unter Last ermittelt werden. Gemessen wird bei gestaffelter Slot-Zahl
-(4+4, 2+2, 1+1) jeweils Generierungsrate und Prefill-Streuung unter
-parallelen Anfragen. **Abbruchkriterium:** Prefill-Streuung ueber Faktor 2
-oder Generierungsrate unter 35 tok/s (gemma) bzw. 70 tok/s (qwen) deutet
-auf Layer-Offload und schliesst die Stufe aus.
+`parallel` laesst sich nur beim Laden setzen, und Laden kann nur am Node
+geschehen. Messung und Rename sind damit **ein** Vorgang, nicht zwei: der
+Rename laedt direkt mit `--parallel 2` (konservativ, weil 4+4 heute 1,57 Mio
+Slot-Token aus ~7 GB fordert), danach wird vom Studio aus unter Last
+gemessen und nur bei nachgewiesener Luft auf 3 oder 4 erhoeht.
 
-### Schritt 2 — Rename auf dem Node
+Gemessen werden Generierungsrate und Prefill-Streuung bei parallelen
+Anfragen. **Abbruchkriterium:** Prefill-Streuung ueber Faktor 2 oder
+Generierungsrate unter 35 tok/s (gemma) bzw. 70 tok/s (qwen) deutet auf
+Layer-Offload; dann eine Stufe zurueck.
+
+### Schritt 2 — Die Befehle am Node
 
 Auf dem Windows-PC, je Modell entladen und mit neuem Identifier laden:
 
     lms unload gemma-4-31b-it
-    lms load gemma-4-31b-it@q4_k_m --identifier gemma-4-31b-win -c 98304 --parallel <N> -y
+    lms load gemma-4-31b-it@q4_k_m --identifier gemma-4-31b-win -c 98304 --parallel 2 -y
     lms unload abiray/qwen3.6-35b-a3b
-    lms load <modelKey> --identifier qwen3.6-35b-win -c 98304 --parallel <N> -y
+    lms load abiray/qwen3.6-35b-a3b --identifier qwen3.6-35b-win -c 98304 --parallel 2 -y
+
+Faellt die Entscheidung fuer die kleinere qwen-Quantisierung, lautet der
+modelKey im zweiten Ladebefehl `lmstudio-community/qwen3.6-35b-a3b`.
 
 Gegenprobe vom Studio: `lms link status` und `GET /api/v0/models/<id>` je
 neuer ID — `/api/v0/models` allein ist unvollstaendig.

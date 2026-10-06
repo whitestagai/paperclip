@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>ai.whitestag.node-erreichbarkeit</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/walterschoenenbroecher.de/.paperclip/scripts/node-wacht/erreichbarkeit.sh</string>
+  </array>
+
+  <key>StartInterval</key><integer>900</integer>
+  <key>RunAtLoad</key><true/>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>HOME</key><string>/Users/walterschoenenbroecher.de</string>
+  </dict>
+
+  <key>StandardErrorPath</key><string>/Users/walterschoenenbroecher.de/.paperclip/logs/node-erreichbarkeit.err</string>
+  <key>StandardOutPath</key><string>/dev/null</string>
+</dict>
+</plist>

@@ -58,8 +58,8 @@ Ein Umzug ist nicht nur ein Geraete-, sondern ein **Qualitaetswechsel**:
 | qwen3.6-35b-a3b | rtx: **Q8_0**, 36,03 GiB | **Q6_K**, 28,22 GiB | moderat |
 | gemma-4-31b | studio: **MLX 8-bit** | **GGUF Q4_K_M**, 18,69 GB | **8 bit -> 4 bit** |
 
-Auf dem Node liegt zusaetzlich `lmstudio-community/qwen3.6-35b-a3b` mit
-22,07 GB (nicht geladen). Sie wuerde gegenueber der geladenen Q6_K-Variante
+Auf dem Node liegt zusaetzlich `lmstudio-community/qwen3.6-35b-a3b` in
+**Q4_K_M** mit 20,55 GiB (nicht geladen). Sie wuerde gegenueber der geladenen Q6_K-Variante
 **8,2 GB VRAM freigeben** — von 48,99 auf 40,76 GB Gewichte, womit sich der
 KV-Spielraum von ~7 auf ~15 GB mehr als verdoppelt. Preis ist eine weitere
 Quantisierungsstufe. Das ist der wirksamste Hebel fuer die Slot-Zahl und
@@ -132,9 +132,10 @@ Stunde bei GPU-Offload 24 von 40 Layern).
 
 ## Offene Entscheidung
 
-**Quantisierung von qwen auf dem Node.** Die geladene Q6_K-Variante
-(28,22 GiB) laesst ~7 GB fuer KV; die bereitliegende 22,07-GB-Variante
-liesse ~15 GB. Weil die C-Suite mitzieht und heute Q8_0 auf der RTX
+**Quantisierung von qwen auf dem Node.** Drei Stufen stehen zur Wahl:
+Q8_0 (36,03 GiB, was die C-Suite heute auf der rtx nutzt, passt hier
+nicht), die geladene Q6_K (28,22 GiB, laesst ~6,5 GiB fuer KV) und die
+bereitliegende Q4_K_M (20,55 GiB, laesst ~14 GiB). Weil die C-Suite mitzieht und heute Q8_0 auf der RTX
 nutzt, ist die Frage nicht nur Kapazitaet, sondern Antwortqualitaet der
 Leitungsebene. Zu klaeren vor Schritt 1.
 

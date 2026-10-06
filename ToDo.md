@@ -4,6 +4,60 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 
 ## Farm-Stabilitaet
 
+- [ ] **★★Die Brain-/Vault-Werkzeuge erreichen die Agenten ueberhaupt nicht** —
+      in **300 Runs ueber 48 Stunden kein einziger** `vault.*`-Aufruf,
+      stattdessen **400x `shell_exec`**. Das ist die Ursache der Blindsuche und
+      damit ein guter Teil der `max_iterations` (siehe Eintrag unten): Die
+      AGENTS.md verweist auf `whitestag.brain` mit den Tools `vault.search` /
+      `vault.list_scope` und der Anweisung „Erst suchen, dann handeln" — die
+      Agenten greifen trotzdem zu `ls -R`, `find` und `grep -r` (Letzteres laeuft
+      in den 30-s-Deckel von `shell_exec`).
+      **Gegengeprueft und NICHT die Ursache:** Plugin-Status ist `ready`
+      (`aeff1be7`, `whitestag.brain` 0.2.0), beide Dienste antworten
+      (`:7777` WHITESTAG, `:7778` Clara, launchd `com.whitestag.brain-mcp*`),
+      und `plugin_company_settings` ist **leer** — es gibt also keine
+      Company-Sperre. Im Lauf-Log werden nur Paperclip-Skills aufgezaehlt, keine
+      Plugin-Tools. **Verdacht:** der lmstudio-Adapter sammelt Plugin-Tools gar
+      nicht erst ein. Naechster Schritt: im Adapter nachsehen, wie die
+      Tool-Liste je Run zusammengestellt wird — ein Eingriff dort trifft die
+      ganze Flotte, also nicht nebenbei.
+      Nachweis: Tool-Namen aus allen `run-logs/*.ndjson` der letzten 48 h
+      zaehlen (`kind == "tool_call"`).
+      *(2026-09-15, Chat: Mailhub und Recovery-Kaskade)*
+
+- [ ] **Mailhub-Reste nach dem IMAP-Fix** — die Phantomflut ist weg (2–5 pro
+      Stunde → **eine in 20 Stunden**, `Mailhub V11` mit `forceReconnect: 15`
+      statt 60 in allen 11 IMAP-Nodes; `Error-Handler V7` liest jetzt
+      `t.trigger?.error` und liefert wieder echte Diagnosen). Offen bleiben drei
+      Kleinigkeiten: (1) **Mailempfang nie end-to-end geprueft** — belegt ist
+      nur eine zufaellig eingegangene Mail, eine Testmail an eines der elf
+      Postfaecher steht aus; (2) **WHI-8228** (die verbliebene echte Meldung,
+      Node `IMAP Clara CEO`, 04:34 nachts — vermutlich Provider-Wartung) liegt
+      **unassigned im `backlog`**, der n8n-Betriebsingenieur greift diese
+      Issue-Sorte nicht auf; (3) im Error-Handler steckt ein **Paperclip-
+      Board-Token im Klartext** fest verdrahtet (Fundort: Workflow
+      `spvMh6dLQpd43BSz`, Node `Konfiguration`) — genau so ein hartkodierter
+      Token hat den Mailhub-Inbound schon einmal nach 30 Tagen still
+      stillgelegt, vgl. `project_deliverable_watcher_token_ttl`.
+      *(2026-09-15, Chat: Mailhub und Recovery-Kaskade)*
+      **Stand 19.09.: (2) und (3) sind erledigt, (1) steht weiter aus.**
+      (3) gegengeprueft: Der Node `Konfiguration` traegt **keinen** Klartext-
+      Token mehr, `paperclipToken` ist die Expression
+      `={{ $('Token lesen').first().json.token }}` und liest aus
+      `~/.paperclip/.n8n-link-detektor-token`. (2) WHI-8228 ist `cancelled` —
+      allerdings **durch den Massen-Storno vom 19.09.**, nicht inhaltlich
+      bearbeitet; falls die Provider-Wartungs-Frage noch interessiert, ist sie
+      damit unbeantwortet.
+      **Und der Kern des Eintrags ist widerlegt:** `forceReconnect: 15`
+      **reicht nicht**. In der Nacht zum 19.09. entstanden erneut **443 Issues
+      in 15 Stunden** (282 Mailhub, 161 Clara), alle 11 IMAP-Nodes gleichmaessig
+      betroffen (24–36 je Node) — der Mailserver kappt die Langzeitverbindung
+      haeufiger, als n8n von sich aus neu verbindet. Die Issue-Flut ist seit dem
+      19.09. per Entprellung im Error-Handler V8 gedeckelt (ein Issue je
+      Workflow und Tag), **die Ursache am Mailserver ist damit nur zugedeckt,
+      nicht behoben**. Verdacht: Verbindungslimit bei 11 gleichzeitigen
+      Postfaechern auf demselben Server. *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
+
 - [ ] **★★VP Engineering laeuft leer — 2.143 Runs, 99 % Fehlerquote** — mit
       Abstand der groesste Einzelverbraucher der Flotte (23 % aller Runs der
       letzten 14 Tage) und praktisch ohne Ergebnis. **Zwei Drittel davon sind
@@ -79,6 +133,27 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Hochdrehen allein hilft nachweislich nicht, siehe Online-Rechercheur.
       Nachweis: `select a.name, a.adapter_config->>'maxIterations', count(*) filter (where r.error_code='max_iterations'), count(*) from heartbeat_runs r join agents a on a.id=r.agent_id where r.started_at > now() - interval '14 days' group by 1,2;`
       *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
+      **★★15.09.: der „naechste Schritt" ist erledigt — die Runden gehen fuer
+      ORIENTIERUNG drauf, nicht fuer die Aufgabe.** Ein typischer Office-&-Admin-
+      Run (Volllog `heartbeat_run_events` + `run-logs/*.ndjson`) verbraucht alle
+      zwoelf Runden so: **6 fuer Paperclip-Verwaltung** (Inbox, Checkout → HTTP
+      422 durch einen abgebrochenen Blocker, Kontext, Kommentare, Blocker loesen,
+      Checkout) und **6 fuer Blindsuche im Vault** (`ls -R`, `find`, `grep -r`
+      → Timeout nach 30 s, wieder `find`) — **null fuer die eigentliche Arbeit**.
+      **Die Ursache der Blindsuche ist ein fehlendes Werkzeug, kein fehlendes
+      Wissen:** die AGENTS.md nennt die Vault-Pfade absolut *und* das Suchwerkzeug
+      `whitestag.brain` — siehe eigenen Eintrag unten, es wird nie aufgerufen.
+      **Hochdrehen ist damit widerlegt, nicht nur zweifelhaft:** Limit bei sieben
+      nachweislich betroffenen Agenten am 14.09. von 12 auf **20** gesetzt
+      (Office & Admin, Bueroleitung, Creative Assistant, Akquise & Booking, CEO,
+      CTO, Sekretaerin). Die Meldungen sagen seither „Max iterations (20)" — und
+      scheitern weiter; der Online-Rechercheur ebenso bei 30. **Wirksam war
+      stattdessen das Abraeumen der toten Blocker:** Office & Admin fiel von 16
+      Fehlschlaegen (14.09.) auf 0 (Nacht auf den 15.09.).
+      **Nebenrisiko der Erhoehung, noch nicht gemessen:** 20 Runden x
+      `maxToolResultChars: 12000` liegt rechnerisch an der `maxPromptTokens`-
+      Grenze von 70k — passt zum Overflow-Eintrag weiter unten.
+      *(2026-09-15, Chat: Mailhub und Recovery-Kaskade)*
 
 - [ ] **`Process lost -- server may have restarted`** — 9 Treffer in einer
       Stunde am Abend des 02.09., Muster war vorher nicht da. Ursache offen:
@@ -183,6 +258,54 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Nachwachsen daempft: sie beseitigt eine Quelle des Strandens (Agenten, die
       in `error` liegen bleiben, waehrend ihre Issues offen sind).
       *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
+      **★★15.09.: die NEUERZEUGUNG ist behoben — Commit `fb0898d22`.** Zweite,
+      eigenstaendige Ursache neben dem Blocker-Bug oben: Der Cap
+      `MAX_RECOVERY_IN_PLACE_CYCLES = 3` zaehlt Eskalationen **pro
+      Recovery-Issue-Id**, und `findOpenStrandedIssueRecoveryIssue` schliesst
+      `done`/`cancelled` aus. Gelingt die Recovery — der **Normalfall**, sie
+      weckt ja nur — gilt sie weder als offen noch traegt sie einen
+      Zaehlerstand; der naechste Fehlschlag legt eine **frische** Recovery mit
+      Zaehler 0 an. Die Bremse wird nie erreicht.
+      **Live belegt:** acht Quell-Issues mit Mehrfach-Recovery in drei Tagen und
+      **in jedem Fall ALLE Recovery-Issues `done`** (9/9, 9/9, 8/8, 6/6, 3/3,
+      3/3, 2/2, 2/2). Zwei Kaskaden liefen an aufeinanderfolgenden Tagen ueber
+      je ~1,5 h (CLAA-2307 mit Office & Admin, WHI-8230 mit dem
+      Online-Rechercheur) und verbrannten je ein bis zwei Dutzend Laeufe, bis
+      sie sich zufaellig selbst aufloesten.
+      Fix: abgeschlossene Recoveries zaehlen pro **Quell-Issue** mit; ist der
+      Deckel erreicht, entsteht kein neues Recovery-Issue und die Quelle bleibt
+      sichtbar `blocked`. TDD (RED `expected 5 to be less than or equal to 3`),
+      45/45 + 111 Tests gruen, `tsc --noEmit` sauber, nach `fork/master`.
+      Nachweis: `select o.identifier, count(*), count(*) filter (where r.status='done') from issues r join issues o on o.id::text = r.origin_id where r.origin_kind is not null group by 1 having count(*) > 1;`
+      *(2026-09-15, Chat: Mailhub und Recovery-Kaskade)*
+
+- [ ] **★Der neue Kaskaden-Deckel ist noch durch keine echte Kaskade gelaufen** —
+      getestet und seit dem 15.09. live (Dev-Server per `kickstart` neu
+      gestartet), aber im Feld unbewiesen. Beim naechsten Vorfall gegenlesen:
+      Bei **drei** Recovery-Issues je Quelle muss Schluss sein, und das
+      Quell-Issue muss sichtbar `blocked` liegen bleiben statt weiterzurotieren.
+      Wartende Kandidaten: **WHI-8230**, **CLAA-2508**, **CLAA-2499** (alle
+      `todo`). *(2026-09-15, Chat: Mailhub und Recovery-Kaskade)*
+
+- [ ] **CLAA-2499 und CLAA-2508 haengen seit dem 03.09.** — „R3 Woechentlicher
+      Redaktionsplan" (Social Media & Community) und „R4 Taegliche
+      Textfeinschliff-Triage" (Redaktion & PR) stehen seit zwoelf Tagen auf
+      `todo` und erzeugen alle sechs Stunden eine Productivity-Review, bisher
+      **23 Stueck**. **Kein Code-Fehler:** die Abstaende entsprechen exakt
+      `DEFAULT_PRODUCTIVITY_REVIEW_RESOLVED_SNOOZE_MS` (6 h), der Mechanismus
+      arbeitet wie ausgelegt. Das Problem sind die Quell-Issues — inhaltliche
+      Entscheidung: loesen, neu zuschneiden oder abbrechen.
+      *(2026-09-15, Chat: Mailhub und Recovery-Kaskade)*
+
+- [ ] **Zwei Stornierungen mit Vorbehalt — zurueckholen oder bestaetigen?** — bei
+      der Blocker-Bereinigung am 14.09. wurden auf Ansage „alte Aufgaben koennen
+      weg" sieben gestaute Issues abgebrochen. Zwei davon koennten inhaltlich
+      noch aktuell sein: **WHI-6304** („Modell-ID in n8n Workflow aktualisieren",
+      12 Tage, war `in_review`, VP Engineering) — thematisch genau der Bereich,
+      an dem am selben Tag gearbeitet wurde — und **WHI-1641** („LM Studio
+      Adapter auf qwen2.5-coder", 85 Tage), dessen Blocker als einziger `done`
+      war, dessen Vorarbeit also fertig ist. Ein Status-Patch ist umkehrbar.
+      *(2026-09-15, Chat: Mailhub und Recovery-Kaskade)*
 
 
 - [ ] **★★Lessons-Schleife entschaerft — Wirkung erst ab dem Nachtlauf 02:00
@@ -278,18 +401,113 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 
 ## Modelle und Agenten
 
+- [ ] **★Primaermodelle stehen auf toten Eintraegen, solange die WHITESTAG-AI
+      fehlt** — die 37 lmstudio-Agenten zeigen weiter auf `gemma-4-31b-it` bzw.
+      `qwen3.6-35b-a3b`, die mit dem Node weg sind. Der Fallback
+      `google/gemma-4-12b` (Studio) traegt, aber **jeder Lauf zahlt vorher einen
+      Fehlversuch**. Auf dem MacBook liegt `gemma-4-31b-it-mlx` (31B) geladen und
+      ungenutzt — deutlich staerker als das 12B und waehrend des Ausfalls die
+      bessere Wahl. Zweimal angeboten, **Entscheidung steht aus**. Gegenargument:
+      MLX auf dem MacBook ist langsam (gemessen ~16 tok/s, 85 s Prefill bei 18k),
+      und das Geraet war zwischenzeitlich selbst tagelang aus der Flotte.
+      *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
+
+- [ ] **`cheap`-Profil von zehn Agenten zeigt auf ein totes Modell** — in
+      `runtime_config.modelProfiles.cheap.adapterConfig.model` steht weiterhin
+      `gemma-4-31b-it` (CTO, CEO, Bueroleitung, CPO, CRO, SEO/GEO, Blender, CHO,
+      Sekretaerin, Trainingscoach). **Nicht kaputt** — der Profil-Fallback steht
+      schon auf `google/gemma-4-12b` —, kostet aber je cheap-Lauf einen
+      Fehlversuch. Beim Umstellen daran denken: `runtime_config` wird per PATCH
+      **ersetzt**, nicht gemerged, also die volle Struktur mitsenden.
+      *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
+
+- [ ] **★Die Sekretaerin laeuft in einem LEEREN Fallback-Workspace** — sie rief
+      `luna-queue-approval.py` ueber einen selbstgebauten Pfad mit zwei UUIDs
+      auf und verstuemmelte beide (35 statt 36, 32 statt 36 Zeichen), lief
+      danach sechsmal gegen „Path traversal blocked" und verbrannte so ihr
+      Iterationsbudget. **Die UUID-Verstuemmelung ist nur das Symptom:** In
+      `roles/sekret-rin.role.md` steht der Aufruf **relativ**
+      (`bin/luna-queue-approval.py`), der Agent laeuft aber laut erster Logzeile
+      im Fallback-Workspace `~/.paperclip/instances/default/workspaces/<agent-id>/`
+      — seit Mai angelegt und **komplett leer**, weil ihm kein Projekt-Workspace
+      zugeordnet ist. Erst daraufhin konstruiert das Modell einen absoluten Pfad.
+      **Pflaster am 15.09.:** Symlink `workspaces/<id>/bin → agents/<id>/bin`,
+      verifiziert per `--help` (Exit 0, Importe `approval_queue` /
+      `luna_mail_render` laden durch). **Offen:** (1) warum ihr kein
+      Projekt-Workspace zugewiesen ist — der Symlink hilft nur im Fallback, bei
+      echtem Projekt-Workspace ist das cwd wieder anders; (2) in der Praxis
+      unbewiesen, sie hat das Werkzeug seither nicht aufgerufen; (3) ein
+      End-to-End-Test legt eine echte Freigabe-Mail in Walters ws@-Postfach.
+      **Nebenbefund:** ihre `allowedWriteRoots` sind `Vault + /tmp`, die
+      `fs_*`-Werkzeuge koennen in `.paperclip` grundsaetzlich nicht schauen —
+      die Suche konnte also nie klappen, egal wie korrekt der Pfad waere.
+      Nur die Sekretaerin hat ueberhaupt ein `bin/`-Verzeichnis.
+      *(2026-09-15, Chat: Mailhub und Recovery-Kaskade)*
+
 - [ ] **Die beiden Obsidian-Tagger fahren verschiedene Modelle** — WHITESTAG auf
       dem lokalen `gemma-4-31b-it-mlx`, Clara auf `google/gemma-4-12b`. Bewusst
       so entschieden (zwei Nachtlaeufe kurz hintereinander auf demselben 33-GB-
       Modell waeren bei zeitweise 1,5 GB freiem RAM riskant), aber uneinheitlich.
       Wenn der RAM dauerhaft Luft hat, angleichen.
       *(2026-09-05, Chat: Routinen, Fallback und Mail-Anhänge)*
+      **ID-Korrektur 19.09.: WHITESTAG faehrt jetzt `google/gemma-4-31b`** —
+      dieselbe Datei (`lmstudio-community/gemma-4-31B-it-MLX-8bit`), nur der
+      Identifier hat sich geaendert. Unter dem alten Namen lief der Tagger vom
+      **16.–19.09. vier Naechte tot** (ok=0, fail=3/5/6/7, jede Datei HTTP 400,
+      21 Notizen ungetaggt). Commit `bb8e91cbf`.
+      **Das RAM-Argument ist entschaerft, nicht erledigt:** Das 31B wird nicht
+      mehr dauerhaft vorgehalten, sondern vom nightly-Skript mit `--ttl 1800`
+      geholt und danach freigegeben. Die 34-GB-Spitze faellt also nur noch
+      waehrend des Laufs an. Ein Angleichen beider Tagger auf
+      `google/gemma-4-12b` bliebe trotzdem moeglich — das steht als Alternative
+      im Template-Kommentar. *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
 
 - [ ] **Breaker-Cooldown ist ungetestet lang** — 60 Minuten sind gesetzt, weil
       sie zu einer Renderphase passen. Ob das im Alltag zu traege oder zu hektisch
       ist, zeigt erst der Betrieb. Stellschraube: `breakerCooldownMs` in der
       Agent-Config, Zustand unter `~/.paperclip-adapter-lmstudio/breaker-state.json`.
       *(2026-09-05, Chat: Routinen, Fallback und Mail-Anhänge)*
+
+## Netz und Standort der WHITESTAG-AI
+
+- [ ] **★★Bad-Repeater ersetzen — er reisst die ganze Lager-Strecke mit** —
+      seit **19.09., 06:57:48 Uhr** keine einzige Meldung mehr; davor eine
+      Woche lang stoerungsfrei. Er war die **Bridge** fuer den Lager-Repeater:
+      Belegt ueber die MAC-Adressen im FRITZ!Box-Ereignisprotokoll — die dort
+      genannte MAC ist die **Basis**, bei der die Anmeldung scheiterte, und bis
+      zum 19.09. war das `0C:C5:74:54:BE:4x` (Bad-Repeater-Familie), danach
+      `DC:15:C8:68:B2:E2/E3` (FRITZ!Box 7590). Der Lager-Repeater hielt zwei Tage
+      im Notbetrieb durch (666× „Kanalbandbreite reduziert") und gab am **21.09.
+      um 22:23:49** auf; seitdem ist die **WHITESTAG-AI nicht erreichbar**
+      (letzter LLM-Aufruf 21.09. 16:15:43).
+      **Drei Fernversuche am 22.09. erfolglos:** Lager-Steckdose geschaltet
+      (5 W Last, nichts kam zurueck), Bad-Steckdose geschaltet (Repeater wieder
+      im Mesh, traegt aber **keinen IP-Verkehr** — nur ARP-Antwort bei 100 %
+      Ping-Verlust), FRITZ!Box 7590 neu gestartet (10:34:48 weg, 10:35:35
+      zurueck, ohne Wirkung auf die Kette).
+      **Gelernt:** FRITZ-Mesh waehlt den Uplink nach **Signalstaerke**, nicht
+      nach Pfadlaenge — der Bad-Repeater haengte sich nach dem Neustart des
+      Buehnen-Repeaters sofort wieder an die Buehne statt an die 7590. Und das
+      WLAN eines Repeaters ueber seine Weboberflaeche abzuschalten sperrt einen
+      selbst aus, weil er darueber angebunden ist.
+      *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
+
+- [ ] **★Die Maschine mit der ganzen Flotte haengt an einer WLAN-Kette** — die
+      WHITESTAG-AI ist ueber Lager-Repeater → Bad-Repeater → FRITZ!Box 7590
+      angebunden, also hinter **zwei** Funk-Hops, waehrend im Haus ein
+      **10G-Switch mit acht SFP+-Ports** steht (`SL-SWTGW3C8F`, `192.168.2.2`,
+      MAC `1C:2A:A3:30:61:5D`). Jeder WLAN-Hop halbiert grob den Durchsatz, und
+      jedes Glied ist ein Single Point of Failure fuer 40 Agenten — heute
+      eingetreten. Beim Kartentausch ist ohnehin das Gehaeuse offen: **das ist
+      der Moment fuer eine Kabelanbindung oder einen anderen Standort.**
+      Ausserdem fehlt der Maschine ein **Wake-on-LAN-Pfad**: Die einzige
+      dokumentierte MAC (`A8:A1:59:6E:47:4B`) ist die WLAN-Schnittstelle, und
+      WoWLAN traegt nach einem Stromausfall nicht. Vor Ort zu setzen: BIOS
+      „Restore on AC Power Loss" auf **Power On** (die Maschine faehrt nach
+      Stromausfall derzeit **nicht** von selbst hoch) und Wake-on-LAN aktivieren.
+      Drittens: **Repeater und Rechner haengen an derselben Smart-Steckdose** —
+      solange das so ist, laesst sich der Repeater nie allein neu starten.
+      *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
 
 ## Kontext-Budget und LM-Studio-Flotte
 
@@ -334,6 +552,12 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       56 GB, 24/7, kostet keinen Strom) traegt jetzt den Primaerpfad. Die Pro 6000
       laeuft wieder nur tagsueber und ist als Coding-Node vorgesehen.
       *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
+      **Stand 22.09.: das MacBook ist zurueck** — `MacbookM5Mx128` ist wieder als
+      LM-Link-Peer verbunden und haelt `gemma-4-31b-it-mlx` (33,80 GB, ctx
+      262144) sowie drei qwen3.8-27b-Varianten und eine zweite coder-next-Kopie
+      (84,67 GB). Es traegt derzeit **keinen Agentenverkehr**, waere aber waehrend
+      des WHITESTAG-AI-Ausfalls das staerkste verfuegbare Modell.
+      *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
 
 - [ ] **★★qwen passt nicht neben gemma auf den GeForce-Node** — beide Q4_K_M
       zusammen 40,76 GB von 56 GB, rechnerisch bleibt Platz. Praktisch laeuft
@@ -363,6 +587,102 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       „LM Studio nutzt nur die 5090" ist damit **nicht ausgeraeumt**; pruefbar
       nur in der GUI am Node (`Ctrl+Shift+H`).
       *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
+      **Stand 22.09.: unabhaengig nachgemessen, Bild unveraendert** — qwen TTFT
+      **56–62 s** bei 17k Prompt (~300 tok/s Prefill) und Decode 15,6–17,7 tok/s
+      gegen gemma TTFT 1,67 s, Prefill ~1.780 tok/s, Decode 33–39 tok/s. Auch die
+      Rueckstellung des Fensters von 131.328 auf 98.304 aenderte **nichts**
+      (61,9 / 54,3 s gegen 56,6 / 55,9 s vorher) — deckt sich mit der
+      Gegenprobe vom 12.09., dass alle Fenstergroessen gleich langsam sind.
+      **Null Kontext-Ueberlaeufe in acht Tagen**, das Fenster war nie der
+      Engpass. Betriebsfolge: qwen-Agenten 33,9 % Fehlerquote gegen 17,0 % bei
+      den gemma-Agenten (5 Tage, 354 gegen 323 Laeufe).
+      **Loesungsweg steht: Kartentausch** (siehe eigener Eintrag unten).
+      *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
+
+- [ ] **★★Kartentausch RTX Pro 6000 ↔ 5090 + 3090 — geplant, nicht umgesetzt** —
+      Walters Vorschlag, die Pro 6000 aus dem Filmrechner in die WHITESTAG-AI zu
+      bauen und die beiden GeForce-Karten dorthin. Loest den Eintrag darueber an
+      der Wurzel: 40,76 GB Gewichte + ~33 GB KV = **~74 GB Bedarf** gegen die
+      heutigen **56 GB** auf zwei ungleichen Karten; mit 96 GB auf **einer** Karte
+      entfaellt der Layer-Offload, der PCIe-Split und das Experten-Springen ueber
+      Kartengrenzen. Der Filmrechner braucht die 96 GB nicht — Schnitt ist
+      encoder- und bandbreitenlimitiert.
+      **Vor dem Schrauben pruefen:** (1) GPU-Offload in der LM-Studio-GUI am Node
+      (`x von y Layer` bei qwen) — bestaetigt oder widerlegt die Diagnose in
+      zehn Sekunden; (2) Netzteil und Gehaeuselaenge, die Pro 6000 zieht je nach
+      Variante 300 W (Max-Q) oder 600 W.
+      **Q8-Empfehlung danach:** `gemma-4-31B-it Q8_0` (32,64 GB) +
+      `Qwen3.6-35B-A3B Q6_K` (28,51 GB) = 61,15 GB — entspricht der im August auf
+      genau dieser Karte belegt laufenden Konstellation. **Beide auf Q8**
+      (69,54 GB) liesse nur 26,5 GB fuer KV, also 6,5 GB weniger als damals, wo
+      es schon ohne Reserve-Nachweis lief. Sauberer Weg: erst mit den jetzigen
+      Q4-Quants tauschen, Offload und Prefill messen, dann Q8 gezielt nachziehen.
+      Fenster und Slots bleiben bei 98.304 × 4 (65.536 ist zweimal belegt
+      gescheitert). Nach dem Laden die **Gemma-Denkfalle** gegenpruefen (Q8-GGUF
+      oeffnet den Denk-Kanal ueber die Jinja-Vorlage, `content` bleibt leer) —
+      ein einzelner sauberer Lauf beweist dabei nichts.
+      *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
+
+- [ ] **RTX-Karteileichen aufraeumen — Restpunkte** — **Die Praemisse „arbeitslos"
+      ist ueberholt (04.10.2026):** die Karte traegt jetzt `qwen3.6-35b-a3b` und
+      als **Primaer-Klassifikator des PII-Proxys** `google/gemma-4-12b-qat`.
+      Urspruenglich am 22.09. aufgenommen, weil kein Agent (39 geprueft), kein
+      aktiver n8n-Workflow (21 geprueft) und kein Dienst auf ein Modell dort
+      zeigte. Offen sind noch:
+      (1) `~/Desktop/n8n.sh` laedt beim Start
+      `mistral-small-3.2-24b-instruct-2506@q4_k_m` auf die RTX — **das Modell
+      existiert auf keiner Maschine mehr**, der Wake-Satellit steht laengst auf
+      `gemma-4-31b-it` (`tools/wake-satellite/sat_config.py:85`);
+      (2) **teilweise erledigt (04.10.2026):** `google/gemma-4-12b-qat` ist
+      nicht mehr gelöscht, sondern der Primaer-Klassifikator des PII-Proxys —
+      Eintrag in `resident-set.json` auf `when: always` gehoben, begruendet und
+      das ctx-Soll auf die geladenen 32768 angeglichen. **Offen bleibt
+      `qwen/qwen3-coder-next`:** es existiert wieder im Modellindex der Karte,
+      ist aber nicht geladen und steht weiter auf `day-only` — pruefen, ob es
+      noch gebraucht wird (es ist zugleich der 48,49-GB-Posten im
+      Archivierungs-Eintrag unten);
+      (3) `tools/modell-wacht/soll-laufzeit.json` bewertet die alten RTX-IDs
+      `abiray/qwen3.6-35b-a3b` und `gemma4-31b-it`, die es nicht mehr gibt;
+      (4) **WHITESTAG-AI deckt gar kein Waechter ab** — der Entlade-Waerter fasst
+      nur `studio` an, obwohl dort die ganze Flotte liegt.
+      Nebenwirkung der sporadisch verbundenen Karte: Die Modell-Aufsicht
+      flackerte zwischen 41 und 135 Befunden und legte bei jedem Wechsel ein
+      Issue an. *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
+
+- [ ] **313 GB tote Modelle auf der RTX-Platte — Archivierung entschieden, nicht
+      ausfuehrbar** — `deepseek-v4.1-flash-fp8` (264,52 GB) und
+      `qwen/qwen3-coder-next` (48,49 GB), beide null Aufrufe in 30 Tagen. Walter
+      hat „beide aufs NAS archivieren" gewaehlt; **von der Studio aus nicht
+      machbar**, weil der Filmrechner keinen Zugang bietet (SMB lehnt die
+      Authentifizierung ab, SSH ist zu, WinRM offen aber ungenutzt). Der
+      Transfer gehoert ohnehin direkt NAS → Filmrechner statt ueber den Mac —
+      sonst laufen die Daten zweimal ueber die Leitung. Rezept: `rsync
+      --partial` mit Retry, weil SMB unter Last reisst.
+      **Ergaenzt 04.10.2026:** dazu kommt `strands-qwen3-vl-2b` (2,05 GB) — das
+      Modell ist aus dem VRAM entladen, die Datei liegt aber weiter auf der
+      Platte und steht deshalb noch in `/v1/models` (der Index listet auch nicht
+      geladene Modelle). Der fehlende Zugang ist erneut belegt: `lms` hat gar
+      keinen Lösch-Befehl und `192.168.2.181` hat **Port 22 zu** — im LAN
+      annonciert nur die Studio `_ssh._tcp`. Alles drei nur an der Maschine
+      selbst loeschbar.
+      *(2026-09-22, Chat: LLM-Farm und Netzausfall; ergaenzt 2026-10-04, Chat: Strands und PII-Fallback)*
+
+- [ ] **Wirkung des PII-Classifier-Rollentauschs unter Last gegenpruefen** — seit
+      04.10.2026 ist `google/gemma-4-12b-qat` auf der RTX der Primaer-Klassifikator,
+      `google/gemma-4-12b` (Studio) nur noch Fallback. End-to-End durch den Proxy
+      fiel damit von 11,2 s auf **1,71 s**. **Gemessen wurde aber morgens bei
+      leerer Farm** — dieselbe Studio lag im Ruhezustand bei 4,20 s statt 11,45 s
+      unter Last. Der Vorteil der RTX ist real, der Faktor haengt an der Last.
+      In 24 h gegenpruefen, ob `classifier_unavailable` und die Proxy-Latenzen
+      tatsaechlich gefallen sind; Zaehler:
+      `select count(*) from heartbeat_runs where error like '%classifier_unavailable%' and started_at > now() - interval '24 hours';`
+      Rueckweg: `~/.paperclip/piiproxy-plist-backup-20261004-082417-vor-rollentausch.plist`.
+      *(2026-10-04, Chat: Strands und PII-Fallback)*
+
+- [ ] **`gemma-4-31b-it@q8_0` auf WHITESTAG-AI ist ein 1,26-GB-Teildownload** —
+      ein 31B-Modell in Q8 hat rund 33 GB. Die Leiche wuerde beim Q8-Umstieg als
+      „ist ja schon da" durchgehen und beim Laden scheitern. Entweder sauber neu
+      ziehen oder loeschen. *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
 
 - [ ] **★KV-Quantisierung ist die Bedingung fuer 4 Slots — und per CLI nicht
       setzbar** — `gemma-4-31b-it` mit ctx 98304 × 4 passt nur mit K- und
@@ -410,6 +730,61 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Am 07.09. ueber @31–@34 null Treffer. Gegenrichtung beachten: Commit
       `bc4bd41` (21.08.) vergroessert das autogefittete Fenster noch.
       *(2026-09-07, Chat: Kontext-Bedarf und MLX-Autofit)*
+
+- [ ] **★LM Studio laedt beim Start Modelle, die niemand braucht — Quelle
+      unauffindbar** — in der Nacht zum 19.09. lagen `google/gemma-4-31b`
+      (33,8 GB) und `qwen/qwen3.6-35b-a3b` (20,4 GB) dauerhaft im Speicher,
+      **beide ohne einen einzigen Nutzer** (0 Treffer in `agents`, n8n-Nodes,
+      Tagger-Templates, PII-Proxy, Wake-Satellit) und beide per MLX-Autofit auf
+      262.144 Kontext. Von 128 GB waren **176 MB** frei; 48 Runs scheiterten.
+      **Per JIT waren sie es nicht** — JIT-geladene Modelle tragen in
+      `lms ps --json` ein `ttlMs`, diese hatten keins. Eine Autostart-Liste ist
+      in `~/.lmstudio/settings.json`, `cli-pref.json`, `ui-state/` und
+      `.internal/` **nicht auffindbar**; `lastLoadedModels` ist nur eine
+      Historie. Vermutlich Sitzungswiederherstellung — **pruefbar nur in der
+      GUI**: beide auswerfen, LM Studio neu starten, nachsehen ob sie
+      wiederkommen. Relevante Schalter dort (Zahnrad → Developer):
+      `jitModelTTL.ttlSeconds: 3600`, `unloadPreviousJITModelOnLoad: false`,
+      `modelLoadingGuardrails.alwaysAllowLoadAnyway: true`.
+      **Abgesichert ist die Lage trotzdem:** der neue Entlade-Waerter
+      `ai.whitestag.model-evict` raeumt sie spaetestens nach 20 Minuten weg,
+      egal wer sie laedt. *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
+
+- [ ] **Drei Modell-Entscheidungen offen (Rueckfragen vom 19.09. unbeantwortet)** —
+      (1) Die lokale MLX-Kopie `qwen/qwen3.6-35b-a3b` (**20,4 GB**) hat null
+      Referenzen; das Pendant laeuft auf WHITESTAG-AI. Platte freigeben oder
+      nur nicht mehr laden? (2) `qwen/qwen3-32b` und `qwen3-32b-dwq` (je
+      **18,5 GB**) liegen ungeladen und ohne Referenz — Kandidaten fuers
+      NAS-Archiv, vgl. `project_lmstudio_model_archive`. (3) Die **12 Agenten
+      mit Primaer `qwen3.6-35b-a3b`** haben als Fallback `gemma-4-31b-it` —
+      ein anderes Modell, aber **auf demselben Node**. Faellt LM Link aus (in
+      der Nacht 693 `peer_keepalive_timeout`), faellt beides aus. Die 25
+      gemma-Agenten wurden am 19.09. auf das lokale `google/gemma-4-12b`
+      umgestellt; fuer die 12 steht die Entscheidung aus.
+      **Falle bei (1)/(2):** `lms ls` zeigt bei `qwen/qwen3.6-35b-a3b` einen
+      Namen, der **nicht** als Ladeschluessel taugt (`lms load` → „Model not
+      found"). *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
+
+- [ ] **Entprellung im Error-Handler V8 ist im Feld unbewiesen** — die Logik ist
+      per Unit-Test mit dem echten Fehlerobjekt aus WHI-9017 belegt und der
+      Normalpfad end-to-end (3 Fehler → 3 Issues), **der Sammel-Pfad aber
+      nicht**: Seit dem Deploy um 09:12 kam kein echter IMAP-Abbruch mehr.
+      Kuenstlich nicht ausloesbar — n8n verpackt selbst geworfene Fehler anders
+      (`err.name` wird zu `Error`, die `description` ueberschrieben), der
+      IMAP-Text kommt am Error-Trigger gar nicht an. **Beim naechsten echten
+      Abbruch gegenlesen:** Es darf hoechstens **eine** Issue je Workflow und
+      Tag entstehen, Titel `n8n-Fehler: <Workflow> — IMAP-Verbindungsabbrueche
+      — <Datum>`. Pruefen mit:
+      `select title, count(*) from issues where title like '%IMAP-Verbindungsabbrueche%' group by 1;`
+      *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
+
+- [ ] **model-evict: Zehn-Minuten-Takt noch unbeobachtet** — der Job
+      `ai.whitestag.model-evict` wurde am 19.09. um 09:58 per `bootstrap`
+      gestartet (Exit 0, ein sauberer Lauf im Log), der **erste Lauf aus dem
+      `StartInterval` fiel aber noch nicht**. Beim naechsten Blick pruefen, ob
+      regelmaessig Eintraege dazukommen:
+      `grep -c "model-evict:" ~/.paperclip/logs/model-evict.log`
+      *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
 
 ## Kontaktrecherche-Agent (Clara Sound, R9)
 
@@ -499,6 +874,29 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Zuruecksetzen hilft also nicht. Hebel waere, die KPI-Sammlung inkrementell
       zu machen. *(2026-09-06, Chat: Kontaktrecherche-Agent Clara)*
 
+- [ ] **Entscheidungsqualitaet des Triage-Gates von Hand gegenpruefen, dann
+      scharfschalten** — `tools/issue-triage-gate` (Commit `11ab3c1c8`) liest
+      Option-Logprobs eines lokalen Modells und entscheidet typisiert mit
+      Konfidenzschwelle: darueber automatisch, darunter an einen Menschen mit
+      sichtbarer Neigung. Gemessen an 40 `blocked`-Issues gegen
+      `google/gemma-4-12b-qat`: Schwelle 0,90 laesst **33 von 40** automatisch
+      laufen, 0,95 laesst 28 von 40; Latenz median 120 ms; Masse auf erlaubten
+      Optionen 1,000; **stabil** (40 Issues zweimal gelaufen, 0 Entscheidungen
+      gekippt). **Was fehlt, ist der Qualitaetsnachweis** — es gibt keine
+      gelabelten Faelle, belegt ist nur, dass das Verfahren traegt und klare von
+      unklaren Faellen trennt, **nicht dass es richtig entscheidet**. Rezept:
+      `python3 triage.py --limit 40` liefert genau die Liste fuer eine
+      Handstichprobe; stimmen die Zuordnungen, kann das Gate an die
+      Halden-Bereinigung (Eintrag im Abschnitt „Recovery-Mechanismus"). Es ist
+      bewusst **nicht scharfgeschaltet**: kein launchd-Job, keine Spiegelung
+      nach `~/.paperclip/`, `triage.py` schreibt nichts.
+      **Fallen stehen im README** — ohne `reasoning_effort: "none"` liefert
+      LM Studio gar keine Logprobs, und ein Cache-Busting-Zeitstempel im Zustand
+      verschiebt die Konfidenz (0,82 → 0,89) genug, um an der Schwelle zu kippen.
+      Hintergrund der Entscheidung gegen zugekaufte Modelle (Jev/TypeSafe:
+      gehostet, geschlossen, dokumentierte Prompt-Injection) steht im Chatverlauf.
+      *(2026-10-05, Chat: Strands und PII-Fallback)*
+
 ## Aufraeum-Rezept (fuer die naechste Runde)
 
 - [ ] **Vor jeder Massenfreigabe pruefen** — `~/.lmstudio/bin/lms ps` (Modelle
@@ -524,6 +922,13 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       zweite Bremse die `llm_error` der letzten 10 Minuten mitpruefen (bei ≥ 3
       weiter warten). Schwelle 3 ist zu streng — der Lauf wartet dann fast nur
       noch. *(2026-09-11, Chat: WHITESTAG Agenten-Aufsicht)*
+      **Ausreisser gefunden 19.09.: der SEO/GEO-Spezialist hat
+      `maxConcurrentRuns: 20`**, nicht 1 — die Aussage „bei allen 27 Agenten
+      gesetzt" stimmt also nicht mehr (oder stimmte nie fuer diesen Agenten).
+      Steht in `runtime_config.heartbeat`. Nicht angefasst, weil ungeprueft ist,
+      ob das eine bewusste Entscheidung war. Nachweis:
+      `select name, runtime_config->'heartbeat'->>'maxConcurrentRuns' from agents order by 2 desc nulls last;`
+      *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
 
 - [ ] **Beim Massen-Cancel niemals `comment` mitschicken** — weckt den Assignee
       trotz `status: cancelled` (436 Issues = 339 unnoetige Runs). Begruendung
@@ -562,6 +967,24 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       *(2026-09-11, Chat: Routinen-Lastverteilung)*
 
 ## Repo-Stand und Deploy
+
+- [ ] **★★Der Dev-Server laeuft im Watch-Modus und laedt trotzdem NICHT nach** —
+      am 15.09. gemessen: `server/src/services/recovery/service.ts` um 09:39:05
+      geaendert, der Serverprozess lief unveraendert **seit dem 13.09. 08:40**
+      weiter. Das Kommando ist `pnpm dev` → `dev-runner.ts watch`, der Watcher
+      ist also da — auf dem **SynologyDrive-CloudStorage-Mount** kommen die
+      Dateisystem-Events aber offenbar nicht durch. **Folge: Ein Commit allein
+      ist hier kein Deploy.** Ohne `launchctl kickstart -k gui/$UID/ing.paperclip.dev`
+      waere der Recovery-Fix committet, gepusht und wirkungslos gewesen — genau
+      die Klasse Fehler, die die Selbstheilung elf Tage lautlos abgeschaltet hat.
+      **Merksatz:** nach jeder Serveraenderung die Prozess-Startzeit gegen die
+      mtime der Datei pruefen (`ps -o lstart= -p <pid>` vs. `stat -f %Sm`), nicht
+      auf den Watcher vertrauen. Zu klaeren, ob sich das per Polling-Watcher
+      (`CHOKIDAR_USEPOLLING`) beheben laesst — sonst bleibt der Neustart Pflicht.
+      **Nebenbefund:** Beim Neustart gehen laufende Runs als `process_lost`
+      verloren (zwei am 15.09.); sie werden automatisch neu gestartet, aber ein
+      Wartefenster auf `running = 0` ist die freundlichere Variante.
+      *(2026-09-15, Chat: Mailhub und Recovery-Kaskade)*
 
 - [ ] **★★`tools/` hinkt der Live-Fassung hinterher — nicht umgekehrt** — in
       **allen acht** geprüften Dateien ist `~/.paperclip/scripts/` führend. Am
@@ -673,3 +1096,38 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       PRs zu bewerten: pruefen, ob `packages/brain` die verwundbaren Pfade
       ueberhaupt beruehrt, und ggf. auf eine gefixte Version heben.
       *(2026-09-12, Chat: GitHub-Fehlermails Upstream-PRs)*
+
+- [ ] **Zwei Commits vom 19.09. sind nicht gepusht** — `bb8e91cbf`
+      (`fix(tagger)`: WHITESTAG-Tagger auf den neuen Modell-Identifier) und
+      `0883d9b1c` (`feat(model-warden)`: Entlade-Waerter). Der Branch
+      `fix/backup-leere-ref-ordner` hat **keinen Upstream**, ein Push muesste
+      ihn also erst setzen — Ziel waere `fork` (whitestagai), **nicht** `origin`
+      (paperclipai, fremd). *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
+
+- [ ] **n8n laeuft mit weniger erlaubten Modulen als die `.zshrc` vorgibt** —
+      der laufende Prozess hat `NODE_FUNCTION_ALLOW_EXTERNAL=pg`, in
+      `~/.zshrc` steht `pg,imapflow`. `NODE_FUNCTION_ALLOW_BUILTIN` stimmt
+      dagegen ueberein. n8n wurde also gestartet, bevor `imapflow` ergaenzt
+      wurde — beim naechsten Neustart faellt es von selbst zusammen, bis dahin
+      scheitert jeder Code-Node, der `imapflow` importiert. Nachweis:
+      `ps eww <n8n-pid> | tr ' ' '\n' | grep NODE_FUNCTION`
+      *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
+
+- [ ] **★n8n-API-Key liegt doppelt — zweite Kopie in der VS-Code-History** — der
+      vorgesehene Ort ist `~/.whitestag.env` (dort korrekt). Daneben liegt seit
+      dem **26.07.2026** eine Sicherungskopie in
+      `~/Library/Application Support/Code/User/History/-2d0a5efe/Fkn7.env` mit
+      `N8N_API_KEY` im **Klartext** — VS Code legt sie beim Bearbeiten einer
+      `.env` automatisch an. Genau **eine** solche Datei mit genau **einer**
+      Variablen, sonst nichts (geprueft ueber die ganze History).
+      Der Ort wird von niemandem gepflegt, bei einer Rotation nicht
+      mitgezogen und kann in Backups landen.
+      **Zu entscheiden:** History-Kopie loeschen (verlustfrei, es ist reine
+      Editor-Historie) und/oder den Key rotieren. Nicht angefasst, weil ein
+      Loeschen ausserhalb des Auftrags lag.
+      Gegenprobe (zeigt nur Namen, keine Werte):
+      `find ~/Library/Application\ Support/Code/User/History -name '*.env' -exec grep -hoE '^[A-Z0-9_]+(_KEY|_SECRET|_PASSWORD|_TOKEN)=' {} \;`
+      **Unbedenklich gegengeprueft:** die Agenten-`run-logs` enthalten nur den
+      Variablen*namen* in Shell-Kommandos, keinen Wert; `n8n_rest.py` liest aus
+      der Umgebung bzw. `~/.whitestag.env`.
+      *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*

@@ -155,7 +155,15 @@ always-on — WHITESTAG-AI steht dort nicht.
 
 **Diese Umstellung ist nur sinnvoll, wenn der Node dauerhaft laeuft und
 erreichbar bleibt.** Ist das nicht gegeben, bleibt der 12B-Fallback die
-bessere Wahl. Zu bestaetigen vor Schritt 1.
+bessere Wahl.
+
+**Stand 2026-10-06:** Walter nennt dauerhaften Betrieb als Ziel — damit
+bleibt das Konzept. **Belegt ist er nicht:** der Node war an diesem Tag
+dreimal nicht erreichbar (bei Sitzungsbeginn, und zweimal nach dem
+Rename-Versuch). Letzter Zugriff im Studio-Serverlog: 11:51:58. Vor der
+Umstellung der 37 Agenten gehoert die Erreichbarkeit ueber mehrere Tage
+geprueft; das Gate in Task 6 Step 1 des Plans prueft sie nur im Moment der
+Umstellung.
 
 ## Entscheidungen
 

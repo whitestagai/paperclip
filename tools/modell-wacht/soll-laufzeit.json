@@ -73,5 +73,44 @@
       "bei 47.180 Token liegt — sein p50 von 0 wäre die falsche Bezugsgröße.",
       "Seit 25.08. zusätzlich Klassifikator des PII-Proxys."
     ]
+  },
+
+  "gemma-4-31b-win": {
+    "contextLength": 98304,
+    "parallel": 2,
+    "begruendung": [
+      "Fallback der 25 gemma-Agenten auf dem Node WHITESTAG-AI seit 06.10.2026.",
+      "",
+      "98304 ist dieselbe Untergrenze wie bei den Primaermodellen: unterhalb",
+      "BUDGET_LOOKUP_THRESHOLD_TOKENS = 32000 kuerzt der Adapter nicht. Ein",
+      "Fallback mit kleinerem Fenster laeuft in max_iterations statt zu helfen.",
+      "",
+      "parallel 2, nicht 4: der Node hat 56 GB VRAM (RTX 5090 + RTX 3090) und",
+      "traegt zwei Modelle mit zusammen 48,99 GB Gewichten. 4+4 forderten",
+      "1,57 Mio Slot-Token aus den verbleibenden ~6,5 GiB — dieselbe",
+      "Ueberbuchung, die auf der rtx am 26.08.2026 die Timeout-Welle ausloeste.",
+      "",
+      "WARNUNG: das Modell liegt am Node auch unter dem modelKey",
+      "«gemma-4-31b-it» (Q4_K_M, not-loaded). Diese ID ist die am 03.10.2026",
+      "aus allen Konfigurationen entfernte — sie loest wieder auf (HTTP 200)",
+      "und wuerde bei justInTimeModelLoading eine ZWEITE Instanz mit",
+      "Default-Preset laden. Niemals darauf verweisen."
+    ]
+  },
+
+  "qwen3.6-35b-win": {
+    "contextLength": 98304,
+    "parallel": 2,
+    "begruendung": [
+      "Fallback der 12 qwen-Agenten inkl. C-Suite auf dem Node seit 06.10.2026,",
+      "vorher google/gemma-4-12b (ein 12B als Fallback eines 35B).",
+      "",
+      "Gleiche Untergrenze und gleiche Slot-Begruendung wie gemma-4-31b-win.",
+      "",
+      "Bewusst Q6_K (28,22 GiB) und NICHT die kleinere Q4_K_M-Variante",
+      "(lmstudio-community/qwen3.6-35b-a3b, 20,55 GiB), die am Node ebenfalls",
+      "liegt: als Fallback ist Kapazitaet nicht der Engpass, Qualitaet geht vor.",
+      "Primaermodell bleibt qwen3.6-35b-a3b in Q8_0 auf der rtx."
+    ]
   }
 }

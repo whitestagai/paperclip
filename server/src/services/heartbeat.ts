@@ -2194,6 +2194,12 @@ function buildProcessLossMessage(run: {
   return "Process lost -- server may have restarted";
 }
 
+// Runs currently executing in this process. Module-level on purpose: routes build
+// their own heartbeatService instances, and the periodic reaper (index.ts) must see
+// runs started by any of them. Adapters without a local child process are not
+// covered by runningProcesses, so a per-instance set let the reaper kill them.
+const activeRunExecutions = new Set<string>();
+
 function truncateDisplayId(value: string | null | undefined, max = 128) {
   if (!value) return null;
   return value.length > max ? value.slice(0, max) : value;
@@ -2340,7 +2346,6 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     environmentRuntime,
   });
   const workspaceOperationsSvc = workspaceOperationService(db);
-  const activeRunExecutions = new Set<string>();
   const budgetHooks = {
     cancelWorkForScope: cancelBudgetScopeWork,
   };

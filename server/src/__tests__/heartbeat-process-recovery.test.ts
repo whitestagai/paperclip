@@ -872,6 +872,49 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     return { companyId, agentId, runId, wakeupRequestId, issueId };
   }
 
+  it("does not reap a run that a different heartbeat service instance is still executing", async () => {
+    // Routes (issues, agents, approvals, ...) each build their own heartbeatService,
+    // while the periodic reaper runs on the instance from index.ts. A run executed
+    // by a route instance must stay visible to the reaper; adapters without a local
+    // child process (lmstudio_local) are not covered by runningProcesses.
+    let releaseAdapter!: () => void;
+    const adapterGate = new Promise<void>((resolve) => {
+      releaseAdapter = resolve;
+    });
+    let adapterStarted!: () => void;
+    const adapterStartedSignal = new Promise<void>((resolve) => {
+      adapterStarted = resolve;
+    });
+    mockAdapterExecute.mockImplementationOnce(async () => {
+      adapterStarted();
+      await adapterGate;
+      return {
+        exitCode: 0,
+        signal: null,
+        timedOut: false,
+        errorMessage: null,
+        summary: "Finished after a long in-process adapter call.",
+        provider: "test",
+        model: "test-model",
+      };
+    });
+
+    const { runId } = await seedQueuedIssueRunFixture();
+    const routeInstance = heartbeatService(db);
+    const reaperInstance = heartbeatService(db);
+
+    await routeInstance.resumeQueuedRuns();
+    await adapterStartedSignal;
+
+    const result = await reaperInstance.reapOrphanedRuns();
+    expect(result.reaped).toBe(0);
+    expect((await reaperInstance.getRun(runId))?.status).toBe("running");
+
+    releaseAdapter();
+    const settled = await waitForRunToSettle(routeInstance, runId);
+    expect(settled?.status).toBe("succeeded");
+  });
+
   it("keeps a local run active when the recorded pid is still alive", async () => {
     const child = spawnAliveProcess();
     childProcesses.add(child);

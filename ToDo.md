@@ -4,6 +4,59 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 
 ## Farm-Stabilitaet
 
+- [ ] **★★Link-Detektor-Datenbanken nicht erreichbar — harter Befund der
+      Modell-Aufsicht** — die Aufsicht meldet seit dem Vormittag des 07.10.
+      `quelle_unlesbar` mit der Postgres-Meldung „Is the server running on that
+      host and accepting TCP/IP connections?" und hat um 09:58 das Issue
+      `1b4921d4-99dc-4630-9fec-74f6747514b8` angelegt. Seitdem „unveraendert,
+      keine neue Meldung" — es kommt also keine zweite Erinnerung. Solange die
+      Quelle stumm ist, prueft die Aufsicht **4 Referenzen weniger** (163 statt
+      167), ohne das als Luecke auszuweisen. Der Link-Detektor hat ZWEI
+      Datenbank-Instanzen, die einzeln zu pruefen sind.
+      Nicht untersucht, lag ausserhalb des Auftrags.
+      *(2026-10-07, Chat: WHITESTAG-AI Fallback-Node)*
+
+- [ ] **`google/gemma-4-12b` laeuft mit Fenster 131328 statt 65536** — hat
+      sich im Lauf des 07.10. geaendert (um 09:09 war es noch 65536),
+      Schwere niedrig. Vermutlich per Just-in-Time nachgeladen, das die
+      `-c`-Vorgabe mit dem Default-Preset ueberschreibt. Kostet Speicher auf
+      der Studio, die ohnehin 26 Primaermodelle traegt. Entweder das Soll
+      anheben und begruenden oder die Default-Load-Config nachziehen.
+      *(2026-10-07, Chat: WHITESTAG-AI Fallback-Node)*
+
+- [ ] **Node in die Nacht-Architektur aufnehmen** — in der Notiz zur
+      LLM-Nacht-Architektur stehen Studio, MacBook und RTX als always-on, die
+      WHITESTAG-AI fehlt. Seit dem 07.10. ist sie Fallback-Traeger von 37
+      Agenten, also genauso betriebskritisch. Angeboten, nicht erledigt.
+      *(2026-10-07, Chat: WHITESTAG-AI Fallback-Node)*
+
+- [ ] **Zwei Commits mit unpassendem Betreff aufraeumen (oder bewusst lassen)**
+      — `f9e1893e2 docs(spec): Quantisierung …` enthaelt 458 Zeilen `ToDo.md`,
+      `96d08d761 fix(plan): Aufsicht …` einen fremden Altplan vom 11.09.
+      Beides durch unsauberes `git add` (`-a` bzw. `-A <ordner>` mit untracked
+      Dateien). Inhaltlich gehoert beides ins Repo, nur die Betreffe passen
+      nicht. Nicht korrigiert, weil gepusht — ein History-Rewrite auf einem
+      Branch mit fremder Arbeit ist eine Entscheidung des Menschen.
+      *(2026-10-07, Chat: WHITESTAG-AI Fallback-Node)*
+
+- [ ] **Branch-Abschluss `fix/backup-leere-ref-ordner`** — die
+      Node-Einbindung (14 Commits) liegt auf diesem Branch, der auch fremde
+      Arbeit traegt (nextcloud-backup, wake-satellite, test_evict). Der
+      merge-base zu master liegt weit zurueck: ein Review-Paket gegen master
+      umfasste 24 Commits und 37 Dateien. Zu entscheiden: PR nach master,
+      Umsortieren auf einen eigenen Branch, oder offen lassen.
+      *(2026-10-07, Chat: WHITESTAG-AI Fallback-Node)*
+
+- [ ] **Reasoning-Abschaltung fuer qwen3.6 im lmstudio-Adapter verankern** —
+      gemessen senkt ein leerer `<think></think>`-Block als Assistant-Prefill
+      die Antwortzeit von 9,86 s auf **1,85 s** (Faktor 5,3) bei gleicher
+      Generierungsrate. `reasoning_effort: none` wirkt bei diesem Modell
+      **nicht** und verschlechtert messbar. Der Hebel sitzt im Adapter
+      (`opensource/paperclip-adapter-lmstudio`), dort wo die drei
+      `reasoning_effort`-Pfade liegen. Betrifft die 12 qwen-Agenten inkl.
+      C-Suite. Eigener Vorgang, weil Antwortqualitaet zu pruefen ist.
+      *(2026-10-07, Chat: WHITESTAG-AI Fallback-Node)*
+
 - [ ] **n8n-Betriebsingenieur: 92x `400 bad_request` in 16 Tagen — zugesagt, nicht
       diagnostiziert** — jeder Lauf scheitert zunaechst mit
       `Claude run failed: subtype=success: API Error: 400 bad_request` und
@@ -530,11 +583,17 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Modell-Aufsicht meldet seither `unbekannt: 0`. Das 31B liegt jetzt lokal auf
       der Studio im `resident-set` (ctx 98304), das MacBook-MLX braucht es damit
       nicht mehr — die zweimal angebotene Entscheidung ist gegenstandslos.
-      **Offen bleibt nur, was die Flotte selbst angefasst hat:** Sie hat
-      WHITESTAG-AI als Fallback-Geraet beider Agentenfamilien eingetragen
-      (Commits `27ea81930`, `ae7149875`, `1cb7eb080`, noch unpushed) — ob das so
-      gewollt und wirksam ist, ist von hier aus **nicht geprueft**.
-      *(2026-09-22, Chat: LLM-Farm und Netzausfall; erledigt 2026-10-04, Chat: Tote Modell-ID)*
+      **ERLEDIGT 2026-10-07:** Die Commits `27ea81930`, `ae7149875`,
+      `1cb7eb080` waren **nicht die Flotte**, sondern diese Session — sie sind
+      gewollt, gepusht und geprueft. Alle 37 lmstudio-Agenten haben jetzt
+      Primaermodell und Fallback auf verschiedenen Geraeten (gegen die
+      laufenden Instanzen geprueft: 0 Verstoesse, vorher 25). Wirksamkeit
+      belegt: an einem Agenten das Primaermodell gebrochen, Lauf endete
+      `succeeded` und `cost_events` bucht `gemma-4-31b-win`.
+      Siehe `docs/superpowers/specs/2026-10-06-whitestag-ai-node-farm-einbindung-design.md`.
+      *(2026-09-22, Chat: LLM-Farm und Netzausfall; erledigt 2026-10-04, Chat:
+      Tote Modell-ID; Restfrage beantwortet 2026-10-07, Chat: WHITESTAG-AI
+      Fallback-Node)*
 
 - [ ] **★Die Sekretaerin laeuft in einem LEEREN Fallback-Workspace** — sie rief
       `luna-queue-approval.py` ueber einen selbstgebauten Pfad mit zwei UUIDs

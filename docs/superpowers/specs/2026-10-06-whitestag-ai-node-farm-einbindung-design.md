@@ -157,8 +157,24 @@ always-on — WHITESTAG-AI steht dort nicht.
 erreichbar bleibt.** Ist das nicht gegeben, bleibt der 12B-Fallback die
 bessere Wahl.
 
-**Stand 2026-10-06:** Walter nennt dauerhaften Betrieb als Ziel — damit
-bleibt das Konzept. **Belegt ist er nicht:** der Node war an diesem Tag
+**Stand 2026-10-07: UMGESETZT.** Beide Wellen sind durch, alle 37 Agenten
+haben Primaermodell und Fallback auf verschiedenen Geraeten (gegen die
+laufenden Instanzen geprueft: 0 Verstoesse, vorher 25). Die Erreichbarkeit
+ist jetzt belegt: `tools/node-wacht/erreichbarkeit.sh` protokolliert alle
+15 Minuten; in der ersten Nacht 51 von 51 Messpunkten `connected`, beide
+Fallback-Modelle durchgehend HTTP 200, kein einziger Aussetzer. Die
+Fehlerlast blieb im Band der Vorwoche (16-75 fehlgeschlagene Laeufe je
+Tag). Der Node-Fallback wurde im Normalbetrieb NICHT gebraucht — genau
+ein Aufruf auf `gemma-4-31b-win`, und das war der Nachweis-Testlauf.
+
+Ursache der Ausfaelle am 06.10. war das Windows-Netzwerkprofil
+`NetworkCategory: Public` auf dem PC: Windows blockiert dort die lokale
+Geraeteerkennung, obwohl der IP-Weg frei ist (Ping 2-11 ms, gleiches
+Subnetz). Fix: `Set-NetConnectionProfile -NetworkCategory Private` in
+einer ERHOEHTEN PowerShell, dann `lms link disable` + `enable` am PC.
+
+**Vorherige Lage (2026-10-06):** Walter nannte dauerhaften Betrieb als
+Ziel. **Belegt war er nicht:** der Node war an diesem Tag
 dreimal nicht erreichbar (bei Sitzungsbeginn, und zweimal nach dem
 Rename-Versuch). Letzter Zugriff im Studio-Serverlog: 11:51:58. Vor der
 Umstellung der 37 Agenten gehoert die Erreichbarkeit ueber mehrere Tage

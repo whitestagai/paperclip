@@ -36,3 +36,18 @@ def test_same_model_two_devices_independent():
     actions = plan_actions(desired, loaded, DEVICES, {"studio", "macbook", "rtx"})
     # macbook-Instanz fehlt -> genau ein load
     assert [ (a["action"], a["entry"]["device"]) for a in actions ] == [("load", "macbook")]
+
+
+def test_match_ueber_identifier_wenn_er_vom_model_key_abweicht():
+    """Am Node ist ps_key der Identifier, nicht der modelKey.
+
+    Ohne Abgleich gegen den Identifier gilt das Soll als unerfuellt und der
+    Lader wuerde bei JEDEM Lauf erneut laden.
+    """
+    desired = [{"device": "whitestag-ai", "ps_key": "gemma-4-31b-win",
+                "load_key": "gemma-4-31b-it@q4_k_m", "ctx": 98304,
+                "parallel": 2, "when": "always"}]
+    loaded = [{"model_key": "gemma-4-31b-it@q4_k_m",
+               "identifier": "gemma-4-31b-win", "ctx": 98304, "device_id": "W1"}]
+    devices = {"studio": "S1", "rtx": "R1", "whitestag-ai": "W1"}
+    assert plan_actions(desired, loaded, devices, {"studio", "rtx", "whitestag-ai"}) == []

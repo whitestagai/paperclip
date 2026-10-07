@@ -160,12 +160,30 @@ bessere Wahl.
 **Stand 2026-10-07: UMGESETZT.** Beide Wellen sind durch, alle 37 Agenten
 haben Primaermodell und Fallback auf verschiedenen Geraeten (gegen die
 laufenden Instanzen geprueft: 0 Verstoesse, vorher 25). Die Erreichbarkeit
-ist jetzt belegt: `tools/node-wacht/erreichbarkeit.sh` protokolliert alle
-15 Minuten; in der ersten Nacht 51 von 51 Messpunkten `connected`, beide
-Fallback-Modelle durchgehend HTTP 200, kein einziger Aussetzer. Die
-Fehlerlast blieb im Band der Vorwoche (16-75 fehlgeschlagene Laeufe je
-Tag). Der Node-Fallback wurde im Normalbetrieb NICHT gebraucht — genau
-ein Aufruf auf `gemma-4-31b-win`, und das war der Nachweis-Testlauf.
+ist fuer EINE Nacht belegt: `tools/node-wacht/erreichbarkeit.sh`
+protokolliert alle 15 Minuten; von 52 Messpunkten waren 51 `connected`,
+beide Fallback-Modelle durchgehend HTTP 200. Der eine Abweicher ist der
+erste Testlauf um 20:30:39 VOR der stderr-Korrektur im Skript, also ein
+Skriptfehler und kein Ausfall.
+
+**Abweichung vom eigenen Kriterium:** dieser Abschnitt verlangte unten
+eine Pruefung ueber MEHRERE Tage, und Erfolgskriterium 5 nennt 7 Tage.
+Umgestellt wurde nach einer Nacht. Begruendung: fuer die 25 gemma-Agenten
+war der bisherige Fallback wertlos (gleiches Geraet wie das
+Primaermodell), ihr Zustand konnte durch einen zeitweise fehlenden Node
+nicht schlechter werden; fuer die 12 qwen-Agenten lag ein funktionierender
+Fallback vor, deshalb kam Welle B erst nach der Nacht. Die Beobachtung
+laeuft weiter — faellt der Node in den naechsten Tagen aus, ist Welle B
+zurueckzunehmen.
+
+Die Fehlerlast blieb im Band der Vorwoche: fehlgeschlagene Laeufe
+16-75 je Tag (06.10.=74, 07.10.=18), und bei der eigentlich
+aussagekraeftigen Groesse **`max_iterations`** — der Fehlersorte, die ein
+zu kleines Fallback-Fenster erzeugt — 7-46 in der Vorwoche gegen
+**9 am 06.10. und 11 am 07.10.**, also keine Erhoehung.
+
+Der Node-Fallback wurde im Normalbetrieb NICHT gebraucht — genau ein
+Aufruf auf `gemma-4-31b-win`, und das war der Nachweis-Testlauf.
 
 Ursache der Ausfaelle am 06.10. war das Windows-Netzwerkprofil
 `NetworkCategory: Public` auf dem PC: Windows blockiert dort die lokale
@@ -198,7 +216,8 @@ Umstellung.
   `parallel 2`.
 - Resident-Set kennt das Geraet `whitestag-ai` mit beiden Modellen.
 - `soll-laufzeit.json` fuehrt beide Modelle begruendet; die Modell-Aufsicht
-  laeuft ohne Befund durch.
+  laeuft ohne HARTEN Befund durch (drei Befunde der Schwere niedrig
+  bestehen unabhaengig von dieser Arbeit).
 - Die 25 gemma-Agenten haben `fallbackModel = gemma-4-31b-win`.
 - Die 12 qwen-Agenten haben `fallbackModel = qwen3.6-35b-win`.
 - Kein Agent hat Primaermodell und Fallback auf demselben Geraet.
@@ -262,8 +281,12 @@ beobachten.
    Abschluss — nicht nur eine gesetzte Konfiguration.
 2. Kein Agent mit Primaermodell und Fallback auf demselben Geraet
    (heute: 25 Verstoesse).
-3. Keine neuen `max_iterations`-Fehler gegenueber der Vorwoche.
-4. `modell-wacht/pruefung.py` ohne Befund.
+3. Keine neuen `max_iterations`-Fehler gegenueber der Vorwoche — zu
+   zaehlen als `count(*) FILTER (WHERE error_code ILIKE '%max_iter%')` je
+   Tag auf `heartbeat_runs`, nicht als `status='failed'` gesamt.
+4. `modell-wacht` ohne harten Befund — zu pruefen per Import von
+   `pruefe()` und `signatur()`, NICHT per `python3 pruefung.py`: diese
+   Datei hat keinen `__main__`-Block und liefert immer Exit 0.
 5. Primaerlast unveraendert — `cost_events` zeigt nach 7 Tagen keine
    nennenswerte Last auf den Node-IDs. Einzelne Aufrufe dort sind der
    erwartete Fall (ein greifender Fallback), ein dauerhafter Anteil waere

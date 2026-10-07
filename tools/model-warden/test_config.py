@@ -22,6 +22,15 @@ def test_loads_real_set():
     # demselben Geraet wie das Primaermodell.
     assert ("gemma-4-31b-it@q4_k_m", "whitestag-ai") in keys
     assert ("abiray/qwen3.6-35b-a3b", "whitestag-ai") in keys
+    # Die ps_keys MUESSEN separat zugesichert werden: `keys` oben bildet
+    # sich aus load_key (der Modelldatei), aber der Wert, der bei 37
+    # Agenten als fallbackModel steht und ueber den sie den Node
+    # ueberhaupt erreichen, ist der ps_key (der LM-Studio-Identifier).
+    # Ein Tippfehler darin wird von NICHTS anderem gefunden —
+    # modell-wacht liest resident-set.json nicht, nur soll-laufzeit.json.
+    ps_keys = {(e["ps_key"], e["device"]) for e in entries}
+    assert ("gemma-4-31b-win", "whitestag-ai") in ps_keys
+    assert ("qwen3.6-35b-win", "whitestag-ai") in ps_keys
 
 def test_rejects_unknown_device(tmp_path):
     p = tmp_path / "bad.json"

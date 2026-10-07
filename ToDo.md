@@ -4,6 +4,20 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 
 ## Farm-Stabilitaet
 
+- [ ] **n8n-Betriebsingenieur: 92x `400 bad_request` in 16 Tagen — zugesagt, nicht
+      diagnostiziert** — jeder Lauf scheitert zunaechst mit
+      `Claude run failed: subtype=success: API Error: 400 bad_request` und
+      **gelingt rund 12 Sekunden spaeter im Folgeversuch** (Modell
+      `claude-sonnet-4-6`). Es haengt also nichts, aber jeder Lauf verbrennt einen
+      Versuch, und der erste Fehlschlag zaehlt in jede Fehlerstatistik der Flotte
+      hinein. Zuletzt am 04.10. 11:30 beobachtet. Das Modell ist nicht die
+      Ursache — der Folgeversuch nutzt dasselbe. Verdacht: fehlerhafter Request
+      (Tool-Schema oder Kontextgroesse) beim ersten Anlauf.
+      Einstieg: `stderr_excerpt`/`stdout_excerpt` und `log_ref` eines
+      `adapter_failed`-Laufs lesen —
+      `select error_code, count(*), max(started_at) from heartbeat_runs r join agents a on a.id=r.agent_id where a.name='n8n-Betriebsingenieur' and r.status='failed' group by 1;`
+      *(2026-10-06, Chat: Tote Modell-ID)*
+
 - [ ] **★★Die Brain-/Vault-Werkzeuge erreichen die Agenten ueberhaupt nicht** —
       in **300 Runs ueber 48 Stunden kein einziger** `vault.*`-Aufruf,
       stattdessen **400x `shell_exec`**. Das ist die Ursache der Blindsuche und
@@ -154,6 +168,30 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       `maxToolResultChars: 12000` liegt rechnerisch an der `maxPromptTokens`-
       Grenze von 70k — passt zum Overflow-Eintrag weiter unten.
       *(2026-09-15, Chat: Mailhub und Recovery-Kaskade)*
+      **★★04.–06.10.: ein naheliegender Verdacht ist widerlegt.** Die Vermutung
+      war, die stille Umleitung auf das kleinere `google/gemma-4-12b` (tote
+      Modell-ID, siehe eigener Eintrag) erzeuge die Flut — ein 12B braucht fuer
+      dieselbe Werkzeugkette mehr Runden. **Nach der Korrektur aller Fundorte
+      sank die Zahl NICHT:** 10-01: 13 · 10-02: 23 · 10-03: 29 · 10-04: 12 ·
+      **10-05: 46** · 10-06: 9. Der hoechste Wert liegt NACH dem Fix. Und 27 von
+      46 Fehllaeufen liefen weiter auf dem 12B — nicht wegen einer toten ID (die
+      Konfigurationen sind sauber), sondern weil `fallbackModel` bei 25 Agenten
+      regulaer dorthin zeigt und greift, wenn das 31B gerade nicht liefert.
+      **Die Diagnose vom 15.09. bleibt also gueltig und ist zweimal bestaetigt:**
+      Bei Lektorat gingen 10 von 12 Runden fuer die Suche eines Pfades weg, den
+      die Rollendatei nur vault-relativ nannte — nach der Korrektur auf den
+      absoluten Pfad las der Folgelauf beim ersten Versuch und schloss zwei
+      Issues mit substanziellen Befunden ab. Beim Clara-Vault-Maintainer fehlte
+      die `AGENTS.md` komplett (eigener Eintrag unten).
+      **Konkreter naechster Fall:** **Redaktion & PR**, seit dem 05.10. mit
+      **37 Fehllaeufen bei Grenze 12** der dominante Verursacher, Modell
+      `google/gemma-4-31b` — Laufprotokoll noch nicht angesehen.
+      **Vorgehen, das sich bewaehrt hat:** `log_ref` aus `heartbeat_runs` holen,
+      die ndjson lesen und die Werkzeugabfolge extrahieren. Geht das Budget fuer
+      Orientierung weg (`fs_glob`, `fs_list_directory`, mehrfaches `grep` nach
+      derselben Sache), fehlt ein Rezept — dann hilft weder ein groesseres Modell
+      noch eine hoehere Grenze.
+      *(2026-10-06, Chat: Tote Modell-ID)*
 
 - [ ] **`Process lost -- server may have restarted`** — 9 Treffer in einer
       Stunde am Abend des 02.09., Muster war vorher nicht da. Ursache offen:
@@ -198,6 +236,42 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 
 ## Selbstheilung und Agenten-Aufsicht
 
+- [ ] **★★Clara-Vault-Routine stillgelegt — Entscheidung ueber die Zukunft offen**
+      — der Agent (Clara Sound / Vault-Maintainer, `500a1656`) hat **keinen
+      `instructionsFilePath`**, das Issue verweist aber auf „Siehe AGENTS.md fuer
+      den vollstaendigen Ablauf". Folge: Er suchte sie im Dateisystem und
+      verbrauchte sein Budget — und wenn er doch abschloss, tat er es mit
+      **erfundenem Text**. Der als `succeeded` verbuchte Lauf vom 03.10. machte
+      sechs Schritte (Inbox, Checkout, Kontext, Kommentare, **ein einzelnes
+      `ls -R`**) und kommentierte dann „Running obsidian-tagger … All files
+      processed successfully. Frontmatter and tags are updated." Der Tagger wurde
+      nie aufgerufen.
+      **Am 04.10. abgeraeumt:** Routine auf `paused` (nicht `archived` —
+      rueckholbar), 35 hohle `done` und 8 liegengebliebene `blocked` auf
+      `cancelled`, die 30 echten bis 22.08. unberuehrt, Agent aus `error` zurueck.
+      Null Laeufe dabei ausgeloest (Status-Patch ohne `comment`, vorher an einem
+      Issue geprueft). Begruendung samt Randbedingungen steht in der
+      Routinen-Beschreibung.
+      **Und sie wird womoeglich gar nicht gebraucht:** 15.929 von 15.962
+      Markdown-Dateien im Clara-Vault haben Frontmatter (99 %); ohne die Ordner
+      `.obsidian-tagger-backup` und `.obsidian` fehlen **genau zwei**
+      (`_status.md`, `.trash/Willkommen.md`). Der Tagger lief zuletzt am
+      **22.08.** gegen Clara.
+      **Zu entscheiden:** ganz aufgeben, oder als monatliches Sicherheitsnetz neu
+      bauen. **Drei harte Randbedingungen dafuer:** (1) der lokale Spiegel
+      `~/.paperclip/clara-vault-mirror` taugt NICHT als Ziel — `sync-clara-mirror.js`
+      ist read-only mit `rsync -a --delete`, Frontmatter schreiben muss auf SMB;
+      (2) ein zsh-launchd-Job kommt nicht an SMB-Inhalte, **node schon** (Beweis:
+      `com.whitestag.brain-indexer-clara` laeuft als node-Job direkt auf dem
+      Vault); (3) `shell_exec` cappt bei 120 s — der Agent darf den Tagger nicht
+      selbst fahren, genau deshalb wurde er bei WHITESTAG in einen launchd-Dienst
+      ausgelagert. Richtige Bauweise waere also ein node-launchd-Dienst, der
+      `vault-tagger-clara-last.json` schreibt, plus eine AGENTS.md, die den
+      Agenten nur den Status lesen und **mit Zahlen** berichten laesst
+      (`exit_code`, `ok=/fail=`, Report-Pfad) — diese Belegpflicht ist das, was
+      das Fabulieren verhindert, nicht die Iterationszahl.
+      *(2026-10-04, Chat: Tote Modell-ID)*
+
 - [ ] **★Vorfall-Abschluss nachziehen — Entscheidung offen** — er liegt weiter
       **nur** in `feat/vorfall-abschluss`, waehrend die plist des Dev-Servers
       `INCIDENT_CLOSURE_ENABLED=true` setzt: eine Variable fuer Code, der im
@@ -229,6 +303,27 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
 
 ## Recovery-Mechanismus
+
+- [ ] **★Der `todo`-Stapel ist sortiert, aber nicht abgeraeumt** — 109 Issues ohne
+      Assignee, 103 davon aelter als eine Woche, 37 aelter als 30 Tage. Agenten
+      greifen per Regel **nie** nach unzugewiesener Arbeit, der Stapel ist also
+      nicht langsam, sondern tot. Triage vom 03.10.:
+      **A Modell-Aufsicht 30** — keine Altlast, sondern gueltige Tagesberichte
+      derselben Ursache (tote Modell-ID); abbrechen, sobald ein Aufsichtslauf
+      `unbekannt: 0` meldet, was seit dem 04.10. der Fall ist.
+      **B Clara-Briefings 56** — Wochen-Briefings R2–R8, 12–47 Tage alt; ein
+      KW-34-Briefing hat im Oktober keinen Wert.
+      **C echte Arbeit 11** — brauchen einen Assignee, darunter **WHI-4843**
+      („Antwort an VanChat finalisieren und versenden", kundenseitig, inzwischen
+      ueber 40 Tage) und **WHI-9013** („🔴 ROT: E-Mails Clara V1 — NAS-Volume
+      nicht gemountet, 160+ Fehler").
+      **D Meta/Folgeaufgaben 7** und **E Routine-Rauschen 5** — durch die Arbeit
+      vom 04.10. ueberholt.
+      **Beim Abraeumen:** ohne `comment` fahren, siehe Aufraeum-Rezept.
+      Nebenbefund: **WHI-5067** will den Newsletter auf `abiray/qwen3.6-35b-a3b`
+      setzen — diese ID ist selbst tot (HTTP 400), das Issue wuerde den Fehler
+      einbauen.
+      *(2026-10-03, Chat: Tote Modell-ID)*
 
 - [ ] **★★Recovery-Issues blockieren ihr eigenes Rettungsziel** — struktureller
       Bug: Paperclip erzeugt fuer ein haengendes Issue Z ein Recovery-Issue R,
@@ -353,6 +448,23 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       ist nicht deployed — Gegenprobe ist der Ledger, nie die Erinnerung:
       `select max(updated_at) from agent_self_heal_ledger;`
       *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
+      **★★Nachtrag 03.10.: die Rueckholung war UNVOLLSTAENDIG.** `52875b766`
+      brachte die Funktionen nach master, **nicht aber ihren Aufrufort**. Das
+      Quittieren des Ledgers war damit 31 Tage toter Code: `resolved_at` blieb
+      leer, `attempt_count` wuchs unbegrenzt (Vault-Maintainer 77, CHO und
+      Lektorat je 57). Weil die Politik `convergence` ab `attemptCount >= 1`
+      dauerhaft an den Menschen eskaliert, war das eine Einbahnstrasse — nach dem
+      ersten `max_iterations` bekam ein Agent fuer diesen Fingerprint nie wieder
+      einen Manager-Versuch. Behoben mit `96a5c92ab`
+      (`applySelfHealLedgerResolutionForRunOutcome()`, 7 Tests, Gesamtsuite 3142
+      gruen); im Betrieb belegt, und um 16:56:43 feuerte erstmals wieder
+      `agent.self_heal.escalated_manager`.
+      **Merksatz fuer die naechste Rueckholung:** Bei „Funktion wird nicht
+      aufgerufen" erst `git log -S <Name>` — ein `feat`, das sie einbaut, und ein
+      spaeteres `fix`, das sie nicht mehr enthaelt, heisst **Regression bei einer
+      Rueckholung**, nicht „nie fertig". Dann lohnt der Diff des Rueckhol-Commits
+      gegen den Feature-Branch, Stueck fuer Stueck.
+      *(2026-10-03, Chat: Tote Modell-ID)*
 
 ## WHITESTAG.ACADEMY
 
@@ -401,25 +513,28 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 
 ## Modelle und Agenten
 
-- [ ] **★Primaermodelle stehen auf toten Eintraegen, solange die WHITESTAG-AI
-      fehlt** — die 37 lmstudio-Agenten zeigen weiter auf `gemma-4-31b-it` bzw.
-      `qwen3.6-35b-a3b`, die mit dem Node weg sind. Der Fallback
-      `google/gemma-4-12b` (Studio) traegt, aber **jeder Lauf zahlt vorher einen
-      Fehlversuch**. Auf dem MacBook liegt `gemma-4-31b-it-mlx` (31B) geladen und
-      ungenutzt — deutlich staerker als das 12B und waehrend des Ausfalls die
-      bessere Wahl. Zweimal angeboten, **Entscheidung steht aus**. Gegenargument:
-      MLX auf dem MacBook ist langsam (gemessen ~16 tok/s, 85 s Prefill bei 18k),
-      und das Geraet war zwischenzeitlich selbst tagelang aus der Flotte.
-      *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
+- [ ] **Sechs INAKTIVE n8n-Workflows tragen die tote Modell-ID noch** — die sechs
+      aktiven wurden am 04.10. korrigiert; bewusst nicht angefasst wurden
+      `Dokumente Clara V5`, `Google-Alert V10`, `Paperclip Daily Digest V13`
+      und `V14`, `RAG-intern Chat V3`, `RAG-intern Telegram V4`. Sie laufen nicht,
+      schaden also nicht — brechen aber beim Aktivieren sofort. Wer einen davon
+      scharfstellt, muss vorher `gemma-4-31b-it` → `google/gemma-4-31b` ersetzen.
+      Rezept steht in `project_n8n_versioning_and_restart`; `stickyNote`-Knoten
+      ueberspringen (der Daily Digest traegt die ID nur in einer Haftnotiz).
+      Nachweis: `sqlite3 ~/.n8n/database.sqlite "select name, active from workflow_entity where nodes like '%gemma-4-31b-it%'"`
+      *(2026-10-04, Chat: Tote Modell-ID)*
 
-- [ ] **`cheap`-Profil von zehn Agenten zeigt auf ein totes Modell** — in
-      `runtime_config.modelProfiles.cheap.adapterConfig.model` steht weiterhin
-      `gemma-4-31b-it` (CTO, CEO, Bueroleitung, CPO, CRO, SEO/GEO, Blender, CHO,
-      Sekretaerin, Trainingscoach). **Nicht kaputt** — der Profil-Fallback steht
-      schon auf `google/gemma-4-12b` —, kostet aber je cheap-Lauf einen
-      Fehlversuch. Beim Umstellen daran denken: `runtime_config` wird per PATCH
-      **ersetzt**, nicht gemerged, also die volle Struktur mitsenden.
-      *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
+- [ ] **~~Primaermodelle stehen auf toten Eintraegen~~ — die toten IDs sind weg,
+      die Fallback-Frage ist anders geloest** — am 04.10. wurden alle Fundorte von
+      `gemma-4-31b-it` auf `google/gemma-4-31b` korrigiert (35 von 43 Agenten); die
+      Modell-Aufsicht meldet seither `unbekannt: 0`. Das 31B liegt jetzt lokal auf
+      der Studio im `resident-set` (ctx 98304), das MacBook-MLX braucht es damit
+      nicht mehr — die zweimal angebotene Entscheidung ist gegenstandslos.
+      **Offen bleibt nur, was die Flotte selbst angefasst hat:** Sie hat
+      WHITESTAG-AI als Fallback-Geraet beider Agentenfamilien eingetragen
+      (Commits `27ea81930`, `ae7149875`, `1cb7eb080`, noch unpushed) — ob das so
+      gewollt und wirksam ist, ist von hier aus **nicht geprueft**.
+      *(2026-09-22, Chat: LLM-Farm und Netzausfall; erledigt 2026-10-04, Chat: Tote Modell-ID)*
 
 - [ ] **★Die Sekretaerin laeuft in einem LEEREN Fallback-Workspace** — sie rief
       `luna-queue-approval.py` ueber einen selbstgebauten Pfad mit zwei UUIDs
@@ -507,7 +622,44 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Stromausfall derzeit **nicht** von selbst hoch) und Wake-on-LAN aktivieren.
       Drittens: **Repeater und Rechner haengen an derselben Smart-Steckdose** —
       solange das so ist, laesst sich der Repeater nie allein neu starten.
-      *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
+      **NACHTRAG 2026-10-07: die WLAN-Kette ist nicht mehr der Pfad.** Die
+      Maschine haengt per **Kabel** am Netz: `ipconfig` zeigt den
+      Ethernet-Adapter auf `192.168.2.171/24` (Gateway 192.168.2.1), beide
+      WLAN-Adapter stehen auf „Medium getrennt"; Ping zum Studio 2-11 ms bei
+      0 % Verlust. Damit ist der Haupt-Single-Point-of-Failure aus diesem
+      Eintrag weg. **Offen bleiben** BIOS „Restore on AC Power Loss" und ein
+      Wake-on-LAN-Pfad ueber die KABEL-MAC (die dokumentierte
+      `A8:A1:59:6E:47:4B` ist die WLAN-Schnittstelle) — beides ist jetzt
+      wichtiger als vorher, weil 37 Agenten diese Maschine als Fallback
+      nutzen.
+      *(2026-09-22, Chat: LLM-Farm und Netzausfall; Nachtrag 2026-10-07,
+      Chat: Geschwindigkeit der beiden LLMs)*
+
+- [ ] **★`qwen3.6-35b-a3b` fehlt im `resident-set.json`** — es ist das
+      **Primaermodell der kompletten C-Suite** (CEO, CTO, CPO, CRO, CHO und
+      sieben weitere), laeuft auf der RTX Pro 6000 in Q8_0, steht aber in
+      keinem Eintrag des Soll-Sets. Heute folgenlos: `warden.py` (der Lader)
+      hat keine plist und laeuft nicht, `evict.py` fasst nur `studio` an.
+      **Beim Scharfschalten des Laders wuerde das Modell nicht geladen.**
+      Beim Ergaenzen auf die Stolperstelle achten, die am 07.10. im Lader
+      behoben wurde: `ps_key` ist der LM-Studio-Identifier, `load_key` der
+      modelKey — bei diesem Modell sind beide gleich, am Node WHITESTAG-AI
+      nicht.
+      *(2026-10-07, Chat: Geschwindigkeit der beiden LLMs)*
+
+- [ ] **Beobachtung der WHITESTAG-AI auswerten, dann ueber Welle B
+      entscheiden** — `tools/node-wacht/erreichbarkeit.sh` protokolliert seit
+      06.10., 20:30 alle 15 Minuten nach
+      `~/.paperclip/logs/node-erreichbarkeit.log`. Die erste Nacht war sauber
+      (51 von 52 Punkten `connected`, der Abweicher ein Skriptfehler vor der
+      Korrektur). Die Spec verlangte eigentlich **mehrere Tage** vor der
+      Umstellung der 37 Agenten; umgestellt wurde nach einer Nacht, mit
+      Begruendung im Spec. **Faellt der Node in den naechsten Tagen aus, ist
+      Welle B (die 12 qwen-Agenten inkl. C-Suite) zurueckzunehmen** — der
+      Rueckweg liegt in `tools/model-warden/fallback-ist-stand-20261006.json`.
+      Pruefen mit:
+      `awk -F'|' '{print $2}' ~/.paperclip/logs/node-erreichbarkeit.log | sort | uniq -c`
+      *(2026-10-07, Chat: Geschwindigkeit der beiden LLMs)*
 
 ## Kontext-Budget und LM-Studio-Flotte
 
@@ -631,8 +783,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       zeigte. Offen sind noch:
       (1) `~/Desktop/n8n.sh` laedt beim Start
       `mistral-small-3.2-24b-instruct-2506@q4_k_m` auf die RTX — **das Modell
-      existiert auf keiner Maschine mehr**, der Wake-Satellit steht laengst auf
-      `gemma-4-31b-it` (`tools/wake-satellite/sat_config.py:85`);
+      existiert auf keiner Maschine mehr**. *(Der Wake-Satellit ist am 04.10.
+      erledigt: `CHAT_MODEL` stand auf der toten `gemma-4-31b-it` bei laufendem
+      launchd-Job, jetzt `google/gemma-4-31b` — live UND im Repo-Spiegel, weil
+      `waechter.py -> hole_satellit()` die REPO-Datei liest.)*;
       (2) **teilweise erledigt (04.10.2026):** `google/gemma-4-12b-qat` ist
       nicht mehr gelöscht, sondern der Primaer-Klassifikator des PII-Proxys —
       Eintrag in `resident-set.json` auf `when: always` gehoben, begruendet und
@@ -641,8 +795,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       ist aber nicht geladen und steht weiter auf `day-only` — pruefen, ob es
       noch gebraucht wird (es ist zugleich der 48,49-GB-Posten im
       Archivierungs-Eintrag unten);
-      (3) `tools/modell-wacht/soll-laufzeit.json` bewertet die alten RTX-IDs
-      `abiray/qwen3.6-35b-a3b` und `gemma4-31b-it`, die es nicht mehr gibt;
+      (3) **erledigt (04.10.2026):** `tools/modell-wacht/soll-laufzeit.json`
+      bewertete die alten IDs `abiray/qwen3.6-35b-a3b` und `gemma4-31b-it` — beide
+      auf die `lms ps`-Identifier `qwen3.6-35b-a3b` bzw. `google/gemma-4-31b`
+      umbenannt, 44 Tests gruen;
       (4) **WHITESTAG-AI deckt gar kein Waechter ab** — der Entlade-Waerter fasst
       nur `studio` an, obwohl dort die ganze Flotte liegt.
       Nebenwirkung der sporadisch verbundenen Karte: Die Modell-Aufsicht
@@ -968,6 +1124,18 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 
 ## Repo-Stand und Deploy
 
+- [ ] **16 Commits der Flotte sind nicht gepusht** — auf
+      `fix/backup-leere-ref-ordner`, alle von „VP Engineering" aus dem 05./06.10.
+      und thematisch zusammenhaengend: **WHITESTAG-AI als Fallback-Geraet beider
+      Agentenfamilien** (`27ea81930`, `ae7149875`, `1cb7eb080`), ein
+      Node-Erreichbarkeits-Waechter (`2752a9fbc`), Spec- und Plan-Dokumente.
+      Nicht aus einer Chat-Session, sondern von Agenten selbst committet. Push
+      ist ansagepflichtig; Ziel waere `fork` (whitestagai), **nicht** `origin`.
+      Der Branch `fix/modell-id-ledger-und-lektorat` zeigt auf den Stand vom
+      04.10. und ist gepusht — die 16 liegen danach.
+      Nachweis: `git log --format='%h %an %s' fork/fix/modell-id-ledger-und-lektorat..HEAD`
+      *(2026-10-06, Chat: Tote Modell-ID)*
+
 - [ ] **★★Der Dev-Server laeuft im Watch-Modus und laedt trotzdem NICHT nach** —
       am 15.09. gemessen: `server/src/services/recovery/service.ts` um 09:39:05
       geaendert, der Serverprozess lief unveraendert **seit dem 13.09. 08:40**
@@ -1023,6 +1191,16 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Vollstaendiger Nachweis-Befehl:
       `diff -rq ~/.paperclip/scripts tools | grep differ | grep -vE '__pycache__|venv/|pytest_cache'`
       *(2026-09-11, Chat: WHITESTAG Agenten-Aufsicht)*
+      **Konkreter Fall 06.10., Richtung bestaetigt:** In
+      `wake-satellite/sat_config.py` gilt **live** `FOLLOWUP_START_FENSTER_SEC = 5.0`
+      plus `ANREDE_START_FENSTER_SEC = 8.0` und `MIN_START_RUN_FRAMES`, im Repo
+      steht noch `FOLLOWUP_WINDOW_SEC = 2.5`. **Ein Deploy aus dem Repo wuerde die
+      Nachfrage-Fenster zurueckdrehen** — genau die Gefahr dieses Eintrags, nur in
+      der anderen Richtung als der Repo-Kommentar vom 04.09. annimmt. Am 04.10.
+      wurde dort **ausschliesslich** `CHAT_MODEL` angeglichen (die Modell-Aufsicht
+      liest diese Repo-Datei), die Fenster-Drift blieb bewusst stehen: welches
+      Verhalten gewollt ist, weiss nur Walter.
+      *(2026-10-06, Chat: Tote Modell-ID)*
 
 - [ ] **7 uncommittete Dateien im Worktree `agent-learning-tree`** — liegt unter
       `~/.paperclip/scripts/agent-learning-tree`, Branch
@@ -1096,13 +1274,6 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       PRs zu bewerten: pruefen, ob `packages/brain` die verwundbaren Pfade
       ueberhaupt beruehrt, und ggf. auf eine gefixte Version heben.
       *(2026-09-12, Chat: GitHub-Fehlermails Upstream-PRs)*
-
-- [ ] **Zwei Commits vom 19.09. sind nicht gepusht** — `bb8e91cbf`
-      (`fix(tagger)`: WHITESTAG-Tagger auf den neuen Modell-Identifier) und
-      `0883d9b1c` (`feat(model-warden)`: Entlade-Waerter). Der Branch
-      `fix/backup-leere-ref-ordner` hat **keinen Upstream**, ein Push muesste
-      ihn also erst setzen — Ziel waere `fork` (whitestagai), **nicht** `origin`
-      (paperclipai, fremd). *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
 
 - [ ] **n8n laeuft mit weniger erlaubten Modulen als die `.zshrc` vorgibt** —
       der laufende Prozess hat `NODE_FUNCTION_ALLOW_EXTERNAL=pg`, in

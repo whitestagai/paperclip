@@ -9,7 +9,12 @@ def plan_actions(desired, loaded, devices, available):
         device_id = devices.get(dev_sym)
         match = None
         for m in loaded:
-            if m["model_key"] != entry["ps_key"]:
+            # ps_key ist der LM-Studio-Identifier. Bei den meisten
+            # Eintraegen ist er gleich dem modelKey, am Node WHITESTAG-AI
+            # aber nicht (gemma-4-31b-win auf gemma-4-31b-it@q4_k_m) —
+            # darum gegen beide vergleichen, sonst gilt das Soll dort als
+            # unerfuellt und der Lader laedt bei jedem Lauf erneut.
+            if entry["ps_key"] not in (m.get("model_key"), m.get("identifier")):
                 continue
             m_is_studio = m["device_id"] is None
             if (dev_sym == "studio" and m_is_studio) or (m["device_id"] == device_id):

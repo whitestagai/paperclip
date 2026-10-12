@@ -53,7 +53,7 @@ class Referenz(NamedTuple):
 class Befund(NamedTuple):
     art: str  # "unbekannt" | "nicht_geladen" | "quelle_unlesbar"
     # | "fenster_zu_klein" | "fenster_groesser" | "slots_abweichend"
-    # | "konfig_drift"
+    # | "konfig_drift" | "geraet_getrennt" | "modell_fehlt" | "falsches_geraet"
     schwere: str  # "hoch" | "niedrig"
     quelle: str
     feld: str
@@ -268,6 +268,87 @@ def bewerte_drift(datei: Iterable[Referenz], dienst: Iterable[Referenz]) -> List
     return _sortiert(befunde)
 
 
+def bewerte_geraete(
+    modell_geraet: Dict[str, str], verbunden: Iterable[str], soll: Dict[str, Dict]
+) -> List[Befund]:
+    """Hält jedes Soll-Modell mit Feld `geraet` gegen das Gerät, auf dem es läuft.
+
+    Anlass 10.10.2026: Die RTX fiel gegen 10:30 aus und blieb zwei Tage weg.
+    Die Aufsicht meldete nur «PII-Proxy-ID unbekannt» und dreißigmal «nicht
+    geladen — LM Studio lädt nach». Nachgeladen wurde nichts; LM Studio
+    bediente `qwen3.6-35b-a3b` still vom Node aus. Dass ein ganzes Gerät
+    fehlte, stand nirgends.
+
+    `modell_geraet` = geladener Identifier → Gerätename ("lokal" für den Mac,
+    auf dem LM Studio läuft). `verbunden` = Namen der verbundenen LM-Link-Geräte.
+
+    Ein getrenntes Gerät ist EIN Befund mit allen seinen Modellen — einzeln
+    gemeldet würde der eigentliche Fehler in Folgezeilen untergehen.
+    """
+    verbunden = set(verbunden) | {"lokal"}
+    befunde: List[Befund] = []
+    getrennt: Dict[str, List[str]] = {}
+
+    for modell, vorgabe in sorted(soll.items()):
+        geraet = vorgabe.get("geraet")
+        if not geraet:
+            continue
+        if geraet not in verbunden:
+            getrennt.setdefault(geraet, []).append(modell)
+            continue
+        ist = modell_geraet.get(modell)
+        if ist is None:
+            befunde.append(
+                Befund(
+                    art="modell_fehlt",
+                    schwere="hoch",
+                    quelle="LM Studio «{}»".format(geraet),
+                    feld="geladen",
+                    modell=modell,
+                    text=(
+                        "«{}» ist auf «{}» nicht geladen, obwohl das Gerät "
+                        "verbunden ist. Anfragen darauf scheitern oder laufen "
+                        "still über ein anderes Gerät.".format(modell, geraet)
+                    ),
+                )
+            )
+        elif ist != geraet:
+            befunde.append(
+                Befund(
+                    art="falsches_geraet",
+                    schwere="hoch",
+                    quelle="LM Studio «{}»".format(geraet),
+                    feld="geraet",
+                    modell=modell,
+                    text=(
+                        "«{}» läuft auf «{}» statt auf «{}». `lms load` lädt aufs "
+                        "preferred device — dort neu laden, wo es hingehört.".format(
+                            modell, ist, geraet
+                        )
+                    ),
+                )
+            )
+
+    for geraet, modelle in sorted(getrennt.items()):
+        befunde.append(
+            Befund(
+                art="geraet_getrennt",
+                schwere="hoch",
+                quelle="LM Link «{}»".format(geraet),
+                feld="status",
+                modell=None,
+                text=(
+                    "Gerät «{}» ist nicht verbunden. Betroffen: {}. Anfragen "
+                    "darauf scheitern oder laufen still über ein anderes Gerät "
+                    "(Fallback, kleinere Quantisierung, weniger Slots).".format(
+                        geraet, ", ".join(modelle)
+                    )
+                ),
+            )
+        )
+    return _sortiert(befunde)
+
+
 def signatur(befunde: Iterable[Befund]) -> List[str]:
     """Stabile Kennung der harten Befunde — Grundlage der Entprellung.
 
@@ -298,6 +379,15 @@ def meldung_faellig(jetzt: List[str], zuletzt: List[str]) -> bool:
     „schon gemeldet" und bleibt stumm — genau der flappende Fall vom 26.08.
     """
     return bool(jetzt) and jetzt != zuletzt
+
+
+def entwarnung_faellig(jetzt: List[str], zuletzt: List[str]) -> bool:
+    """Einmal Entwarnung, wenn harte Befunde verschwunden sind.
+
+    Wer per Mail geweckt wird, soll auch erfahren, dass es vorbei ist — sonst
+    bleibt jede Alarmmail eine offene Frage.
+    """
+    return not jetzt and bool(zuletzt)
 
 
 def _sortiert(befunde: List[Befund]) -> List[Befund]:

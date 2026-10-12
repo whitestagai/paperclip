@@ -251,3 +251,31 @@ def test_n8n_sticky_note_mit_modell_feld_bleibt_stumm():
         }
     ]
     assert referenzen_aus_n8n(_wf(nodes)) == []
+
+
+# ------------------------------------------------------------- Geräte
+
+from waechter import geraete_aus_lms  # noqa: E402
+
+LINK_STATUS = {
+    "status": "online",
+    "peers": [
+        {"deviceIdentifier": "3f6d", "deviceName": "RTX Pro 6000", "status": "connected"},
+        {"deviceIdentifier": "55fb", "deviceName": "WHITESTAG-AI", "status": "disconnected"},
+    ],
+}
+
+
+def test_geraete_aus_lms_ordnet_namen_zu_und_kennt_nur_verbundene():
+    ps = [
+        {"identifier": "google/gemma-4-31b", "deviceIdentifier": None},
+        {"identifier": "qwen3.6-35b-a3b", "deviceIdentifier": "3f6d"},
+        {"identifier": "fremd", "deviceIdentifier": "9999"},
+    ]
+    modell_geraet, verbunden = geraete_aus_lms(ps, LINK_STATUS)
+    assert modell_geraet == {
+        "google/gemma-4-31b": "lokal",
+        "qwen3.6-35b-a3b": "RTX Pro 6000",
+        "fremd": "9999",
+    }
+    assert verbunden == {"RTX Pro 6000"}

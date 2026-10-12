@@ -301,3 +301,69 @@ def test_ohne_aufloeser_bleibt_das_alte_verhalten():
     )
     assert len(befunde) == 1
     assert befunde[0].art == "unbekannt"
+
+
+# ------------------------------------------------------------- Geräte
+
+from pruefung import bewerte_geraete, entwarnung_faellig  # noqa: E402
+
+GERAETE_SOLL = {
+    "qwen3.6-35b-a3b": {"contextLength": 98304, "geraet": "RTX Pro 6000"},
+    "google/gemma-4-12b-qat": {"contextLength": 32768, "geraet": "RTX Pro 6000"},
+    "google/gemma-4-31b": {"contextLength": 98304, "geraet": "lokal"},
+    "qwen3.6-35b-win": {"contextLength": 98304, "geraet": "WHITESTAG-AI"},
+}
+
+ALLES_DA = {
+    "qwen3.6-35b-a3b": "RTX Pro 6000",
+    "google/gemma-4-12b-qat": "RTX Pro 6000",
+    "google/gemma-4-31b": "lokal",
+    "qwen3.6-35b-win": "WHITESTAG-AI",
+}
+
+
+def test_alle_geraete_verbunden_und_modelle_am_platz_ist_kein_befund():
+    assert bewerte_geraete(ALLES_DA, {"RTX Pro 6000", "WHITESTAG-AI"}, GERAETE_SOLL) == []
+
+
+def test_getrenntes_geraet_ist_ein_harter_befund_mit_seinen_modellen():
+    """10.10.2026: Die RTX fiel gegen 10:30 aus und blieb zwei Tage weg. Die
+    Aufsicht sah nur «PII-Proxy-ID unbekannt» und 30x «nicht geladen — LM
+    Studio lädt nach». Dass ein ganzes Gerät fehlte, stand nirgends."""
+    geladen = {k: v for k, v in ALLES_DA.items() if v != "RTX Pro 6000"}
+    befunde = bewerte_geraete(geladen, {"WHITESTAG-AI"}, GERAETE_SOLL)
+    assert len(befunde) == 1, "je Gerät EIN Befund, nicht zusätzlich je Modell"
+    b = befunde[0]
+    assert (b.art, b.schwere) == ("geraet_getrennt", "hoch")
+    assert "RTX Pro 6000" in b.text
+    assert "qwen3.6-35b-a3b" in b.text and "google/gemma-4-12b-qat" in b.text
+
+
+def test_fehlendes_modell_auf_verbundenem_geraet_ist_hart():
+    geladen = dict(ALLES_DA)
+    del geladen["qwen3.6-35b-win"]
+    befunde = bewerte_geraete(geladen, {"RTX Pro 6000", "WHITESTAG-AI"}, GERAETE_SOLL)
+    assert [(b.art, b.schwere, b.modell) for b in befunde] == [
+        ("modell_fehlt", "hoch", "qwen3.6-35b-win")
+    ]
+
+
+def test_modell_auf_falschem_geraet_ist_hart():
+    """`lms load` hat kein Geräte-Flag und lädt aufs preferred device — ein
+    Neuladen vom Studio aus landet still auf dem Studio statt auf der RTX."""
+    geladen = dict(ALLES_DA, **{"qwen3.6-35b-a3b": "lokal"})
+    befunde = bewerte_geraete(geladen, {"RTX Pro 6000", "WHITESTAG-AI"}, GERAETE_SOLL)
+    assert [(b.art, b.schwere, b.modell) for b in befunde] == [
+        ("falsches_geraet", "hoch", "qwen3.6-35b-a3b")
+    ]
+
+
+def test_soll_ohne_geraet_wird_nicht_auf_geraete_geprueft():
+    soll = {"google/gemma-4-12b": {"contextLength": 65536}}
+    assert bewerte_geraete({}, set(), soll) == []
+
+
+def test_entwarnung_nur_beim_wechsel_von_hart_auf_gruen():
+    assert entwarnung_faellig([], ["a|b|c"]) is True
+    assert entwarnung_faellig([], []) is False
+    assert entwarnung_faellig(["a|b|c"], ["a|b|c"]) is False

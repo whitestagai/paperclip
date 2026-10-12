@@ -13,19 +13,29 @@ Aufruf (launchd, alle 30 Minuten):
 Läuft unter dem System-Python 3.9 — keine Fremdpakete, keine 3.10-Syntax.
 """
 
+import html
 import json
 import os
 import sys
+import urllib.request
 from datetime import datetime
 
 sys.path.insert(0, os.path.expanduser("~/.paperclip/scripts"))
 
-from pruefung import meldung_faellig, signatur  # noqa: E402
+from pruefung import entwarnung_faellig, meldung_faellig, signatur  # noqa: E402
 from waechter import pruefe  # noqa: E402
 
 LOG = os.path.expanduser("~/.paperclip/logs/modell-wacht.log")
 ZUSTAND = os.path.expanduser("~/.paperclip/logs/modell-wacht-last.json")
 FIRMA = os.environ.get("MODELL_WACHT_FIRMA", "9cebf3cf-efe8-4597-a400-f06488900a87")
+
+# Mail statt nur Issue seit 12.10.2026: Am 10.10. legte der Melder um 10:42 ein
+# Issue an — ohne Assignee, im backlog. Niemand sah es; die RTX blieb zwei Tage
+# weg. Ein Issue ist eine Akte, kein Alarm.
+MAILHUB = "http://127.0.0.1:5678/webhook/mailhub/send"
+MAILHUB_ENV = os.path.expanduser("~/.paperclip/instances/default/secrets/mailhub.env")
+MAIL_VON = "cto@whitestag.ai"
+MAIL_AN = os.environ.get("MODELL_WACHT_MAIL_AN", "ws@whitestag.ai")
 
 
 def _protokoll(zeile: str) -> None:
@@ -91,17 +101,87 @@ def _melde(befunde, ergebnis) -> str:
     )
 
 
+def _html(titel: str, absaetze: list, punkte: list) -> str:
+    teile = ['<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:640px;color:#1a1a1a">',
+             "<h2>{}</h2>".format(html.escape(titel))]
+    if punkte:
+        teile.append("<ul>" + "".join("<li>{}</li>".format(html.escape(p)) for p in punkte) + "</ul>")
+    teile += ['<p style="color:#555">{}</p>'.format(html.escape(a)) for a in absaetze]
+    teile.append("</div>")
+    return "".join(teile)
+
+
+def alarm_mail(befunde, kopfzeile: str, issue) -> tuple:
+    """(Betreff, Text, HTML) der Alarm-Mail.
+
+    Nur die HARTEN Befunde im Wortlaut. Am 10.10. stand der Geräteausfall
+    zwischen dreißig «nicht geladen»-Zeilen — wer das liest, findet ihn nicht.
+    Die niedrigen werden nur gezählt; vollständig stehen sie im Issue.
+    """
+    hart = [b for b in befunde if b.schwere == "hoch"]
+    niedrig = len(befunde) - len(hart)
+    betreff = "Modell-Aufsicht: {}".format(hart[0].text.split(". ")[0].rstrip(".") if hart else "Befund")
+    if len(hart) > 1:
+        betreff += " (+{} weitere)".format(len(hart) - 1)
+    absaetze = [kopfzeile]
+    if niedrig:
+        absaetze.append("Dazu {} niedrige Befunde (kein Handlungsbedarf), vollständig im Issue.".format(niedrig))
+    absaetze.append("Issue: {}".format(issue or "nicht angelegt"))
+    absaetze.append("Nächste Mail erst, wenn sich der Befundstand ändert oder alles wieder grün ist.")
+    punkte = [b.text for b in hart]
+    text = "\n".join(["- " + p for p in punkte] + [""] + absaetze)
+    return betreff, text, _html(betreff, absaetze, punkte)
+
+
+def entwarnung_mail(kopfzeile: str) -> tuple:
+    betreff = "Modell-Aufsicht: wieder grün"
+    absaetze = ["Keine harten Befunde mehr.", kopfzeile]
+    return betreff, "\n".join(absaetze), _html(betreff, absaetze, [])
+
+
+def _mailhub_secret() -> str:
+    with open(MAILHUB_ENV, encoding="utf-8") as fh:
+        for zeile in fh:
+            if zeile.startswith("MAILHUB_SECRET="):
+                return zeile.split("=", 1)[1].strip().strip('"')
+    raise RuntimeError("MAILHUB_SECRET fehlt in " + MAILHUB_ENV)
+
+
+def _sende(betreff: str, text: str, html_text: str) -> None:
+    daten = json.dumps({"from": MAIL_VON, "to": MAIL_AN, "subject": betreff,
+                        "text": text, "html": html_text, "attachments": []}).encode()
+    req = urllib.request.Request(MAILHUB, data=daten, headers={
+        "Content-Type": "application/json", "X-Mailhub-Secret": _mailhub_secret()})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        if not 200 <= r.status < 300:
+            raise RuntimeError("Mailhub HTTP {}".format(r.status))
+
+
 def main() -> int:
     befunde, ergebnis = pruefe()
     sig = signatur(befunde)
-    faellig = meldung_faellig(sig, _zuletzt())
+    zuletzt = _zuletzt()
+    faellig = meldung_faellig(sig, zuletzt)
 
     if faellig:
+        issue = None
         try:
             issue = _melde(befunde, ergebnis)
             _protokoll("MELDUNG {} Befund(e), Issue {}".format(len(sig), issue))
         except Exception as exc:  # noqa: BLE001
             _protokoll("MELDUNG FEHLGESCHLAGEN ({}): {}".format(len(sig), exc))
+        # Getrennt abgesichert: scheitert das Issue, soll die Mail trotzdem raus.
+        try:
+            _sende(*alarm_mail(befunde, ergebnis["kopfzeile"], issue))
+            _protokoll("MAIL an {} verschickt".format(MAIL_AN))
+        except Exception as exc:  # noqa: BLE001
+            _protokoll("MAIL FEHLGESCHLAGEN: {}".format(exc))
+    elif entwarnung_faellig(sig, zuletzt):
+        try:
+            _sende(*entwarnung_mail(ergebnis["kopfzeile"]))
+            _protokoll("ENTWARNUNG an {} verschickt: {}".format(MAIL_AN, ergebnis["kopfzeile"]))
+        except Exception as exc:  # noqa: BLE001
+            _protokoll("ENTWARNUNG FEHLGESCHLAGEN: {}".format(exc))
     elif sig:
         _protokoll("unveraendert: {} harte Befunde, keine neue Meldung".format(len(sig)))
     else:

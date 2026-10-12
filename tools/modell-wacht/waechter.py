@@ -28,6 +28,7 @@ from pruefung import (
     Referenz,
     bewerte,
     bewerte_drift,
+    bewerte_geraete,
     bewerte_laufzeit,
 )
 
@@ -195,6 +196,31 @@ def laufzeit_aus_lms_ps(eintraege: List[Dict[str, Any]]) -> Dict[str, Tuple]:
     }
 
 
+def geraete_aus_lms(
+    ps: List[Dict[str, Any]], link: Dict[str, Any]
+) -> Tuple[Dict[str, str], set]:
+    """Welches Modell läuft auf welchem Gerät, und welche Geräte sind verbunden.
+
+    `ps` aus `lms ps --json`: `deviceIdentifier` ist null für den Mac, auf dem
+    LM Studio läuft («lokal»). `link` aus `lms link status --json` liefert die
+    Namen dazu. Eine unbekannte Kennung bleibt als solche stehen — ein Modell
+    auf einem fremden Gerät soll als falsches Gerät auffallen, nicht wegfallen.
+    """
+    namen = {p.get("deviceIdentifier"): p.get("deviceName") for p in link.get("peers") or []}
+    modell_geraet = {}
+    for e in ps:
+        if not e.get("identifier"):
+            continue
+        kennung = e.get("deviceIdentifier")
+        modell_geraet[e["identifier"]] = "lokal" if kennung is None else namen.get(kennung) or kennung
+    verbunden = {
+        p.get("deviceName")
+        for p in link.get("peers") or []
+        if p.get("status") == "connected" and p.get("deviceName")
+    }
+    return modell_geraet, verbunden
+
+
 # ====================================================================== I/O
 
 
@@ -355,18 +381,26 @@ def hole_pii_proxy_dienst() -> List[Referenz]:
     return referenzen_aus_launchd_env(out.stdout, "PII-Proxy (laufender Dienst)")
 
 
-def hole_laufzeit() -> Dict[str, Tuple]:
-    """Fenster und Slots der geladenen Modelle.
-
-    `lms ps --json` statt der Tabellenausgabe — letztere ist auf Spaltenbreite
-    formatiert und nicht stabil zerlegbar.
-    """
+def _lms_json(*argumente: str) -> Any:
+    """`lms … --json`. Nur stdout wird gelesen — die Tabellenausgaben sind auf
+    Spaltenbreite formatiert, und `lms link status` OHNE --json schreibt auf
+    stderr (Falle aus tools/node-wacht)."""
     out = subprocess.run(
-        [LMS_BIN, "ps", "--json"], capture_output=True, text=True, timeout=60
+        [LMS_BIN, *argumente, "--json"], capture_output=True, text=True, timeout=60
     )
     if out.returncode != 0:
         raise RuntimeError((out.stderr or "").strip().split("\n")[-1][:160])
-    return laufzeit_aus_lms_ps(json.loads(out.stdout))
+    return json.loads(out.stdout)
+
+
+def hole_lms_ps() -> List[Dict[str, Any]]:
+    """Geladene Modelle samt Fenster, Slots und Gerät."""
+    return _lms_json("ps")
+
+
+def hole_link() -> Dict[str, Any]:
+    """Verbundene LM-Link-Geräte."""
+    return _lms_json("link", "status")
 
 
 def hole_soll() -> Dict[str, Dict]:
@@ -404,14 +438,27 @@ def pruefe() -> Tuple[List, Dict[str, Any]]:
 
     laufzeit: Dict[str, Tuple] = {}
     soll: Dict[str, Dict] = {}
+    ps: List[Dict[str, Any]] = []
     try:
-        laufzeit = hole_laufzeit()
+        ps = hole_lms_ps()
+        laufzeit = laufzeit_aus_lms_ps(ps)
         soll = hole_soll()
     except Exception as exc:  # noqa: BLE001 - fail-closed wie bei den Quellen
         unlesbar.append("LM-Studio-Laufzeit: {}".format(exc))
 
+    # Geräte nur prüfen, wenn beide Quellen da sind. Ohne `lms ps` wäre jedes
+    # Soll-Modell «fehlt» — der Ausfall steht dann schon als unlesbare Quelle da.
+    geraete_befunde: List = []
+    if ps and soll:
+        try:
+            modell_geraet, verbunden = geraete_aus_lms(ps, hole_link())
+            geraete_befunde = bewerte_geraete(modell_geraet, verbunden, soll)
+        except Exception as exc:  # noqa: BLE001
+            unlesbar.append("LM-Link-Status: {}".format(exc))
+
     befunde = bewerte(referenzen, bestand, unlesbar, aufloeser=loese_id_auf)
     befunde += bewerte_laufzeit(laufzeit, soll)
+    befunde += geraete_befunde
     befunde += bewerte_drift(
         [r for r in referenzen if r.quelle == "PII-Proxy"],
         [r for r in referenzen if r.quelle == "PII-Proxy (laufender Dienst)"],

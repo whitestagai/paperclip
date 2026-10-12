@@ -7,6 +7,7 @@
   ],
 
   "qwen3.6-35b-a3b": {
+    "geraet": "RTX Pro 6000",
     "contextLength": 98304,
     "parallel": 4,
     "begruendung": [
@@ -28,6 +29,7 @@
   },
 
   "google/gemma-4-31b": {
+    "geraet": "lokal",
     "contextLength": 98304,
     "parallel": 4,
     "begruendung": [
@@ -65,6 +67,7 @@
   },
 
   "google/gemma-4-12b": {
+    "geraet": "lokal",
     "contextLength": 65536,
     "parallel": 6,
     "begruendung": [
@@ -76,6 +79,7 @@
   },
 
   "gemma-4-31b-win": {
+    "geraet": "WHITESTAG-AI",
     "contextLength": 98304,
     "parallel": 2,
     "begruendung": [
@@ -99,6 +103,7 @@
   },
 
   "qwen3.6-35b-win": {
+    "geraet": "WHITESTAG-AI",
     "contextLength": 98304,
     "parallel": 2,
     "begruendung": [
@@ -111,6 +116,20 @@
       "(lmstudio-community/qwen3.6-35b-a3b, 20,55 GiB), die am Node ebenfalls",
       "liegt: als Fallback ist Kapazitaet nicht der Engpass, Qualitaet geht vor.",
       "Primaermodell bleibt qwen3.6-35b-a3b in Q8_0 auf der rtx."
+    ]
+  },
+  "google/gemma-4-12b-qat": {
+    "geraet": "RTX Pro 6000",
+    "contextLength": 32768,
+    "parallel": 8,
+    "begruendung": [
+      "Primaer-Klassifikator des PII-Proxys seit 04.10.2026 (Fallback ist",
+      "google/gemma-4-12b auf dem Studio). 32768 reichen belegt: der Proxy",
+      "chunkt bei MAX_CHUNK_CHARS = 4000, rund 1.800 Token je Aufruf.",
+      "",
+      "12.10.2026 ins Soll aufgenommen, damit der Ausfall der RTX auch an",
+      "diesem Modell sichtbar wird — vorher stand es nirgends im Soll, und die",
+      "Aufsicht sah den RTX-Ausfall vom 10.10. nur als «ID unbekannt»."
     ]
   }
 }

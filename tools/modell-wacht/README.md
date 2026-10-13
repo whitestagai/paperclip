@@ -4,13 +4,17 @@ Hält jede fest verdrahtete LM-Studio-Modell-ID im Haus gegen den tatsächlichen
 Bestand — und die geladenen Modelle gegen ihren Soll-Zustand. Der Wächter
 **repariert nichts** — er stellt fest und meldet.
 
-Drei Prüfungen, drei Fehlerbilder:
+Vier Prüfungen, vier Fehlerbilder:
 
 | Prüfung | Frage |
 |---|---|
 | `bewerte` | Zeigt eine Stelle auf einen Namen, den es nicht gibt? |
 | `bewerte_laufzeit` | Name richtig, Modell aber falsch bedient (Fenster, Slots)? |
 | `bewerte_drift` | Steht in der Datei etwas anderes als im laufenden Dienst? |
+| `bewerte_geraete` | Ist jedes Gerät verbunden und jedes Soll-Modell auf seinem Gerät? |
+
+Harte Befunde gehen **per Mail an ws@** — ein Issue allein ist eine Akte, kein
+Alarm (siehe 10.10.2026 unten).
 
 ## Warum
 
@@ -44,43 +48,89 @@ Die Lehre aus dem ersten Fall steckt jetzt im Code: **`kickstart -k` startet nur
 den Prozess neu, nicht den Job.** Eine geänderte plist wird erst mit `bootout` +
 `bootstrap` wirksam. Bis dahin sieht die Korrektur erledigt aus und ist es nicht.
 
+### Der unbemerkte Geräteausfall vom 10.10.2026
+
+Die RTX Pro 6000 fiel gegen 10:30 aus und blieb zwei Tage weg. Der Melder schlug
+um 10:42 an — mit einem Issue **ohne Assignee im backlog**, das niemand sah. Und
+selbst gelesen hätte es den Ausfall nicht gezeigt:
+
+| Was im Issue stand | Was tatsächlich los war |
+|---|---|
+| HOCH: PII-Proxy zeigt auf «google/gemma-4-12b-qat» — ID unbekannt | das Modell lag auf der RTX, und die war weg |
+| 30× NIEDRIG: «qwen3.6-35b-a3b» nicht geladen — „LM Studio lädt nach" | nachgeladen wurde nichts; LM Studio bediente die ID **still vom Node WHITESTAG-AI** (gleicher modelKey), mit 2 statt 4 Slots und Q6_K statt Q8_0 |
+
+Die Aufsicht kannte schlicht **keine Geräte**. Seit 12.10. trägt jeder Eintrag in
+`soll-laufzeit.json` ein Feld `geraet` (`lokal` = der Mac, auf dem LM Studio
+läuft), und `bewerte_geraete` meldet hart:
+
+- **Gerät getrennt** — ein Befund je Gerät mit allen betroffenen Modellen, nicht
+  einer je Modell, sonst geht die Ursache in Folgezeilen unter.
+- **Modell fehlt** auf einem verbundenen Gerät.
+- **Modell auf falschem Gerät** — `lms load` kennt kein Geräte-Flag und lädt aufs
+  preferred device; ein Neuladen vom Studio aus landet still auf dem Studio.
+
+Quellen: `lms ps --json` (`deviceIdentifier`, null = lokal) und
+`lms link status --json` (Namen und Verbindungsstatus).
+
 ## Aufbau
 
 | Datei | Zweck |
 |---|---|
 | `pruefung.py` | reine Bewertungslogik, kein I/O — Regeln samt Begründung |
 | `waechter.py` | sammelt die Referenzen, gibt JSON auf stdout |
-| `melder.py` | halbstündlicher Takt: prüft, protokolliert, meldet bei Wechsel |
+| `melder.py` | halbstündlicher Takt: prüft, protokolliert, bei Wechsel Issue + Mail |
 | `run-melder.js` | node-Türöffner für launchd (TCC, siehe unten) |
-| `soll-laufzeit.json` | Soll-Fenster und -Slots je Modell, **mit Begründung** |
+| `soll-laufzeit.json` | Soll-Gerät, -Fenster und -Slots je Modell, **mit Begründung** |
 | `test_pruefung.py` | die Ernstfälle: tote ID, unlesbare Quelle, Fehlalarm-Schutz |
-| `test_waechter.py` | die Sammelfallen: Sticky Notes, Ausdrücke, cheap-Profil |
+| `test_waechter.py` | die Sammelfallen: Sticky Notes, Ausdrücke, cheap-Profil, Geräte-Zuordnung |
+| `test_melder.py` | Inhalt der Alarm- und Entwarnungsmail |
 
 ```sh
 ./waechter.py           # JSON
 ./waechter.py --text    # Klartext
-./melder.py             # prüfen + protokollieren + ggf. Issue anlegen
+./melder.py             # prüfen + protokollieren + ggf. Issue und Mail
 ```
 
 Exitcode `1`, sobald ein Befund der Schwere `hoch` vorliegt, sonst `0`.
 
-## Zwei Takte
+## Takt
 
 | Takt | Wie | Wozu |
 |---|---|---|
-| täglich 07:30 | Paperclip-Routine `Modell-Aufsicht (taeglich, 07:30)` | Bericht, auch wenn alles in Ordnung ist |
 | alle 30 Minuten | launchd `ai.whitestag.modell-wacht` → `melder.py` | fängt kurze Vorfälle, meldet nur bei Wechsel |
+| ~~täglich 07:30~~ | Paperclip-Routine `584f1e23…`, **pausiert seit 13.10.2026** | — |
+
+Die Routine (Agent LLM-Konfigurationsanalyst) legte ein Issue an, sobald
+`ok: false` war — also schon bei **niedrigen** Befunden, praktisch täglich. Bis
+zum 12.10. hatten sich so 112 offene Aufsichts-Issues angesammelt, die niemand
+las. Der Melder deckt dasselbe ab, ohne LLM, alle 30 Minuten, mit Mail.
+Reaktivieren: `PATCH /api/routines/584f1e23-da06-4da3-931a-4ef6c2e134c9`
+mit `{"status": "active"}`.
 
 Der halbstündliche Takt kostet nichts — `waechter.py` ist reines Python ohne
 LLM. Er existiert, weil der Vorfall vom 26.08. von 10:00 bis 12:11 lief und ein
 einzelner 07:30-Lauf ihn vollständig verpasst hätte.
 
 **Gemeldet wird nur bei Zustandswechsel.** Ein Fehler, der zwei Stunden anhält,
-erzeugt genau ein Issue — nicht vier. Die Signatur dafür lässt den Meldetext
+erzeugt genau ein Issue und eine Mail — nicht vier. Die Signatur dafür lässt den Meldetext
 bewusst weg, damit ein wackelnder Zahlenwert nicht als neuer Befund gilt. Der
 Zustand in `~/.paperclip/logs/modell-wacht-last.json` wird bei **jedem** Lauf
 fortgeschrieben, auch ohne Meldung — sonst bliebe ein behobener und wieder
 auftretender Fehler beim zweiten Mal stumm.
+
+### Mail
+
+Bei jedem Wechsel des harten Befundstands geht eine Mail an `ws@whitestag.ai`
+(Absender `cto@whitestag.ai`, über den Mailhub-Webhook `mailhub/send`, Secret aus
+`~/.paperclip/instances/default/secrets/mailhub.env`). Darin stehen **nur die
+harten Befunde im Wortlaut**; niedrige werden gezählt und stehen vollständig im
+Issue. Verschwinden alle harten Befunde, kommt **einmal** „wieder grün".
+Empfänger umstellbar per `MODELL_WACHT_MAIL_AN`. Issue und Mail sind getrennt
+abgesichert: scheitert das eine, geht das andere trotzdem raus.
+
+Zustellung prüfen: in n8n die Ausführungen von `SMTP Relay V21`
+(`3LgkMnNjbKfcdK5H`) — `accepted: ["ws@whitestag.ai"]` und `250 OK` heißt,
+der Mailserver hat sie angenommen.
 
 ### Zwei Fußangeln beim launchd-Betrieb
 
@@ -108,10 +158,11 @@ Befund sichtbar geworden statt still:
 | PII-Proxy (Datei) | `PII_PROXY_CLASSIFIER_MODEL` + `..._FALLBACK_MODEL` aus der Plist |
 | PII-Proxy (laufender Dienst) | dieselben Felder aus `launchctl print` — **das ist der wirksame Wert** |
 | LM-Studio-Laufzeit | `contextLength` + `parallel` je geladenem Modell gegen `soll-laufzeit.json` |
+| LM Link | Gerät je geladenem Modell (`lms ps --json`) und verbundene Geräte (`lms link status --json`) gegen `geraet` im Soll |
 
-Stand 26.08.: **122 Referenzen aus 7 Quellen**, dazu 5 Laufzeit-Zustände gegen
-3 Sollwerte. (Am 23.08. waren es 158 Referenzen — was dazwischen wegfiel, ist
-nicht nachgehalten.)
+Stand 13.10.: **167 Referenzen aus 7 Quellen**, 9 Laufzeit-Zustände gegen
+6 Sollwerte auf 3 Geräten (Studio, RTX Pro 6000, WHITESTAG-AI). Am 26.08. waren
+es 122 Referenzen gegen 3 Sollwerte. 
 
 Nur Modelle, die in `soll-laufzeit.json` stehen, werden auf Fenster und Slots
 geprüft. `openbiollm` und die Einbettungsmodelle haben bewusst kleine Fenster
@@ -169,6 +220,8 @@ Zwei Stellen, beide bewusst:
 - Fenster und Slots werden nur gegen `soll-laufzeit.json` gehalten. Wer die
   Farm bewusst umbaut, muss die Datei mitziehen — sonst meldet der Wächter den
   neuen Zustand als Fehler.
+- Geräte werden nur für Modelle mit Feld `geraet` geprüft. Ein Gerät, auf dem
+  kein Soll-Modell liegt, kann ausfallen, ohne dass es auffällt.
 - Der Drift-Abgleich Datei ↔ Dienst gilt bislang **nur für den PII-Proxy**.
   Jeder andere launchd-Dienst mit Modellnamen in der Umgebung hat dieselbe
   Falle, wird aber nicht geprüft.
@@ -185,7 +238,7 @@ Entwickeln, sondern erst nachts im Dienst.
 ## Tests
 
 ```sh
-python3 -m pytest -q     # 30 Tests
+/usr/bin/python3 -m pytest -q     # 55 Tests
 ```
 
 Jeder Test in `test_pruefung.py` ist ein Vorfall, der bereits passiert ist.
@@ -206,3 +259,12 @@ python3 -c "import waechter as w; from pruefung import bewerte_drift; \
 ```
 
 Beide schlagen an, im Normalzustand meldet der Wächter keinen Befund.
+
+Der RTX-Ausfall vom 10.10. als Probe, mit Testmail an ws@ (kein Issue):
+
+```sh
+/usr/bin/python3 -c "
+import melder; from waechter import hole_soll; from pruefung import bewerte_geraete
+b = bewerte_geraete({'gemma-4-31b-win':'WHITESTAG-AI','qwen3.6-35b-win':'WHITESTAG-AI'}, {'WHITESTAG-AI'}, hole_soll())
+s, t, h = melder.alarm_mail(b, 'TEST', None); melder._sende('[TEST] ' + s, t, h)"
+```

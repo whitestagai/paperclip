@@ -242,6 +242,20 @@ Am Windows-PC, je Modell entladen und mit neuem Identifier laden:
     lms unload abiray/qwen3.6-35b-a3b
     lms load abiray/qwen3.6-35b-a3b --identifier qwen3.6-35b-win -c 98304 --parallel 2 -y
 
+**Korrektur 14.10.2026:** Die beiden `lms load`-Zeilen scheitern am PC mit
+«Model not found». `gemma-4-31b-it@q4_k_m` und `abiray/qwen3.6-35b-a3b` sind
+die Anzeigen aus `lms ps` vom studio, nicht die modelKeys am PC (dort:
+`gemma-4-31b-it`, `qwen3.6-35b-a3b`). Der qwen-Key ist zudem zweideutig — es
+gibt ihn auch auf der rtx (Q8_0). Deshalb über den eindeutigen PFAD laden;
+fertig als `tools/node-wacht/start_llms.bat` (nach jedem PC-Neustart nötig,
+LM Studio lädt sonst unter den Standard-Kennungen):
+
+    lms load "lmstudio-community/gemma-4-31B-it-GGUF/gemma-4-31B-it-Q4_K_M.gguf" --identifier gemma-4-31b-win -c 98304 --parallel 2 -y
+    lms load "Abiray/Qwen3.6-35B-A3B-Q6_K-GGUF/Qwen3.6-35B-A3B-Q6_K.gguf" --identifier qwen3.6-35b-win -c 98304 --parallel 2 -y
+
+**Nie `lms unload qwen3.6-35b-a3b`** — das ist die Kennung des
+rtx-Primärmodells.
+
 Gegenprobe vom studio: `lms link status` und `GET /api/v0/models/<id>` je
 neuer ID — `/api/v0/models` allein ist unvollstaendig.
 

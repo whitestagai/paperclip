@@ -23,12 +23,17 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       der Studio, die ohnehin 26 Primaermodelle traegt. Entweder das Soll
       anheben und begruenden oder die Default-Load-Config nachziehen.
       *(2026-10-07, Chat: WHITESTAG-AI Fallback-Node)*
+      Seit 13.10. ist das 12B **kein Fallback mehr** — nur noch Hauptmodell des
+      Link-Detektors. Das senkt die Dringlichkeit. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
 
 - [ ] **Node in die Nacht-Architektur aufnehmen** — in der Notiz zur
       LLM-Nacht-Architektur stehen Studio, MacBook und RTX als always-on, die
       WHITESTAG-AI fehlt. Seit dem 07.10. ist sie Fallback-Traeger von 37
       Agenten, also genauso betriebskritisch. Angeboten, nicht erledigt.
       *(2026-10-07, Chat: WHITESTAG-AI Fallback-Node)*
+      **Dringlicher seit 13.10.:** WHITESTAG-AI ist jetzt auch der einzige
+      cheap-Fallback (`gemma-4-31b-win`) von 11 Agenten. Faellt der Node aus,
+      haben sie bei belegtem `gemma-4-31b` keinen Ersatz. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
 
 - [ ] **Zwei Commits mit unpassendem Betreff aufraeumen (oder bewusst lassen)**
       — `f9e1893e2 docs(spec): Quantisierung …` enthaelt 458 Zeilen `ToDo.md`,
@@ -46,6 +51,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       umfasste 24 Commits und 37 Dateien. Zu entscheiden: PR nach master,
       Umsortieren auf einen eigenen Branch, oder offen lassen.
       *(2026-10-07, Chat: WHITESTAG-AI Fallback-Node)*
+      **Stand 14.10.:** der Heartbeat-Fix vom 07.10. ist auf einen eigenen Branch
+      gezogen (`fix/heartbeat-active-runs-prozessweit` auf `fork/master`, 46 Tests
+      gruen, gepusht). Auf diesem Branch kam `2ff46e9fd` (dataless-Waechter nach
+      `tools/`) dazu. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
 
 - [ ] **Reasoning-Abschaltung fuer qwen3.6 im lmstudio-Adapter verankern** —
       gemessen senkt ein leerer `<think></think>`-Block als Assistant-Prefill
@@ -91,6 +100,8 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Nachweis: Tool-Namen aus allen `run-logs/*.ndjson` der letzten 48 h
       zaehlen (`kind == "tool_call"`).
       *(2026-09-15, Chat: Mailhub und Recovery-Kaskade)*
+      **Bestaetigt 12.10.:** in 763 lmstudio-Runs ueber 7 Tage **null**
+      `vault`-/`brain`-Aufrufe. Weiter offen. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
 
 - [ ] **Mailhub-Reste nach dem IMAP-Fix** — die Phantomflut ist weg (2–5 pro
       Stunde → **eine in 20 Stunden**, `Mailhub V11` mit `forceReconnect: 15`
@@ -245,10 +256,18 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       derselben Sache), fehlt ein Rezept — dann hilft weder ein groesseres Modell
       noch eine hoehere Grenze.
       *(2026-10-06, Chat: Tote Modell-ID)*
-
-- [ ] **`Process lost -- server may have restarted`** — 9 Treffer in einer
-      Stunde am Abend des 02.09., Muster war vorher nicht da. Ursache offen:
-      Dev-Server-Neustart, Adapter-Absturz oder OOM? *(2026-09-02, Chat: Paperclip Issue-Bereinigung)*
+      **★★Stand 14.10.: drei Ursachen gefunden und behoben, die Zahl ist trotzdem
+      noch 22/Tag — aber aus ANDEREN Agenten.** (1) Neun Clara-Agenten hatten in
+      der AGENTS.md den falschen Vault (`WHITESTAG-Vault/Paperclip/Clara` statt
+      `/Volumes/homes/cw/Obsidian/Clara-Vault`) → „Path traversal blocked" in 41 %
+      der Fehllaeufe (5 % bei Erfolgen); korrigiert, 187 Dateien umgezogen.
+      (2) LLM-Konfigurationsanalyst hielt Exit-Code 1 des Waechters fuer Absturz
+      → Routine klargestellt. (3) `runtime_config…cheap.fallbackModel` war bei
+      11 Agenten `gemma-4-12b`: 38 % max_iter und ALLE Schleifen → auf
+      `gemma-4-31b-win` (Walters Wahl). Ergebnis nach 24 h: Pfadsperren 0,
+      Schleifen 0, Redaktion & PR 0 (vorher 51/Woche), Analyst 0 (vorher 20).
+      **Die 22 kommen jetzt von Buchhaltung (11) und Creative Assistant (5)** —
+      eigener Eintrag unten. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
 
 - [ ] **★Doppelter Follow-up-Run unter Last (Verdacht)** — in
       `heartbeat-comment-wake-batching.test.ts` scheitern zwei Tests **nicht am
@@ -286,6 +305,22 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       weiterhin aus** — die Cache-Hashes wurden nicht gemessen; ohne sie ist
       belegt, dass die Wirkung eintrat, aber nicht, dass der Cache jetzt
       greift. *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
+
+- [ ] **★Buchhaltung findet die Rechnungen nicht — jetzt Hauptverursacher von
+      `max_iterations` (11 von 22 in 24 h)** — Beispiel WHI-10049 „IKEA-Rechnung
+      verbuchen": der Agent sucht in `WHITESTAG-Vault/Buchhaltung/` und
+      `Paperclip/_INBOX/`, `fs_glob *IKEA*` bleibt leer, Runden verbraucht. Ihm
+      fehlt die Angabe, WO Rechnungen ankommen (Mail-Anhang? Belege-Ordner aus dem
+      Mail-Spiegel, vgl. Abschnitt „Mail-Spiegel und Belege"). Gleiches Muster wie
+      die Feinschliff-Routine: Rezept mit einem einzigen Suchaufruf in die Routine
+      bzw. AGENTS.md. Danach Creative Assistant (5) ansehen. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
+
+- [ ] **Fuenf Routine-Wiederholungen mit Folgearbeit — Entscheidung offen** — beim
+      Aufraeumen am 14.10. (43 ueberholte Wiederholungen + Recovery-Issues ohne
+      `comment` geschlossen, 0 Weckungen) bewusst stehen gelassen, weil echte
+      Arbeit daran haengt: WHI-8229, WHI-8313, WHI-9297, WHI-9370 (CEO,
+      ACADEMY-Workshop → Kurs-/Lektoratsaufgaben) und HEA-1752 (CHO-Briefing →
+      drei Beitraege). Walter entscheidet, ob die Arbeit noch gebraucht wird. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
 
 ## Selbstheilung und Agenten-Aufsicht
 
@@ -346,13 +381,6 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Zustandswechsel-Erkennung wirklich nur einmal mailt.
       Log: `~/.paperclip/logs/agent-wacht.launchd.log`,
       Zustand: `~/.paperclip/logs/agent-wacht-last.json`.
-      *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
-
-- [ ] **Zwei zurueckgeholte Agenten haben gar keine Arbeit** — Buchhaltung haengt
-      nur an **drei blockierten** Issues, Recherche an **keinem**. Beide stehen
-      nach dem Resume auf `idle` und laufen mangels `todo` nicht an; ein Resume
-      allein bringt sie also nicht zurueck in den Betrieb. Zu klaeren, ob ihre
-      Routinen noch feuern oder ob die Arbeit anderswo haengt.
       *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
 
 ## Recovery-Mechanismus
@@ -1183,17 +1211,12 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 
 ## Repo-Stand und Deploy
 
-- [ ] **16 Commits der Flotte sind nicht gepusht** — auf
-      `fix/backup-leere-ref-ordner`, alle von „VP Engineering" aus dem 05./06.10.
-      und thematisch zusammenhaengend: **WHITESTAG-AI als Fallback-Geraet beider
-      Agentenfamilien** (`27ea81930`, `ae7149875`, `1cb7eb080`), ein
-      Node-Erreichbarkeits-Waechter (`2752a9fbc`), Spec- und Plan-Dokumente.
-      Nicht aus einer Chat-Session, sondern von Agenten selbst committet. Push
-      ist ansagepflichtig; Ziel waere `fork` (whitestagai), **nicht** `origin`.
-      Der Branch `fix/modell-id-ledger-und-lektorat` zeigt auf den Stand vom
-      04.10. und ist gepusht — die 16 liegen danach.
-      Nachweis: `git log --format='%h %an %s' fork/fix/modell-id-ledger-und-lektorat..HEAD`
-      *(2026-10-06, Chat: Tote Modell-ID)*
+- [ ] **Heartbeat-Fix als Upstream-PR anbieten?** — der Fehler (`activeRunExecutions`
+      je Service-Instanz → falsches „Process lost" bei Adaptern ohne Kindprozess)
+      steckt im Upstream-Code. Branch `fix/heartbeat-active-runs-prozessweit`
+      liegt im Fork. Fuer einen PR gilt die Regel aus dem Eintrag oben: von
+      `origin/master` abzweigen, `git rev-list --count origin/master..HEAD`
+      einstellig. Walters Entscheidung. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
 
 - [ ] **★★Der Dev-Server laeuft im Watch-Modus und laedt trotzdem NICHT nach** —
       am 15.09. gemessen: `server/src/services/recovery/service.ts` um 09:39:05
@@ -1212,6 +1235,11 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       verloren (zwei am 15.09.); sie werden automatisch neu gestartet, aber ein
       Wartefenster auf `running = 0` ist die freundlichere Variante.
       *(2026-09-15, Chat: Mailhub und Recovery-Kaskade)*
+      **★Stand 13.10. — das hat sich gedreht:** seit „Claude Code MAC" in Synology
+      angeheftet ist (10.10.), kommen die Events durch. Kopieren nach
+      `opensource/paperclip-adapter-lmstudio` loeste zwei Neustart-Wellen aus,
+      4 Runs `process_lost`. Vor Deploys in den Cloud-Ordner jetzt `running = 0`
+      abwarten und danach betroffene Agenten per `resume` zurueckholen. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
 
 - [ ] **★★`tools/` hinkt der Live-Fassung hinterher — nicht umgekehrt** — in
       **allen acht** geprüften Dateien ist `~/.paperclip/scripts/` führend. Am
@@ -1361,3 +1389,18 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Variablen*namen* in Shell-Kommandos, keinen Wert; `n8n_rest.py` liest aus
       der Umgebung bzw. `~/.whitestag.env`.
       *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
+
+## Fuer Walter (nur von Hand)
+
+- [ ] **`/hooks` einmal oeffnen oder Sitzung neu starten** — aktiviert die neue
+      Deutsch-Pruefung (Stop-Hook `~/.claude/scripts/deutsch-pruefung.py`) und
+      den PostToolUse-Hinweis in laufenden Sitzungen. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
+
+- [ ] **Papierkorb leeren** — darin: Claras alter Ordner aus dem
+      WHITESTAG-Vault (187 Dateien, Kopie im Clara-Vault per Pruefsumme
+      bestaetigt), zwei `node_modules.kaputt-*`, ein defektes Git-Objekt. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
+
+- [ ] **Test-Kopien einer Session loeschen** — in
+      `~/.claude/projects/-Users-…-Paperclip/` die `.jsonl`-Dateien mit dem Inhalt
+      „Antworte nur mit OK" (Gegenproben vom 07.10.); Loeschen war mir per
+      Rechtepruefung verwehrt. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*

@@ -4,17 +4,22 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 
 ## Farm-Stabilitaet
 
-- [ ] **★★Link-Detektor-Datenbanken nicht erreichbar — harter Befund der
-      Modell-Aufsicht** — die Aufsicht meldet seit dem Vormittag des 07.10.
-      `quelle_unlesbar` mit der Postgres-Meldung „Is the server running on that
-      host and accepting TCP/IP connections?" und hat um 09:58 das Issue
-      `1b4921d4-99dc-4630-9fec-74f6747514b8` angelegt. Seitdem „unveraendert,
-      keine neue Meldung" — es kommt also keine zweite Erinnerung. Solange die
-      Quelle stumm ist, prueft die Aufsicht **4 Referenzen weniger** (163 statt
-      167), ohne das als Luecke auszuweisen. Der Link-Detektor hat ZWEI
-      Datenbank-Instanzen, die einzeln zu pruefen sind.
-      Nicht untersucht, lag ausserhalb des Auftrags.
-      *(2026-10-07, Chat: WHITESTAG-AI Fallback-Node)*
+- [ ] **★`start_llms.bat` auf WHITESTAG-AI testen und in den Autostart legen** —
+      nach einem PC-Neustart laedt LM Studio die Modelle unter den
+      Standard-Kennungen (`gemma-4-31b-it`, `abiray/qwen3.6-35b-a3b`), und der
+      Fallback aller 37 Agenten zeigt ins Leere (14.10., sechs Stunden). Die
+      Batch-Datei (`tools/node-wacht/start_llms.bat`, Commit `4e16aa062`) laedt
+      ueber den eindeutigen Pfad mit `--identifier`, entlaedt nie
+      `qwen3.6-35b-a3b` (RTX-Primaermodell). **Nie ausgefuehrt** — beim naechsten
+      Neustart pruefen (von hier: `lms ps --json`, Kennungen + ctx 98304 +
+      parallel 2), dann Verknuepfung in `shell:startup`. Offen auch: ob sich das
+      Auto-Laden mit Standard-Kennung in der GUI abschalten laesst. *(2026-10-14, Chat: WHITESTAG-AI Farm-Aufsicht)*
+
+- [ ] **Ursache der Geraeteausfaelle unbekannt** — RTX Pro 6000 am 10.10. ~10:30
+      bis 12.10. morgens, WHITESTAG-AI am 14.10. ~09:30–15:20 (danach mit
+      Standard-Kennungen, also vermutlich Neustart). Beide von Walter von Hand
+      zurueckgeholt, nicht untersucht. Seit 12.10. kommt bei jedem Ausfall eine
+      Mail. *(2026-10-14, Chat: WHITESTAG-AI Farm-Aufsicht)*
 
 - [ ] **`google/gemma-4-12b` laeuft mit Fenster 131328 statt 65536** — hat
       sich im Lauf des 07.10. geaendert (um 09:09 war es noch 65536),
@@ -25,15 +30,8 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       *(2026-10-07, Chat: WHITESTAG-AI Fallback-Node)*
       Seit 13.10. ist das 12B **kein Fallback mehr** — nur noch Hauptmodell des
       Link-Detektors. Das senkt die Dringlichkeit. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
-
-- [ ] **Node in die Nacht-Architektur aufnehmen** — in der Notiz zur
-      LLM-Nacht-Architektur stehen Studio, MacBook und RTX als always-on, die
-      WHITESTAG-AI fehlt. Seit dem 07.10. ist sie Fallback-Traeger von 37
-      Agenten, also genauso betriebskritisch. Angeboten, nicht erledigt.
-      *(2026-10-07, Chat: WHITESTAG-AI Fallback-Node)*
-      **Dringlicher seit 13.10.:** WHITESTAG-AI ist jetzt auch der einzige
-      cheap-Fallback (`gemma-4-31b-win`) von 11 Agenten. Faellt der Node aus,
-      haben sie bei belegtem `gemma-4-31b` keinen Ersatz. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
+      **Stand 14.10. abends: 98304 statt 65536** (nicht mehr 131328), weiter
+      Schwere niedrig. *(2026-10-14, Chat: WHITESTAG-AI Farm-Aufsicht)*
 
 - [ ] **Zwei Commits mit unpassendem Betreff aufraeumen (oder bewusst lassen)**
       — `f9e1893e2 docs(spec): Quantisierung …` enthaelt 458 Zeilen `ToDo.md`,
@@ -389,9 +387,9 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Assignee, 103 davon aelter als eine Woche, 37 aelter als 30 Tage. Agenten
       greifen per Regel **nie** nach unzugewiesener Arbeit, der Stapel ist also
       nicht langsam, sondern tot. Triage vom 03.10.:
-      **A Modell-Aufsicht 30** — keine Altlast, sondern gueltige Tagesberichte
-      derselben Ursache (tote Modell-ID); abbrechen, sobald ein Aufsichtslauf
-      `unbekannt: 0` meldet, was seit dem 04.10. der Fall ist.
+      **A Modell-Aufsicht 30** — **erledigt 12./14.10.:** alle offenen
+      Aufsichts-Issues (112 + 6 Routine-Reste + 2) auf `cancelled`, die
+      07:30-Routine pausiert.
       **B Clara-Briefings 56** — Wochen-Briefings R2–R8, 12–47 Tage alt; ein
       KW-34-Briefing hat im Oktober keinen Wert.
       **C echte Arbeit 11** — brauchen einen Assignee, darunter **WHI-4843**
@@ -747,6 +745,11 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Pruefen mit:
       `awk -F'|' '{print $2}' ~/.paperclip/logs/node-erreichbarkeit.log | sort | uniq -c`
       *(2026-10-07, Chat: Geschwindigkeit der beiden LLMs)*
+      **★Der Fall ist eingetreten (14.10.):** der Node war von ca. 09:30 bis
+      15:20 weg und kam danach unter den Standard-Kennungen zurueck — die 37
+      Fallbacks zeigten rund sechs Stunden ins Leere. Seit 15:23 wieder gruen.
+      Umgekehrt fing der Node am 10.–12.10. den zweitaegigen RTX-Ausfall ab.
+      Die Entscheidung ueber Welle B ist damit faellig, nicht mehr hypothetisch. *(2026-10-14, Chat: WHITESTAG-AI Farm-Aufsicht)*
 
 ## Kontext-Budget und LM-Studio-Flotte
 
@@ -886,8 +889,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       bewertete die alten IDs `abiray/qwen3.6-35b-a3b` und `gemma4-31b-it` — beide
       auf die `lms ps`-Identifier `qwen3.6-35b-a3b` bzw. `google/gemma-4-31b`
       umbenannt, 44 Tests gruen;
-      (4) **WHITESTAG-AI deckt gar kein Waechter ab** — der Entlade-Waerter fasst
-      nur `studio` an, obwohl dort die ganze Flotte liegt.
+      (4) **erledigt (12.10.2026):** die Modell-Aufsicht prueft jetzt alle drei
+      Geraete (`bewerte_geraete`, Feld `geraet` in `soll-laufzeit.json`) und
+      mailt bei harten Befunden an ws@. Der Entlade-Waerter fasst weiter nur
+      `studio` an.
       Nebenwirkung der sporadisch verbundenen Karte: Die Modell-Aufsicht
       flackerte zwischen 41 und 135 Befunden und legte bei jedem Wechsel ein
       Issue an. *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
@@ -947,6 +952,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       das Laden stumm uebersprungen. Beim naechsten `n8n.sh`-Lauf ins Log sehen:
       `~/Library/Logs/*/lmstudio-preload.log`.
       *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
+      **Achtung, veraltet:** der Block laedt mit `ctx 98304 × 4` und den alten
+      Namen. Seit 07.10. gilt am Node `gemma-4-31b-win`/`qwen3.6-35b-win` mit
+      **2** Slots, und geladen wird am PC selbst per `tools/node-wacht/start_llms.bat`
+      (siehe Eintrag oben). Den Block in `n8n.sh` entfernen oder angleichen. *(2026-10-14, Chat: WHITESTAG-AI Farm-Aufsicht)*
 
 - [ ] **Erster Aufruf nach jedem Modell-Laden kostet ~2 Minuten** — beobachtet
       am 12.09.: 120 s bis 197 s beim ersten Request, danach unter 1 s. Der erste

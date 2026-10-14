@@ -23,7 +23,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.expanduser("~/.paperclip/scripts"))
 
 from pruefung import entwarnung_faellig, meldung_faellig, signatur  # noqa: E402
-from waechter import pruefe  # noqa: E402
+from waechter import hole_soll, pruefe  # noqa: E402
 
 LOG = os.path.expanduser("~/.paperclip/logs/modell-wacht.log")
 ZUSTAND = os.path.expanduser("~/.paperclip/logs/modell-wacht-last.json")
@@ -111,15 +111,37 @@ def _html(titel: str, absaetze: list, punkte: list) -> str:
     return "".join(teile)
 
 
-def alarm_mail(befunde, kopfzeile: str, issue) -> tuple:
+GERAETE_ARTEN = ("geraet_getrennt", "modell_fehlt", "falsches_geraet")
+
+
+def betroffene_modelle(befunde, soll) -> set:
+    """Modelle, die wegen eines Geräte-Befunds fehlen — deren «ID unbekannt»-
+    Meldungen sind Folge, nicht Ursache."""
+    getrennt = {b.quelle.split("«", 1)[-1].rstrip("»") for b in befunde if b.art == "geraet_getrennt"}
+    modelle = {b.modell for b in befunde if b.art in ("modell_fehlt", "falsches_geraet") and b.modell}
+    return modelle | {m for m, v in soll.items() if v.get("geraet") in getrennt}
+
+
+def alarm_mail(befunde, kopfzeile: str, issue, geraete_modelle=None) -> tuple:
     """(Betreff, Text, HTML) der Alarm-Mail.
 
     Nur die HARTEN Befunde im Wortlaut. Am 10.10. stand der Geräteausfall
     zwischen dreißig «nicht geladen»-Zeilen — wer das liest, findet ihn nicht.
     Die niedrigen werden nur gezählt; vollständig stehen sie im Issue.
+
+    Geräte-Befunde stehen zuerst und bestimmen den Betreff. «ID unbekannt»
+    für ein Modell aus `geraete_modelle` ist Folge des Geräte-Befunds und wird
+    zu einer Zeile gebündelt — am 14.10. waren es 48 solcher Zeilen vor dem
+    einen, der die Ursache nannte.
     """
+    geraete_modelle = geraete_modelle or set()
     hart = [b for b in befunde if b.schwere == "hoch"]
     niedrig = len(befunde) - len(hart)
+    folge = [b for b in hart if b.art == "unbekannt" and b.modell in geraete_modelle]
+    hart = sorted(
+        (b for b in hart if b not in folge),
+        key=lambda b: 0 if b.art in GERAETE_ARTEN else 1,
+    )
     betreff = "Modell-Aufsicht: {}".format(hart[0].text.split(". ")[0].rstrip(".") if hart else "Befund")
     if len(hart) > 1:
         betreff += " (+{} weitere)".format(len(hart) - 1)
@@ -129,7 +151,14 @@ def alarm_mail(befunde, kopfzeile: str, issue) -> tuple:
     absaetze.append("Issue: {}".format(issue or "nicht angelegt"))
     absaetze.append("Nächste Mail erst, wenn sich der Befundstand ändert oder alles wieder grün ist.")
     punkte = [b.text for b in hart]
-    text = "\n".join(["- " + p for p in punkte] + [""] + absaetze)
+    if folge:
+        punkte.insert(
+            sum(1 for b in hart if b.art in GERAETE_ARTEN),
+            "Folge davon: {} Konfigurationen zeigen auf {} — Liste im Issue.".format(
+                len(folge), ", ".join(sorted({b.modell for b in folge}))
+            ),
+        )
+    text ="\n".join(["- " + p for p in punkte] + [""] + absaetze)
     return betreff, text, _html(betreff, absaetze, punkte)
 
 
@@ -172,7 +201,11 @@ def main() -> int:
             _protokoll("MELDUNG FEHLGESCHLAGEN ({}): {}".format(len(sig), exc))
         # Getrennt abgesichert: scheitert das Issue, soll die Mail trotzdem raus.
         try:
-            _sende(*alarm_mail(befunde, ergebnis["kopfzeile"], issue))
+            try:
+                betroffen = betroffene_modelle(befunde, hole_soll())
+            except Exception:  # noqa: BLE001 - ohne Soll nur ungebündelt, nie ohne Mail
+                betroffen = set()
+            _sende(*alarm_mail(befunde, ergebnis["kopfzeile"], issue, betroffen))
             _protokoll("MAIL an {} verschickt".format(MAIL_AN))
         except Exception as exc:  # noqa: BLE001
             _protokoll("MAIL FEHLGESCHLAGEN: {}".format(exc))

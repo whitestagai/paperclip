@@ -78,6 +78,16 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       `select error_code, count(*), max(started_at) from heartbeat_runs r join agents a on a.id=r.agent_id where a.name='n8n-Betriebsingenieur' and r.status='failed' group by 1;`
       *(2026-10-06, Chat: Tote Modell-ID)*
 
+- [ ] **`n8n_health.healthz()` im Recovery-Skript: API-Key statt Base-URL** —
+      in `~/.paperclip/scripts/recovery/` wird `healthz(api_key)` statt
+      `healthz(base_url)` aufgerufen. Das erzeugt eine Python-Exception →
+      `False`-Rueckgabe → Folgeaufrufe laufen gegen eine falsch angenommene tote
+      n8n-Instanz. Root Cause des fehlgeschlagenen Runs `9afec123` vom 15.10.
+      Korrektur: den Aufruf auf die konfigurierte Base-URL umstellen (z.B.
+      `os.environ["N8N_BASE_URL"]` oder aequivalent). Genaue Zeile noch zu
+      bestimmen (`grep -n "healthz" ~/.paperclip/scripts/recovery/*.py`).
+      *(2026-10-15, Chat: n8n Ops Recovery)*
+
 - [ ] **★★Die Brain-/Vault-Werkzeuge erreichen die Agenten ueberhaupt nicht** —
       in **300 Runs ueber 48 Stunden kein einziger** `vault.*`-Aufruf,
       stattdessen **400x `shell_exec`**. Das ist die Ursache der Blindsuche und
@@ -313,13 +323,19 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       die Feinschliff-Routine: Rezept mit einem einzigen Suchaufruf in die Routine
       bzw. AGENTS.md. Danach Creative Assistant (5) ansehen. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
 
-- [ ] **Fuenf Routine-Wiederholungen mit Folgearbeit — Entscheidung offen** — beim
-      Aufraeumen am 14.10. (43 ueberholte Wiederholungen + Recovery-Issues ohne
-      `comment` geschlossen, 0 Weckungen) bewusst stehen gelassen, weil echte
-      Arbeit daran haengt: WHI-8229, WHI-8313, WHI-9297, WHI-9370 (CEO,
-      ACADEMY-Workshop → Kurs-/Lektoratsaufgaben) und HEA-1752 (CHO-Briefing →
-      drei Beitraege). Walter entscheidet, ob die Arbeit noch gebraucht wird. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
-
+- [ ] **Drei Routine-Wiederholungen mit Folgearbeit — Entscheidung offen** —
+      WHI-8313, WHI-9297, WHI-9370 (CEO, ACADEMY-Workshop → Kurs- und
+      Lektoratsaufgaben). Walter entscheidet, ob die Arbeit noch gebraucht wird.
+      Von urspruenglich fuenf: WHI-8229 am 15.10. mitgeloescht (aelter als ein
+      Monat), HEA-1752 inzwischen von selbst `done`.
+      **Loeschung 15.10.:** Auf Walters Wunsch alle **149 offenen Issues aelter
+      als einen Monat endgueltig geloescht** (ueber `DELETE /api/issues/:id`,
+      149× `issue.deleted` im Activity-Log, 0 Weckungen). Vorher 486 neuere
+      Unteraufgaben von ihnen geloest (`parent_id = NULL`, 482 davon schon
+      abgeschlossen). Sicherung davor:
+      `~/.paperclip/backups/manuell/vor-loeschung-alter-issues-20261015.dump`
+      (pg_dump -Fc, 372 MB), Liste: `…/loeschliste-20261015.txt`.
+      *(2026-10-15, Chat: Agentenausfälle und Ursachen)*
 ## Selbstheilung und Agenten-Aufsicht
 
 - [ ] **★★Clara-Vault-Routine stillgelegt — Entscheidung ueber die Zukunft offen**

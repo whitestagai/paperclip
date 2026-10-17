@@ -316,7 +316,13 @@ function mergeAdapterRecoveryMetadata(input: {
       : {}),
   };
 }
-const RUNNING_ISSUE_WAKE_REASONS_REQUIRING_FOLLOWUP = new Set(["approval_approved"]);
+// A running run may already have decided to block on the very child whose
+// completion triggers the wake; coalescing would drop the wake with that run.
+const RUNNING_ISSUE_WAKE_REASONS_REQUIRING_FOLLOWUP = new Set([
+  "approval_approved",
+  "issue_children_completed",
+  "issue_blockers_resolved",
+]);
 const SESSIONED_LOCAL_ADAPTERS = new Set([
   "claude_local",
   "codex_local",

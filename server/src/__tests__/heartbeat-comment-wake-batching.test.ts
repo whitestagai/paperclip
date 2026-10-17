@@ -270,6 +270,99 @@ describe("heartbeat comment wake batching", () => {
     expect(runs[0]?.id).toBe(runId);
   });
 
+  // A parent that blocks itself on a child can still be mid-run when the child
+  // finishes. Coalescing that wake into the dying run loses it and leaves the
+  // parent blocked for good (WHI-9714).
+  it.each(["issue_children_completed", "issue_blockers_resolved"])(
+    "defers %s wakes for a running issue so the assignee resumes after the run",
+    async (wakeReason) => {
+      const companyId = randomUUID();
+      const agentId = randomUUID();
+      const issueId = randomUUID();
+      const childIssueId = randomUUID();
+      const runId = randomUUID();
+      const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+      const heartbeat = heartbeatService(db);
+
+      await db.insert(companies).values({
+        id: companyId,
+        name: "Paperclip",
+        issuePrefix,
+        requireBoardApprovalForNewAgents: false,
+      });
+
+      await db.insert(agents).values({
+        id: agentId,
+        companyId,
+        name: "CEO",
+        role: "ceo",
+        status: "running",
+        adapterType: "process",
+        adapterConfig: {},
+        runtimeConfig: {},
+        permissions: {},
+      });
+
+      await db.insert(heartbeatRuns).values({
+        id: runId,
+        companyId,
+        agentId,
+        invocationSource: "assignment",
+        triggerDetail: "system",
+        status: "running",
+        contextSnapshot: {
+          issueId,
+          taskId: issueId,
+          wakeReason: "issue_assigned",
+        },
+      });
+
+      await db.insert(issues).values({
+        id: issueId,
+        companyId,
+        title: "Daily workshop",
+        status: "blocked",
+        priority: "medium",
+        assigneeAgentId: agentId,
+        executionRunId: runId,
+        executionAgentNameKey: "ceo",
+        executionLockedAt: new Date(),
+        issueNumber: 1,
+        identifier: `${issuePrefix}-1`,
+      });
+
+      const followupRun = await heartbeat.wakeup(agentId, {
+        source: "automation",
+        triggerDetail: "system",
+        reason: wakeReason,
+        payload: { issueId, completedChildIssueId: childIssueId },
+        contextSnapshot: {
+          issueId,
+          taskId: issueId,
+          wakeReason,
+          completedChildIssueId: childIssueId,
+        },
+        requestedByActorType: "agent",
+        requestedByActorId: randomUUID(),
+      });
+
+      expect(followupRun).toBeNull();
+
+      const wakeups = await db
+        .select()
+        .from(agentWakeupRequests)
+        .where(and(eq(agentWakeupRequests.companyId, companyId), eq(agentWakeupRequests.agentId, agentId)));
+
+      expect(wakeups).toHaveLength(1);
+      expect(wakeups[0]?.status).toBe("deferred_issue_execution");
+      expect((wakeups[0]?.payload as Record<string, unknown>)._paperclipWakeContext).toMatchObject({
+        issueId,
+        wakeReason,
+        completedChildIssueId: childIssueId,
+      });
+    },
+  );
+
   it("batches deferred comment wakes and forwards the ordered batch to the next run", async () => {
     const gateway = await createControlledGatewayServer();
     const companyId = randomUUID();

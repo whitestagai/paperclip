@@ -97,6 +97,19 @@ case "$MODE" in
 EOF
     fi
     log "Knowledge-Loop done."
+
+    # B2: AGENTS.md Skill-Wissen-Sektionen auffrischen
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      log "Skill-Wissen-Sync: regeneriere AGENTS.md-Sektionen"
+      SW_TOKEN=$(python3 -c "import json,os;d=json.load(open(os.path.expanduser('~/.paperclip/auth.json')));print(d['credentials']['http://localhost:3100']['token'])" 2>/dev/null || true)
+      if [[ -n "$SW_TOKEN" ]]; then
+        PCP_TOKEN="$SW_TOKEN" PCP_CID="9cebf3cf-efe8-4597-a400-f06488900a87" \
+          python3 "$HOME/.paperclip/scripts/agents-instructions/build-agents-md.py" --apply \
+          || log "Skill-Wissen-Sync FEHLGESCHLAGEN (nicht fatal)"
+      else
+        log "Skill-Wissen-Sync übersprungen — kein Token in auth.json"
+      fi
+    fi
     ;;
 
   lessons)

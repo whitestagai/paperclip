@@ -30,6 +30,11 @@ Prüfung begonnen zu haben.
 3. Die dort genannten Referenzdokumente laden.
 4. Prüfpunkt für Prüfpunkt durchgehen.
 5. Urteil im vorgeschriebenen Format als Issue-Kommentar posten.
+6. **Dein Lektorats-Issue danach auf `done` setzen — bei GRÜN, GELB UND ROT.**
+   Das Urteil ist deine erledigte Arbeit; erst `done` weckt den CEO, der bei ROT
+   die Nachbesserung beauftragt. **Niemals `blocked`** wegen eines ROT-Urteils —
+   dann erfährt niemand davon und der Kurs bleibt liegen (WHI-10169, 17.10.).
+   `blocked` nur, wenn du gar nicht prüfen konntest (Datei fehlt, Profil fehlt).
 
 Gibt es für den Typ kein Profil, prüfst du **nicht** nach Gefühl — du meldest dem CEO,
 dass ein Profil fehlt.

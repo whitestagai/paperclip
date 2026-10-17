@@ -119,20 +119,19 @@ EOF
     cutoff_iso=$(date -u -v-${CONFIG_LESSONS_LOOKBACK_HOURS}H +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
       || date -u -d "${CONFIG_LESSONS_LOOKBACK_HOURS} hours ago" +%Y-%m-%dT%H:%M:%SZ)
 
-    # API endpoint is per-company; query both companies and merge.
+    # Nur WHITESTAG: das Lessons-Issue liegt in WHITESTAG, und dessen Agent-Keys
+    # bekommen auf Runs/Issues anderer Companies 403. Health-Runs im Body
+    # blockierten das Issue jede Nacht erneut (WHI-9852, 17.10.).
     # Filter client-side by status (trigger_run_statuses) and createdAt cutoff.
     statuses_array=$(yq -o=json -I=0 '.lessons_loop.trigger_run_statuses' "$CONFIG_FILE")
 
     wh_runs=$(paperclip_list_company_heartbeat_runs "$CONFIG_COMPANIES_WHITESTAG_ID" 500)
-    he_runs=$(paperclip_list_company_heartbeat_runs "$CONFIG_COMPANIES_HEALTH_ID" 500)
 
-    runs_json=$(jq -s --argjson statuses "$statuses_array" \
+    runs_json=$(echo "$wh_runs" | jq --argjson statuses "$statuses_array" \
       --arg cutoff "$cutoff_iso" --argjson max "$CONFIG_LESSONS_MAX_RUNS" \
-      '(.[0] + .[1])
-       | map(select((.status as $s | $statuses | index($s)) != null
+      'map(select((.status as $s | $statuses | index($s)) != null
                     and (.createdAt // .startedAt // "1970-01-01") >= $cutoff))
-       | sort_by(.createdAt // .startedAt) | reverse | .[0:$max]' \
-      <(echo "$wh_runs") <(echo "$he_runs"))
+       | sort_by(.createdAt // .startedAt) | reverse | .[0:$max]')
 
     run_count=$(echo "$runs_json" | jq 'length')
     if [[ "$run_count" -eq 0 && "$CONFIG_LESSONS_SKIP_IF_EMPTY" == "true" ]]; then

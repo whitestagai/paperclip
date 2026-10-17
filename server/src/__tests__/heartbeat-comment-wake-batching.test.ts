@@ -25,6 +25,15 @@ async function waitFor(condition: () => boolean | Promise<boolean>, timeoutMs = 
   throw new Error("Timed out waiting for condition");
 }
 
+// A run that ends without a closing comment may legitimately trigger a
+// finish_successful_run_handoff follow-up. Counting it made "exactly two runs"
+// waits flaky: once the third run appeared the condition could never hold.
+function withoutHandoffRuns<T extends { contextSnapshot: unknown }>(runs: T[]) {
+  return runs.filter(
+    (run) => (run.contextSnapshot as Record<string, unknown> | null)?.wakeReason !== "finish_successful_run_handoff",
+  );
+}
+
 async function closeDbClient(db: ReturnType<typeof createDb> | undefined) {
   await db?.$client?.end?.({ timeout: 0 });
 }
@@ -537,7 +546,8 @@ describe("heartbeat comment wake batching", () => {
       await waitFor(() => gateway.getAgentPayloads().length === 2);
       await waitFor(async () => {
         const runs = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.agentId, agentId));
-        return runs.length === 2 && runs.every((run) => run.status === "succeeded");
+        const primary = withoutHandoffRuns(runs);
+        return primary.length === 2 && primary.every((run) => run.status === "succeeded");
       }, 90_000);
 
       const secondPayload = gateway.getAgentPayloads()[1] ?? {};
@@ -710,7 +720,8 @@ describe("heartbeat comment wake batching", () => {
       gateway.releaseFirstWait();
       await waitFor(async () => {
         const runs = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.agentId, agentId));
-        return runs.length === 2 && runs.every((run) => ["cancelled", "succeeded"].includes(run.status));
+        const primary = withoutHandoffRuns(runs);
+        return primary.length === 2 && primary.every((run) => ["cancelled", "succeeded"].includes(run.status));
       }, 90_000);
     } finally {
       gateway.releaseFirstWait();
@@ -865,7 +876,8 @@ describe("heartbeat comment wake batching", () => {
           .select()
           .from(heartbeatRuns)
           .where(eq(heartbeatRuns.agentId, agentId));
-        return runs.length === 2 && runs.every((run) => run.status === "succeeded");
+        const primary = withoutHandoffRuns(runs);
+        return primary.length === 2 && primary.every((run) => run.status === "succeeded");
       }, 90_000);
 
       const reopenedIssue = await db
@@ -1065,7 +1077,8 @@ describe("heartbeat comment wake batching", () => {
           .select()
           .from(heartbeatRuns)
           .where(eq(heartbeatRuns.companyId, companyId));
-        return runs.length === 2 && runs.every((run) => run.status === "succeeded");
+        const primary = withoutHandoffRuns(runs);
+        return primary.length === 2 && primary.every((run) => run.status === "succeeded");
       }, 90_000);
 
       const issueAfterPromotion = await db

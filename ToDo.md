@@ -608,6 +608,18 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Rumpf — dann gehoert eine Mindestpruefung in die Routine.
       *(2026-09-11, Chat: WHITESTAG Agenten-Aufsicht)*
 
+- [ ] **Kurs-Melder: erste echte Meldung gegenlesen** — `de.whitestag.academy-kurs-melder`
+      meldet neue Zeilen unter „## Gebaute Kurse“ im Themen-Log per Jarvis. Bisher
+      nur der Testversand gelaufen; beim nächsten fertigen Kurs prüfen, ob die
+      Meldung kam (`~/.paperclip/logs/academy-kurs-melder.log`). Hängt daran, dass
+      der CEO die Tabelle pflegt. *(2026-10-17, Chat: Telegram-Meldungen aufräumen)*
+
+- [ ] **Sekretärin: Quoting-Fehler beim Telegram-Versand** — ihre Run-Logs zeigen
+      bei jedem Aufruf von `send-walter-telegram.sh` ein
+      `unexpected EOF while looking for matching`, danach trotzdem „Push OK“.
+      Prüfen, ob Freigabe-Meldungen kaputt oder doppelt ankommen; Ursache
+      vermutlich die Anführungszeichen „…" im HTML-Text. *(2026-10-17, Chat: Telegram-Meldungen aufräumen)*
+
 ## Mail-Spiegel und Belege
 
 - [ ] **V16 ist erst an einem einzigen Anhang erprobt** — der Live-Test mit der

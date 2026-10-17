@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>de.whitestag.academy-kurs-melder</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/walterschoenenbroecher.de/.paperclip/scripts/academy-kurs-melder/run.sh</string>
+  </array>
+  <key>StartInterval</key><integer>900</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/walterschoenenbroecher.de/.paperclip/logs/academy-kurs-melder.log</string>
+  <key>StandardErrorPath</key><string>/Users/walterschoenenbroecher.de/.paperclip/logs/academy-kurs-melder.log</string>
+</dict>
+</plist>

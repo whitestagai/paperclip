@@ -563,21 +563,26 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 
 ## WHITESTAG.ACADEMY
 
-- [ ] **Pfad-Falle entschaerft — zweiten Kurszyklus gegenpruefen** — die Routine
-      produzierte 20 Kurse, aber **kein Zyklus lief je sauber zu Ende**. Zwei
-      Ursachen, beide am 11.09. behoben: (1) Der CEO erfand beim Delegieren einen
-      Ablagepfad (`Paperclip/Projekte/WHITESTAG.ACADEMY/content/`), weil die Spec
-      den Platzhalter `<ACADEMY>` nirgends aufloeste — der Kurs vom 08.09. lag
-      dort und war fuer den Lektor unauffindbar. (2) Der **Lektoratsauftrag
-      enthielt gar keinen Dateipfad**, also verbrauchte der Lektor sein
-      Iterationsbudget mit Suchen und endete fuenfmal in `max_iterations`.
-      Geaendert: absoluter Pfad in `_KURS-SPEC.md` § 9 verankert, Routine-
-      Beschreibung (Revision 8) um die Pflicht ergaenzt, den vollen Pfad in jeden
-      Auftrag zu schreiben; der verirrte Kurs wurde in den kanonischen Ordner
-      verschoben. **Belegt wirksam fuer einen Durchlauf:** WHI-6997 lief danach
-      durch, Urteil GRUEN, alle 10 Pruefpunkte. Ob der naechste Zyklus (Di/Do
-      06:00) ohne Eingriff durchlaeuft, ist noch offen.
-      *(2026-09-11, Chat: WHITESTAG Agenten-Aufsicht)*
+- [ ] **★Routine „KI-Tool-Stand aktualisieren" anlegen** — `_KI-TOOL-STAND.md` ist
+      am 16.10. von Hand auf Stand gebracht, die 90-Tage-Grenze faellt also
+      wieder am **14.01.2027**. Body und Trigger (`0 6 1 */2 *`, Europe/Berlin,
+      Online-Rechercheur) liegen fertig in `tools/academy-tool-stand/`; angelegt
+      werden konnte sie nicht, weil das Laden des Board-Tokens per
+      Sicherheitspruefung verwehrt war. Per Board-UI anlegen oder Token-Zugriff
+      freigeben. Bis dahin stimmt der Abschnitt „Pflege" der Datei nicht, der
+      die Routine schon als zustaendig nennt. *(2026-10-17, Chat: KI-Tool-Stand Academy)*
+
+- [ ] **Antwort an den CEO zu WHI-10094 verschicken** — Entwurf im Chatverlauf:
+      Tool-Stand aktualisiert, kein eigener Auftrag noetig. Den Satz „Pflege
+      laeuft kuenftig ueber eine Routine" nur mitschicken, wenn sie angelegt ist.
+      *(2026-10-17, Chat: KI-Tool-Stand Academy)*
+
+- [ ] **Offene Recherchepunkte im Tool-Stand** — (1) ob die ChatGPT-Google-
+      Connectoren im EWR noch gesperrt sind (nur Drittquellen, help.openai.com
+      gab 403 — in einem deutschen Plus-Konto unter Einstellungen → Apps
+      nachsehen); (2) ob Claude-Gmail „Senden" schon bei allen Konten ankommt;
+      (3) was „ChatGPT Work eingeschraenkt" im Free-Plan konkret heisst. Stehen
+      auch in der Datei selbst. *(2026-10-17, Chat: KI-Tool-Stand Academy)*
 
 - [ ] **Zwei ACADEMY-Auftraege ohne Ergebnis — Muster pruefen** — WHI-5016 wurde
       mit **leerer Beschreibung** angelegt; der Autor meldete daraufhin dreimal

@@ -53,6 +53,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       gezogen (`fix/heartbeat-active-runs-prozessweit` auf `fork/master`, 46 Tests
       gruen, gepusht). Auf diesem Branch kam `2ff46e9fd` (dataless-Waechter nach
       `tools/`) dazu. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
+      **Stand 17.10.:** drei weitere Commits darauf (Heartbeat-Wake-Fix `7aa1a31a3`,
+      Lektorats-Regel `bf4a427d1`, Testfix `af675f8cb`), per Fast-Forward von
+      `fix/kinder-weckruf-folgelauf` uebernommen (Hilfsbranch danach lokal und
+      auf `fork` geloescht). *(2026-10-17, Chat: Academy Kurs-Routine)*
 
 - [ ] **Reasoning-Abschaltung fuer qwen3.6 im lmstudio-Adapter verankern** —
       gemessen senkt ein leerer `<think></think>`-Block als Assistant-Prefill
@@ -322,21 +326,33 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Mail-Spiegel, vgl. Abschnitt „Mail-Spiegel und Belege"). Gleiches Muster wie
       die Feinschliff-Routine: Rezept mit einem einzigen Suchaufruf in die Routine
       bzw. AGENTS.md. Danach Creative Assistant (5) ansehen. *(2026-10-14, Chat: Agentenausfälle und Ursachen)*
+      **Stand 17.10.:** WHI-10049 (IKEA 1622979641) ist echt, aber die PDF hing
+      nur an der Mail vom 17.08. und wurde nie gespiegelt (Mail im Vault sagt
+      „im Anhang") → **Walter: PDF aus ws@whitestag.film nach
+      `Buchhaltung/Rechnungseingang/` legen**, dann WHI-10049 wecken.
+      WHI-10048 („Lorberg #1089") abgebrochen: Absender `sweetmusiclessons.com`,
+      „bereits ueberwiesen", kein Anhang, Lorberg sonst nirgends im Vault —
+      **vermutlich Phishing, Walter bitte bestaetigen.** *(2026-10-17, Chat: Academy Kurs-Routine)*
 
-- [ ] **Drei Routine-Wiederholungen mit Folgearbeit — Entscheidung offen** —
-      WHI-8313, WHI-9297, WHI-9370 (CEO, ACADEMY-Workshop → Kurs- und
-      Lektoratsaufgaben). Walter entscheidet, ob die Arbeit noch gebraucht wird.
-      Von urspruenglich fuenf: WHI-8229 am 15.10. mitgeloescht (aelter als ein
-      Monat), HEA-1752 inzwischen von selbst `done`.
-      **Loeschung 15.10.:** Auf Walters Wunsch alle **149 offenen Issues aelter
-      als einen Monat endgueltig geloescht** (ueber `DELETE /api/issues/:id`,
-      149× `issue.deleted` im Activity-Log, 0 Weckungen). Vorher 486 neuere
-      Unteraufgaben von ihnen geloest (`parent_id = NULL`, 482 davon schon
-      abgeschlossen). Sicherung davor:
-      `~/.paperclip/backups/manuell/vor-loeschung-alter-issues-20261015.dump`
-      (pg_dump -Fc, 372 MB), Liste: `…/loeschliste-20261015.txt`.
-      *(2026-10-15, Chat: Agentenausfälle und Ursachen)*
 ## Selbstheilung und Agenten-Aufsicht
+
+- [ ] **Heartbeat-Wake-Fix im Live-Betrieb belegen** — seit 17.10. 09:36 werden
+      `issue_children_completed`/`issue_blockers_resolved` bei laufendem Run
+      zurueckgestellt statt eingerechnet (Commit `7aa1a31a3`). Der Ernstfall trat
+      bis Feierabend nicht auf. Pruefen, dass er greift und nichts mehr verschluckt:
+      `select status, count(*) from agent_wakeup_requests where created_at > '2026-10-17 09:36+02' and payload ? 'childIssueIds' group by 1;`
+      — `deferred_issue_execution` muss auftauchen, `coalesced` darf nicht mehr. *(2026-10-17, Chat: Academy Kurs-Routine)*
+
+- [ ] **Clara: zwei Sammelauftraege laufen in `max_iterations`** — CLAA-2994
+      (R4 Oktober-Newsletter, mit doppelten Pressetext-Kindern CLAA-3019/3030/3024)
+      und CLAA-2977 (R5 Themen-Dossier, Kind CLAA-2981 ohne Assignee) sind fuer 12
+      Schritte zu gross. Inhaltlich entscheiden: Oktober-Newsletter noch senden?
+      Dann Kinder entdoppeln und zuweisen, sonst abbrechen. CLAA-2867 hat sich die
+      Kinder selbst zugewiesen, ist aber wieder `blocked` (Post-Run-Guard). *(2026-10-17, Chat: Academy Kurs-Routine)*
+
+- [ ] **Generator-Falle `build-agents-md.py`** — `--backup --apply` zusammen fuehrt
+      nur das Backup aus (`main()` kehrt nach dem ersten Modus zurueck), meldet aber
+      nichts. Entweder Modi kombinierbar machen oder bei mehreren Flags abbrechen. *(2026-10-17, Chat: Academy Kurs-Routine)*
 
 - [ ] **★★Clara-Vault-Routine stillgelegt — Entscheidung ueber die Zukunft offen**
       — der Agent (Clara Sound / Vault-Maintainer, `500a1656`) hat **keinen

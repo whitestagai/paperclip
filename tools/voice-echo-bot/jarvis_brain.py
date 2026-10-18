@@ -103,7 +103,12 @@ VOICE_OUTPUT_HINT = (
     "dreißig\"; „2026\" -> „zweitausendsechsundzwanzig\"; „26.07.\" -> "
     "„sechsundzwanzigster Juli\"; „15 °C\" -> „fünfzehn Grad\"; „5 €\" -> „fünf "
     "Euro\". Lange Ziffernfolgen (Telefon, IBAN) in kleinen Gruppen ausschreiben "
-    "(z. B. „030 12 34\" -> „null drei null, zwölf, vierunddreißig\").\n\n"
+    "(z. B. „030 12 34\" -> „null drei null, zwölf, vierunddreißig\").\n"
+    "Das gilt NUR für den Text, den du sprichst. In den Steuer-Token (WEB:, "
+    "LOOKUP:, ISSUE:) schreibst du ganz normal mit Ziffern — sie werden nicht "
+    "vorgelesen, sondern als Suchbegriff verwendet. Also „WEB: Wetter Cottbus "
+    "18. August 2026\", NICHT „WEB: Wetter Cottbus achtzehnter August "
+    "zweitausendsechsundzwanzig\".\n\n"
     "WICHTIG — Kürze: Fasse dich kurz, normalerweise zwei bis drei Sätze — "
     "wer zuhört, kann nicht querlesen und muss die ganze Antwort abwarten. "
     "Gibt es mehrere Treffer oder eine lange Liste, nenne nur das Wichtigste "
@@ -305,6 +310,17 @@ def _web_context_lokal(result, max_zeichen=WEB_CONTEXT_ZEICHEN):
     return "\n\n".join(teile)
 
 
+KEIN_NETZ = "⚠️ Ich komme gerade nicht ins Netz."
+KEIN_TREFFER = "⚠️ Dazu habe ich nichts Brauchbares gefunden."
+
+
+def _ergebnislos(ohne_quelle):
+    """Die Ansage, wenn keine Antwort zustande kam. `ohne_quelle` heisst: die
+    Suche lief, es war nur nichts Lesbares dabei — dann waere die Meldung
+    „kein Netz" schlicht falsch und schickt Walter auf die falsche Fährte."""
+    return KEIN_TREFFER if ohne_quelle else KEIN_NETZ
+
+
 def _do_web(messages, query, chat_model, api_key):
     print("[web] query='{}'".format((query or "").replace("\n", " ")[:120]),
           flush=True)
@@ -318,10 +334,18 @@ def _do_web(messages, query, chat_model, api_key):
     # der Dienst nicht läuft — genau das Risiko, das den lokalen Weg sonst
     # zum einzelnen Blockierpunkt machen würde.
     result = None
+    # Unterscheidet die beiden Ergebnislos-Faelle bis zur Ansage durch: „nichts
+    # Brauchbares gefunden" ist etwas anderes als „kein Netz". Beides gleich zu
+    # melden schickt Walter auf Fehlersuche nach einem Ausfall, den es nicht
+    # gibt (Live-Befund 17.08.: der Dienst lief, der Suchbegriff taugte nicht).
+    ohne_quelle = False
     try:
         result = websuche_client.suche(
             query, timeout=websuche_client.DEFAULT_TIMEOUT,
             deadline=websuche_client.DEFAULT_DEADLINE)
+    except websuche_client.KeineQuelleError:
+        traceback.print_exc()
+        ohne_quelle = True
     except websuche_client.WebsucheError:
         traceback.print_exc()
     if result is not None:
@@ -336,17 +360,20 @@ def _do_web(messages, query, chat_model, api_key):
                          "als \"Quelle: ...\" oder \"Quellen: ...\" an. "
                          "Nenne keine URLs.")
     elif api_key:
+        # Auch nach KeineQuelleError: Tavily ist die Abdeckungs-Reserve, nicht
+        # nur die Ausfallsicherung — was der lokale Dienst nicht lesen konnte,
+        # findet der zweite Weg vielleicht doch.
         try:
             tavily = web_search.search(query, api_key, timeout=8)
         except web_search.WebSearchError:
             traceback.print_exc()
-            return "⚠️ Ich komme gerade nicht ins Netz."
+            return _ergebnislos(ohne_quelle)
         context = json.dumps(tavily, ensure_ascii=False)[:4000]
         # Tavily liefert keine Domains mit (die URLs werden dort verworfen) —
         # eine Quellenangabe wäre hier also frei erfunden.
         quellen_regel = "Nenne keine URLs."
     else:
-        return "⚠️ Ich komme gerade nicht ins Netz."
+        return _ergebnislos(ohne_quelle)
     followup = messages + [
         {"role": "assistant", "content": "WEB: {}".format(query)},
         {"role": "user", "content":

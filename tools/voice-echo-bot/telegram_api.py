@@ -55,8 +55,26 @@ class Telegram:
             payload = json.loads(resp.read().decode("utf-8"))
         return payload.get("result")
 
+    def send_document(self, chat_id, file_path, caption=None):
+        """Sendet eine beliebige Datei als Dokument (multipart/form-data)."""
+        fields = {"chat_id": str(chat_id)}
+        if caption:
+            fields["caption"] = caption
+        with open(file_path, "rb") as fh:
+            content = fh.read()
+        boundary = uuid.uuid4().hex
+        body = self._encode_multipart(
+            fields, "document", os.path.basename(file_path) or "file.txt",
+            content, boundary, content_type="text/plain")
+        req = urllib.request.Request(
+            "{}/{}".format(self.api, "sendDocument"), data=body,
+            headers={"Content-Type": "multipart/form-data; boundary={}".format(boundary)})
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read().decode("utf-8")).get("result")
+
     @staticmethod
-    def _encode_multipart(fields, file_field, filename, file_bytes, boundary):
+    def _encode_multipart(fields, file_field, filename, file_bytes, boundary,
+                           content_type="audio/ogg"):
         dash = "--" + boundary
         parts = []
         for name, value in fields.items():
@@ -72,7 +90,7 @@ class Telegram:
                 file_field, filename
             ).encode("utf-8")
         )
-        parts.append(b"Content-Type: audio/ogg")
+        parts.append("Content-Type: {}".format(content_type).encode("utf-8"))
         parts.append(b"")
         parts.append(file_bytes)
         parts.append((dash + "--").encode("utf-8"))

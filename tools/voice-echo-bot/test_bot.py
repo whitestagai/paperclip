@@ -417,4 +417,260 @@ class TestDoLookupUnknownVault(unittest.TestCase):
         lc.assert_not_called()
 
 
+
+class TestSeoCfgWpEnv(unittest.TestCase):
+    def test_seo_cfg_contains_wp_env_dict(self):
+        app = make_app(mock.MagicMock())
+        cfg = app._seo_cfg()
+        self.assertIn("wp_env", cfg)
+        self.assertIsInstance(cfg["wp_env"], dict)
+
+    def test_seo_cfg_wp_env_loaded_from_whitestag_env_when_present(self):
+        app = make_app(mock.MagicMock())
+        with mock.patch("config.os.path.exists", return_value=True), \
+             mock.patch("config.load_env", return_value={"WHITESTAG_DE_WP_USER": "u"}):
+            cfg = app._seo_cfg()
+        self.assertEqual(cfg["wp_env"], {"WHITESTAG_DE_WP_USER": "u"})
+
+    def test_seo_cfg_wp_env_empty_when_file_missing(self):
+        app = make_app(mock.MagicMock())
+        with mock.patch("config.os.path.exists", return_value=False):
+            cfg = app._seo_cfg()
+        self.assertEqual(cfg["wp_env"], {})
+
+
+class TestSeoCallback(unittest.TestCase):
+    def test_seo_callback_only_walter(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        update = {"callback_query": {"id": "cq1", "data": "seo:ok:TOK",
+                  "from": {"id": 999999}, "message": {"chat": {"id": 999999}}}}
+        with mock.patch("seo_gate.load_token") as lt, mock.patch("seo_gate.apply_token") as at:
+            app.handle_update(update)
+        lt.assert_not_called()
+        at.assert_not_called()
+        texts = [c.args[1] if len(c.args) > 1 else c.kwargs.get("text")
+                 for c in tg.answer_callback_query.call_args_list]
+        self.assertTrue(any("nicht berechtigt" in (t or "") for t in texts))
+        tg.send_message.assert_not_called()
+
+    def test_seo_callback_walter_applies(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        with mock.patch("seo_gate.load_token",
+                        return_value={"token": "TOK", "site": "s", "status": "pending",
+                                     "changeset_path": "/c.json"}), \
+             mock.patch("seo_gate.apply_token",
+                        return_value="✅ s live — 3 angewendet, 0 Fehler") as at:
+            update = {"callback_query": {"id": "cq2", "data": "seo:ok:TOK",
+                      "from": {"id": 8311805232}, "message": {"chat": {"id": 8311805232}}}}
+            app.handle_update(update)
+        at.assert_called_once()
+        texts = [c.args[1] for c in tg.send_message.call_args_list]
+        self.assertTrue(any("live" in t for t in texts))
+        tg.answer_callback_query.assert_called_once_with("cq2")
+
+    def test_seo_callback_reject_calls_reject_token(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        with mock.patch("seo_gate.load_token",
+                        return_value={"token": "TOK", "site": "s", "status": "pending",
+                                     "changeset_path": "/c.json"}), \
+             mock.patch("seo_gate.reject_token", return_value="❌ s abgelehnt.") as rt:
+            update = {"callback_query": {"id": "cq3", "data": "seo:no:TOK",
+                      "from": {"id": 8311805232}, "message": {"chat": {"id": 8311805232}}}}
+            app.handle_update(update)
+        rt.assert_called_once()
+        texts = [c.args[1] for c in tg.send_message.call_args_list]
+        self.assertTrue(any("abgelehnt" in t for t in texts))
+
+    def test_seo_callback_unknown_token_reports_gone(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        with mock.patch("seo_gate.load_token", return_value=None):
+            update = {"callback_query": {"id": "cq4", "data": "seo:ok:TOK",
+                      "from": {"id": 8311805232}, "message": {"chat": {"id": 8311805232}}}}
+            app.handle_update(update)
+        texts = [c.args[1] for c in tg.send_message.call_args_list]
+        self.assertTrue(any("nicht mehr gefunden" in t for t in texts))
+
+    def test_seo_callback_non_seo_data_ignored(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        update = {"callback_query": {"id": "cq5", "data": "other:x",
+                  "from": {"id": 8311805232}, "message": {"chat": {"id": 8311805232}}}}
+        app.handle_update(update)
+        tg.answer_callback_query.assert_not_called()
+        tg.send_message.assert_not_called()
+
+    def test_reply_with_token_stores_note(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        with mock.patch("seo_gate.note_token") as nt:
+            app.handle_update(msg(8311805232, mid=5, text="nur die Startseite bitte",
+                                  reply_text="🟢 SEO-Freigabe film …\n\n(Token ABC)"))
+        nt.assert_called_once()
+        args = nt.call_args.args
+        self.assertEqual(args[1], "ABC")
+        self.assertEqual(args[2], "nur die Startseite bitte")
+        texts = [c.args[1] for c in tg.send_message.call_args_list]
+        self.assertTrue(any("Notiz" in t and "ABC" in t for t in texts))
+
+    def test_reply_with_token_from_non_walter_tenant_does_not_note(self):
+        # Multi-Tenant-Guard: Der Freitext-Notiz-Pfad darf wie der Button-Callback
+        # nur fuer Walter (config.WALTER_CHAT_ID) wirken. Ein anderer Tenant
+        # (hier Clara) darf keine Notiz auf einen SEO-Freigabe-Token schreiben.
+        tg = mock.MagicMock(); app = make_app(tg)
+        with mock.patch("seo_gate.note_token") as nt:
+            app.handle_update(msg(1220010628, mid=5, text="nur die Startseite bitte",
+                                  reply_text="🟢 SEO-Freigabe film …\n\n(Token ABC)"))
+        nt.assert_not_called()
+
+
+class TestAcademyBridgeIntegration(unittest.TestCase):
+    def test_academy_callback_writes_intent_and_triggers_executor(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        update = {"callback_query": {"id": "cbq1", "from": {"id": 8311805232},
+                                     "data": "academy:approve:2026-07-25T02:00:03"}}
+        with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf, \
+             mock.patch.object(bot.academy_bridge, "trigger_executor") as te:
+            app.handle_update(update)
+        wf.assert_called_once()
+        path_arg, dict_arg = wf.call_args.args
+        self.assertEqual(path_arg, bot.DEFAULT_ACADEMY_INTENT_PATH)
+        self.assertEqual(dict_arg["kind"], "approve")
+        self.assertEqual(dict_arg["ref_run_ts"], "2026-07-25T02:00:03")
+        te.assert_called_once_with(bot.DEFAULT_ACADEMY_AUTO_DIR)
+        tg.answer_callback_query.assert_called_once_with("cbq1", text="Verstanden — läuft.")
+
+    def test_academy_callback_uses_configured_paths_when_present(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        app.cfg["academy_intent_path"] = "/tmp/custom-intent.json"
+        app.cfg["academy_auto_dir"] = "/tmp/custom-academy-auto"
+        update = {"callback_query": {"id": "cbq2", "from": {"id": 1220010628},
+                                     "data": "academy:reject:R1"}}
+        with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf, \
+             mock.patch.object(bot.academy_bridge, "trigger_executor") as te:
+            app.handle_update(update)
+        self.assertEqual(wf.call_args.args[0], "/tmp/custom-intent.json")
+        te.assert_called_once_with("/tmp/custom-academy-auto")
+
+    def test_academy_callback_foreign_data_goes_to_seo_not_academy(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        update = {"callback_query": {"id": "cbq3", "from": {"id": 8311805232},
+                                     "data": "issue:confirm:WHI-1", "message": {"chat": {"id": 8311805232}}}}
+        with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf, \
+             mock.patch("seo_gate.load_token") as lt:
+            app.handle_update(update)
+        wf.assert_not_called()
+        lt.assert_not_called()  # seo_gate.parse_callback lehnt Fremd-Daten ab
+
+    def test_academy_callback_unknown_sender_is_dropped(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        update = {"callback_query": {"id": "cbq-unknown", "from": {"id": 999},
+                                     "data": "academy:approve:2026-07-25T02:00:03"}}
+        with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf, \
+             mock.patch.object(bot.academy_bridge, "trigger_executor") as te:
+            app.handle_update(update)
+        wf.assert_not_called()
+        te.assert_not_called()
+        tg.answer_callback_query.assert_not_called()
+
+    def test_academy_reply_writes_intent_and_does_not_hit_issue_path(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf, \
+             mock.patch.object(bot.academy_bridge, "trigger_executor") as te, \
+             mock.patch.object(bot, "find_issue_by_identifier") as fi:
+            app.handle_update(msg(8311805232, text="Login-Seite responsiver machen.",
+                                  reply_text="🎓 Academy-Auto — Tagesstand\nWHI-1: Login"))
+        fi.assert_not_called()
+        wf.assert_called_once()
+        dict_arg = wf.call_args.args[1]
+        self.assertEqual(dict_arg["kind"], "direction")
+        self.assertEqual(dict_arg["text"], "Login-Seite responsiver machen.")
+        te.assert_called_once()
+        tg.send_message.assert_called_once_with(8311805232, "✍️ Als Nachtaufgabe notiert.")
+
+    def test_academy_reply_empty_text_skips_write(self):
+        tg = mock.MagicMock(); app = make_app(tg)
+        with mock.patch.object(bot.academy_bridge, "write_intent_file") as wf:
+            app.handle_update(msg(8311805232, text="",
+                                  reply_text="🎓 Academy-Auto — Tagesstand\nWHI-1: Login"))
+        wf.assert_not_called()
+
+    def test_non_academy_reply_still_uses_ident_path(self):
+        # Regressions-Schutz: normale WHI-Reply-Erkennung bleibt unverändert.
+        tg = mock.MagicMock(); app = make_app(tg)
+        with mock.patch.object(bot, "find_issue_by_identifier", return_value={"id": "iss-9", "identifier": "WHI-2857"}) as fi, \
+             mock.patch.object(bot, "add_comment", return_value={"id": "c1"}), \
+             mock.patch.object(bot.academy_bridge, "write_intent_file") as wf:
+            app.handle_update(msg(8311805232, text="Ja, mach DMARC so.", reply_text="🟠 Entscheidung benötigt — WHI-2857: DMARC"))
+        fi.assert_called_once()
+        wf.assert_not_called()
+
+
+class TestWebSperreNachVaultTreffer(unittest.TestCase):
+    """Der PII-Notaus im Telegram-Pfad.
+
+    `web_erlaubt=False` sperrt die Websuche, nachdem Vault-Daten geflossen
+    sind — sonst koennte das Modell aus dem Kontext einen WEB:-Suchbegriff
+    bilden und private Daten (Adresse, Telefonnummer) nach draussen tragen.
+
+    Anders als beim Wake-Satelliten laesst sich die Sperre hier nicht an die
+    Gespraechskette haengen: der Satellit startet jede Kette ohne History, der
+    Telegram-Chat traegt seine History ueber die gesamte Bot-Laufzeit. Die
+    Sperre haengt deshalb genau am History-FENSTER — sie gilt, solange die
+    Vault-Runde noch in den behaltenen Turns steht, und faellt, sobald sie
+    herausgerutscht ist. Dauerhaft sperren waere kein Schutz, sondern ein
+    Verlust: nach der ersten Kontaktabfrage haette der Chat nie wieder
+    Websuche.
+    """
+
+    def _lauf(self, app, uid, kinds):
+        """Schickt je eine Nachricht pro `kind` und protokolliert web_erlaubt."""
+        gesehen = []
+
+        def fake_respond(*a, **k):
+            gesehen.append(k.get("web_erlaubt"))
+            return {"kind": fake_respond.kind, "answer": "Antwort"}
+
+        with mock.patch.object(bot.jarvis_brain, "respond", side_effect=fake_respond):
+            for i, kind in enumerate(kinds):
+                fake_respond.kind = kind
+                app.handle_update(msg(uid, mid=i + 1, text="Frage {}".format(i)))
+        return gesehen
+
+    def test_lookup_sperrt_die_folgerunde(self):
+        app = make_app(mock.MagicMock())
+        gesehen = self._lauf(app, 8311805232, ["lookup", "chat"])
+        self.assertTrue(gesehen[0])    # Runde 1: noch frei
+        self.assertFalse(gesehen[1])   # Runde 2: Vault-Daten im Kontext -> zu
+
+    def test_ohne_lookup_bleibt_die_suche_frei(self):
+        app = make_app(mock.MagicMock())
+        gesehen = self._lauf(app, 8311805232, ["chat", "web", "issue", "chat"])
+        self.assertTrue(all(gesehen), gesehen)
+
+    def test_sperre_faellt_wenn_der_treffer_aus_der_history_rutscht(self):
+        # MAX_HISTORY_MESSAGES/2 Turns nach dem Lookup ist die Vault-Runde aus
+        # dem behaltenen Fenster gefallen — ab da darf wieder gesucht werden.
+        app = make_app(mock.MagicMock())
+        turns = bot.MAX_HISTORY_MESSAGES // 2
+        gesehen = self._lauf(app, 8311805232, ["lookup"] + ["chat"] * (turns + 1))
+        self.assertTrue(gesehen[0])
+        self.assertFalse(gesehen[1], "direkt nach dem Lookup muss zu sein")
+        self.assertFalse(gesehen[turns], "innerhalb des Fensters noch zu")
+        self.assertTrue(gesehen[turns + 1], "Treffer ist herausgerutscht -> wieder frei")
+
+    def test_sperre_gilt_nur_fuer_den_eigenen_chat(self):
+        # Mehrmandanten-Bot: Walters Vault-Treffer darf Claras Chat nicht
+        # die Websuche nehmen (und umgekehrt).
+        app = make_app(mock.MagicMock())
+        self._lauf(app, 8311805232, ["lookup"])
+        gesehen = self._lauf(app, 1220010628, ["chat"])
+        self.assertTrue(gesehen[0])
+
+    def test_history_und_merker_bleiben_gleich_lang(self):
+        # Laufen die beiden Listen auseinander, zeigt die Sperre auf die
+        # falsche Runde — der Fehler waere still.
+        app = make_app(mock.MagicMock())
+        self._lauf(app, 8311805232, ["lookup"] + ["chat"] * 12)
+        self.assertEqual(len(app.vault_flags[8311805232]),
+                         len(app.history[8311805232]) // 2)
+
+
 if __name__ == "__main__": unittest.main()

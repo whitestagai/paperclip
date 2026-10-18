@@ -75,5 +75,35 @@ class TestTelegram(unittest.TestCase):
             self.assertEqual(self.tg.get_file_path("fid"), "voice/file_1.oga")
 
 
+def test_send_document_posts_multipart(tmp_path, monkeypatch):
+    doc = tmp_path / "l.txt"
+    doc.write_text("inhalt")
+    captured = {}
+
+    class FakeResp:
+        def read(self):
+            return b'{"result":{"ok":true}}'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=60):
+        captured["url"] = req.full_url
+        captured["ctype"] = req.headers.get("Content-type")
+        captured["body"] = req.data
+        return FakeResp()
+
+    monkeypatch.setattr(telegram_api.urllib.request, "urlopen", fake_urlopen)
+    tg = telegram_api.Telegram("TOK")
+    tg.send_document(123, str(doc), caption="Kopf")
+    assert captured["url"].endswith("/sendDocument")
+    assert "multipart/form-data" in captured["ctype"]
+    assert b"inhalt" in captured["body"]
+    assert b"Kopf" in captured["body"]
+
+
 if __name__ == "__main__":
     unittest.main()

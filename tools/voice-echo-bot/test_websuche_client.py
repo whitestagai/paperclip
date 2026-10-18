@@ -188,3 +188,34 @@ class TestSuche(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestKeineQuelle(unittest.TestCase):
+    """Der Dienst hat geantwortet, aber nichts Lesbares geliefert — das ist
+    etwas anderes als „Dienst tot" und muss oben unterscheidbar ankommen."""
+
+    def test_keine_brauchbare_quelle_ist_eigener_fehler(self):
+        # Live 17.08.: Suchbegriff mit ausgeschriebenen Zahlen -> SearXNG
+        # lieferte nur Instagram und Facebook, beide ohne herausgegebenen Text.
+        payload = {"frage": "x", "quellen": [
+            {"domain": "instagram.com", "titel": "i", "text": "",
+             "abgerufen_am": "2026-08-17"},
+            {"domain": "facebook.com", "titel": "f", "text": "",
+             "abgerufen_am": "2026-08-17"}]}
+        with mock.patch.object(websuche_client.urllib.request, "urlopen",
+                               return_value=_Resp(payload)):
+            with self.assertRaises(websuche_client.KeineQuelleError):
+                websuche_client.suche("x")
+
+    def test_keine_quelle_bleibt_ein_websuchefehler(self):
+        # Bestandscode faengt WebsucheError — der Unterfall darf da nicht
+        # durchrutschen.
+        self.assertTrue(issubclass(websuche_client.KeineQuelleError,
+                                   websuche_client.WebsucheError))
+
+    def test_dienst_tot_ist_kein_keinequelle_fehler(self):
+        with mock.patch.object(websuche_client.urllib.request, "urlopen",
+                               side_effect=urllib.error.URLError("weg")):
+            with self.assertRaises(websuche_client.WebsucheError) as fehler:
+                websuche_client.suche("x")
+        self.assertNotIsInstance(fehler.exception, websuche_client.KeineQuelleError)

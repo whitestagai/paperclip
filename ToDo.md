@@ -14,6 +14,14 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Neustart pruefen (von hier: `lms ps --json`, Kennungen + ctx 98304 +
       parallel 2), dann Verknuepfung in `shell:startup`. Offen auch: ob sich das
       Auto-Laden mit Standard-Kennung in der GUI abschalten laesst. *(2026-10-14, Chat: WHITESTAG-AI Farm-Aufsicht)*
+      **★★Stand 19.10.: `-win` ist abgeschafft, die .bat laedt jetzt unter den
+      Standard-Kennungen.** Der Node kam erneut mit Standard-Kennungen hoch, 38
+      Fallbacks zeigten ab ca. 14:46 ins Leere. Statt umzubenennen folgen jetzt alle
+      Fundorte `gemma-4-31b-it` / `abiray/qwen3.6-35b-a3b` (Agenten, `soll-laufzeit.json`,
+      `resident-set.json`, `erreichbarkeit.sh`, Commit `0d93500bb`). Walter hat die
+      neue .bat am PC eingespielt. **Weiter offen:** einmal ausgefuehrt hat sie noch
+      niemand, und ob sie im Autostart liegt, ist unbestaetigt. Nach dem naechsten
+      Neustart `lms ps --json` pruefen (ctx 98304, parallel 2). *(2026-10-19, Chat: WHITESTAG-AI Fallback-Umstellung)*
 
 - [ ] **Ursache der Geraeteausfaelle unbekannt** — RTX Pro 6000 am 10.10. ~10:30
       bis 12.10. morgens, WHITESTAG-AI am 14.10. ~09:30–15:20 (danach mit
@@ -619,6 +627,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       `kurzbeschreibung_sie`/`langbeschreibung_sie` **wortgleich in Du-Form** gefüllt sind
       (kein Sie-Text, Felder nicht gelöscht) und ob der Import den Kurs annimmt. Dabei auch prüfen,
       ob der Lektor ein „Sie" an Lernende tatsächlich mit ROT bewertet (seit 19.10. Pflicht). *(2026-10-19, Chat: ACADEMY Kurs-Langtext)*
+      **Erster Befund 19.10. (`vibe-coding-context-engineering`): Autor UND Lektor
+      verfehlen die Felder.** `langbeschreibung` nur 1187 Zeichen (Import 14:36
+      abgelehnt), `langbeschreibung_sie` fehlte ganz. Beides vom Board nachgetragen
+      (1284 Zeichen), danach Import `created`. Die Sie-ROT-Prüfung ist weiter unbelegt. *(2026-10-19, Chat: WHITESTAG-AI Fallback-Umstellung)*
 
 - [ ] **Ersten Kurs aus dem Ideen-Eingang gegenlesen** — WHI-10264 „Vibe Coding hat sich
       verändert“ (allgemein · fortgeschritten, Material `Workshops/_ideen/K-20261019-142206.md`,
@@ -626,6 +638,18 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       `_ideen-eingang.md` den Status auf `gebaut (<slug>)`, und hat der Autor das Material
       genutzt, ohne abzuschreiben. Kleinigkeit: Als „in Arbeit“ trug der CEO das
       Routinen-Issue WHI-10263 ein statt des Autoren-Issues. *(2026-10-19, Chat: Kursideen per Jarvis)*
+      **Stand 19.10. abends:** Kurs importiert, Status `gebaut (vibe-coding-context-engineering)`
+      vom CEO gesetzt, Themen-Log eingetragen. Offen bleibt nur die Frage, ob der Autor das
+      Material genutzt hat, ohne abzuschreiben. *(2026-10-19, Chat: WHITESTAG-AI Fallback-Umstellung)*
+
+- [ ] **★Lektor meldet ROT für eine vorhandene Lektion und überliest Hinweise** —
+      WHI-10267 (19.10. 17:18, Modell `google/gemma-4-31b`): „Lektion 4 fehlt", obwohl
+      `## Lektion 4 — Claude 5 und die sechs Verschiebungen` in Zeile 187 steht. Die zu
+      kurze `langbeschreibung` und das fehlende `langbeschreibung_sie` übersah er, obwohl
+      die Länge im Board-Kommentar ausdrücklich genannt war. Prüfen: Laufprotokoll
+      (`log_ref` des Runs `8f8e2402`) — hat er die Datei ganz gelesen oder nur einen
+      Ausschnitt (Kontextkürzung bei 39 KB)? Für Punkt 9a/§ 8 wäre eine deterministische
+      Vorprüfung (Lektionen zählen, Feldlängen messen) zuverlässiger als das Modell. *(2026-10-19, Chat: WHITESTAG-AI Fallback-Umstellung)*
 
 - [ ] **Ersten Fortgeschrittenen-Kurs gegenlesen (Do 22.10.)** — erster Lauf der
       Routine `afb99dc2` („Fortgeschritten (Do)“). Prüfen: `kurs_niveau: fortgeschritten`
@@ -862,6 +886,15 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Fallbacks zeigten rund sechs Stunden ins Leere. Seit 15:23 wieder gruen.
       Umgekehrt fing der Node am 10.–12.10. den zweitaegigen RTX-Ausfall ab.
       Die Entscheidung ueber Welle B ist damit faellig, nicht mehr hypothetisch. *(2026-10-14, Chat: WHITESTAG-AI Farm-Aufsicht)*
+      **19.10.: zweiter Fall gleicher Art** (Neustart → Standard-Kennungen → Fallback
+      tot, diesmal ~2,5 h). Die Kennungs-Ursache ist behoben (siehe Farm-Stabilitaet),
+      die Frage, warum der Node neu startet, nicht. *(2026-10-19, Chat: WHITESTAG-AI Fallback-Umstellung)*
+
+- [ ] **OpenSSH auf WHITESTAG-AI einrichten (optional)** — `lms load` vom Studio
+      aus kann zwar per `set-preferred-device` aufs Node-Geraet zielen, verwirft
+      dabei aber `-c`/`--parallel` (belegt am MacBook, 29.07.). Mit SSH liesse sich
+      `start_llms.bat` von hier ausfuehren. Kurzname am PC per `whoami` holen, nicht
+      raten. *(2026-10-19, Chat: WHITESTAG-AI Fallback-Umstellung)*
 
 ## Kontext-Budget und LM-Studio-Flotte
 
@@ -1065,7 +1098,7 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       `~/Library/Logs/*/lmstudio-preload.log`.
       *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
       **Achtung, veraltet:** der Block laedt mit `ctx 98304 × 4` und den alten
-      Namen. Seit 07.10. gilt am Node `gemma-4-31b-win`/`qwen3.6-35b-win` mit
+      Namen. Seit 19.10. gilt am Node `gemma-4-31b-it`/`abiray/qwen3.6-35b-a3b` mit
       **2** Slots, und geladen wird am PC selbst per `tools/node-wacht/start_llms.bat`
       (siehe Eintrag oben). Den Block in `n8n.sh` entfernen oder angleichen. *(2026-10-14, Chat: WHITESTAG-AI Farm-Aufsicht)*
 
@@ -1525,6 +1558,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
 
 ## Fuer Walter (nur von Hand)
+
+- [ ] **Gmail-Connector neu anmelden** — der claude.ai-Connector verlangt eine neue
+      Anmeldung (claude.ai → Einstellungen → Connectors). Solange er fehlt, kann Claude
+      keine Fehler- oder Alarm-Mails im Postfach nachlesen. *(2026-10-19, Chat: WHITESTAG-AI Fallback-Umstellung)*
 
 - [ ] **`/hooks` einmal oeffnen oder Sitzung neu starten** — aktiviert die neue
       Deutsch-Pruefung (Stop-Hook `~/.claude/scripts/deutsch-pruefung.py`) und

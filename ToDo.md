@@ -633,6 +633,17 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       `## Quellen` (Spec § 10 F1/F4), Sicherheitsrahmen in ausführenden Übungen (F3), ob
       der Lektor die Prüfpunkte 15–17 anwendet und ob die Kurskarte „Fortgeschritten“ mit
       zwei Balken zeigt. *(2026-10-19, Chat: Kursmix und Niveau)*
+      **Achtung:** Seit 19.10. stehen 20 Listen-Ideen im Ideen-Eingang (alle `einsteiger`).
+      Am 22.10. baut die Routine deshalb voraussichtlich eine Listen-Idee statt eines
+      Fortgeschrittenen-Kurses. Der Punkt wird erst nach der Liste fällig (ca. Mitte November)
+      oder früher, wenn Walter Fortgeschrittenen-Ideen dazwischenschiebt. *(2026-10-19, Chat: Kursideen-Liste einspielen)*
+
+- [ ] **Ersten Kurs aus Walters Ideenliste gegenlesen** — 20 Ideen `K-20261019-L01…L20`
+      im `_ideen-eingang.md`, gemeinsames Material `Workshops/_ideen/Ideenliste-2026-10-19.md`.
+      Beim ersten Listen-Kurs prüfen: Übernimmt der CEO den Kurstyp aus der Notiz? Nutzt der
+      Autor das Briefing (8–10 Lektionen nach Spec, nicht „etwa sieben“ aus der Liste)? Setzt
+      der CEO den Status `gebaut (<slug>)`, und zwar nur in der eigenen Zeile, obwohl alle 20
+      dieselbe Material-Datei nennen? *(2026-10-19, Chat: Kursideen-Liste einspielen)*
 
 - [ ] **Ersten Kurs mit 8–10 Lektionen beobachten** — seit 19.10. verlangt Spec § 5
       8 bis 10 statt 7 Lektionen (Prüfprofil Punkt 9a, ROT). Längere Kurse heißen

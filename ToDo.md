@@ -620,6 +620,12 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Prüfen, ob Freigabe-Meldungen kaputt oder doppelt ankommen; Ursache
       vermutlich die Anführungszeichen „…" im HTML-Text. *(2026-10-17, Chat: Telegram-Meldungen aufräumen)*
 
+- [ ] **Ersten Kurs nach `_KURS-SPEC.md` v5 gegenlesen** — prüfen, ob der Autor
+      `langbeschreibung` (1700–2400 Zeichen, eine Zeile mit `\n\n`) liefert, ob
+      `kurzbeschreibung_sie`/`langbeschreibung_sie` **wortgleich in Du-Form** gefüllt sind
+      (kein Sie-Text, Felder nicht gelöscht) und ob der Import den Kurs annimmt. Lektor-Abstufung
+      bei „Sie" an Lernende (GELB, ab zwei Stellen ROT) ggf. auf ROT verschärfen. *(2026-10-19, Chat: ACADEMY Kurs-Langtext)*
+
 ## Mail-Spiegel und Belege
 
 - [ ] **V16 ist erst an einem einzigen Anhang erprobt** — der Live-Test mit der

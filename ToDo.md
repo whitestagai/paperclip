@@ -620,6 +620,13 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       (kein Sie-Text, Felder nicht gelöscht) und ob der Import den Kurs annimmt. Dabei auch prüfen,
       ob der Lektor ein „Sie" an Lernende tatsächlich mit ROT bewertet (seit 19.10. Pflicht). *(2026-10-19, Chat: ACADEMY Kurs-Langtext)*
 
+- [ ] **Ersten Kurs aus dem Ideen-Eingang gegenlesen** — WHI-10264 „Vibe Coding hat sich
+      verändert“ (allgemein · fortgeschritten, Material `Workshops/_ideen/K-20261019-142206.md`,
+      Quelle YouTube Niklas Steenfatt). Prüfen: Lektorat, Freigabe, setzt der CEO in
+      `_ideen-eingang.md` den Status auf `gebaut (<slug>)`, und hat der Autor das Material
+      genutzt, ohne abzuschreiben. Kleinigkeit: Als „in Arbeit“ trug der CEO das
+      Routinen-Issue WHI-10263 ein statt des Autoren-Issues. *(2026-10-19, Chat: Kursideen per Jarvis)*
+
 - [ ] **Ersten Fortgeschrittenen-Kurs gegenlesen (Do 22.10.)** — erster Lauf der
       Routine `afb99dc2` („Fortgeschritten (Do)“). Prüfen: `kurs_niveau: fortgeschritten`
       und `kurs_gruppe: grundlagen` im Frontmatter, Abschnitte `## Voraussetzungen` und
@@ -1369,6 +1376,15 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       liest diese Repo-Datei), die Fenster-Drift blieb bewusst stehen: welches
       Verhalten gewollt ist, weiss nur Walter.
       *(2026-10-06, Chat: Tote Modell-ID)*
+      **Stand 18.10.: `voice-echo-bot/` ist wieder deckungsgleich** — live war in allen
+      Dateien führend, das Repo wurde komplett nachgezogen (Commit `5563226ed`).
+      `diff -rq` zeigt dort nur noch `DEPLOY.md` und die plist, die nur im Repo liegen. *(2026-10-19, Chat: Kursideen per Jarvis)*
+
+- [ ] **`test_llm` im Jarvis-Bot ist veraltet** —
+      `test_module_default_fallback_avoids_the_primary_model` erwartet ein vom
+      Primärmodell verschiedenes Fallback. Seit 04.09. ist beides absichtlich
+      `google/gemma-4-12b` (Kommentar in `llm.py`). Den Test an die Absicht anpassen,
+      dann ist die Suite wieder komplett grün (heute 260 grün, 1 rot). *(2026-10-19, Chat: Kursideen per Jarvis)*
 
 - [ ] **7 uncommittete Dateien im Worktree `agent-learning-tree`** — liegt unter
       `~/.paperclip/scripts/agent-learning-tree`, Branch

@@ -608,12 +608,6 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Rumpf — dann gehoert eine Mindestpruefung in die Routine.
       *(2026-09-11, Chat: WHITESTAG Agenten-Aufsicht)*
 
-- [ ] **Kurs-Melder: erste echte Meldung gegenlesen** — `de.whitestag.academy-kurs-melder`
-      meldet neue Zeilen unter „## Gebaute Kurse“ im Themen-Log per Jarvis. Bisher
-      nur der Testversand gelaufen; beim nächsten fertigen Kurs prüfen, ob die
-      Meldung kam (`~/.paperclip/logs/academy-kurs-melder.log`). Hängt daran, dass
-      der CEO die Tabelle pflegt. *(2026-10-17, Chat: Telegram-Meldungen aufräumen)*
-
 - [ ] **Sekretärin: Quoting-Fehler beim Telegram-Versand** — ihre Run-Logs zeigen
       bei jedem Aufruf von `send-walter-telegram.sh` ein
       `unexpected EOF while looking for matching`, danach trotzdem „Push OK“.
@@ -625,6 +619,29 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       `kurzbeschreibung_sie`/`langbeschreibung_sie` **wortgleich in Du-Form** gefüllt sind
       (kein Sie-Text, Felder nicht gelöscht) und ob der Import den Kurs annimmt. Dabei auch prüfen,
       ob der Lektor ein „Sie" an Lernende tatsächlich mit ROT bewertet (seit 19.10. Pflicht). *(2026-10-19, Chat: ACADEMY Kurs-Langtext)*
+
+- [ ] **Ersten Fortgeschrittenen-Kurs gegenlesen (Do 22.10.)** — erster Lauf der
+      Routine `afb99dc2` („Fortgeschritten (Do)“). Prüfen: `kurs_niveau: fortgeschritten`
+      und `kurs_gruppe: grundlagen` im Frontmatter, Abschnitte `## Voraussetzungen` und
+      `## Quellen` (Spec § 10 F1/F4), Sicherheitsrahmen in ausführenden Übungen (F3), ob
+      der Lektor die Prüfpunkte 15–17 anwendet und ob die Kurskarte „Fortgeschritten“ mit
+      zwei Balken zeigt. *(2026-10-19, Chat: Kursmix und Niveau)*
+
+- [ ] **Ersten Kurs mit 8–10 Lektionen beobachten** — seit 19.10. verlangt Spec § 5
+      8 bis 10 statt 7 Lektionen (Prüfprofil Punkt 9a, ROT). Längere Kurse heißen
+      längere Läufe des Online-Rechercheurs (scheitert ohnehin oft an `max_iterations`)
+      und mehr Kontext beim Lektor. Beim ersten Kurs danach prüfen: Lektionszahl,
+      `**Umfang:**`-Angabe, Laufzahl und Fehlläufe des Autors gegenüber den 7er-Kursen.
+      *(2026-10-19, Chat: Kursmix und Niveau)*
+
+- [ ] **Überarbeitung veröffentlichter Kurse — Entscheidung offen** — der Import fasst
+      einen einmal veröffentlichten Kurs nie wieder an (`409 already_published`,
+      Import-Design vom 17.10., Entscheidung 1). Änderungen an der Vault-Datei kommen
+      also nie in der App an: keine Korrekturen, kein neuer Tool-Stand, keine
+      Erweiterung der alten 7er-Kurse. Bei Werkzeug-Kursen (Claude Code, Codex …)
+      veraltet das schnell. Möglicher Weg: Überarbeitung als zweiter Entwurf neben dem
+      veröffentlichten Kurs, Freigabe im Admin ersetzt die Lektionen, Fortschritt der
+      Teilnehmer bleibt erhalten. *(2026-10-19, Chat: Kursmix und Niveau)*
 
 ## Mail-Spiegel und Belege
 

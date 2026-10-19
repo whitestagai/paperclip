@@ -59,7 +59,7 @@ fi
 # der Zustand, auf den es fuer die Agenten ankommt — die fragen ueber
 # localhost:1234 an, nicht ueber lms.
 MODELLE=""
-for ID in gemma-4-31b-win qwen3.6-35b-win; do
+for ID in gemma-4-31b-it abiray/qwen3.6-35b-a3b; do
   CODE=$("$CURL" -s -o /dev/null -w '%{http_code}' --max-time 20 \
          "http://127.0.0.1:1234/api/v0/models/$ID" 2>/dev/null)
   MODELLE="$MODELLE $ID=${CODE:-000}"

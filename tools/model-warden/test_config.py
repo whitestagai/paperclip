@@ -29,8 +29,8 @@ def test_loads_real_set():
     # Ein Tippfehler darin wird von NICHTS anderem gefunden —
     # modell-wacht liest resident-set.json nicht, nur soll-laufzeit.json.
     ps_keys = {(e["ps_key"], e["device"]) for e in entries}
-    assert ("gemma-4-31b-win", "whitestag-ai") in ps_keys
-    assert ("qwen3.6-35b-win", "whitestag-ai") in ps_keys
+    assert ("gemma-4-31b-it", "whitestag-ai") in ps_keys
+    assert ("abiray/qwen3.6-35b-a3b", "whitestag-ai") in ps_keys
 
 def test_rejects_unknown_device(tmp_path):
     p = tmp_path / "bad.json"

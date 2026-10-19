@@ -5,7 +5,6 @@
     "Einbettungsmodelle haben bewusst kleine Fenster und gehören nicht hierher.",
     "Wer einen Wert ändert, ändert ihn hier und nennt den Grund."
   ],
-
   "qwen3.6-35b-a3b": {
     "geraet": "RTX Pro 6000",
     "contextLength": 98304,
@@ -27,7 +26,6 @@
       "stand die Präfix-Variante schon seit dem 19.09. nicht mehr."
     ]
   },
-
   "google/gemma-4-31b": {
     "geraet": "lokal",
     "contextLength": 98304,
@@ -48,8 +46,7 @@
       "Mit 4/4 sind es 786.432 Slot-Token, also 38 % weniger. Ob das reicht,",
       "ist NICHT belegt: der Offload-Wert lässt sich vom Mac aus nicht auslesen",
       "(weder `lms ps --json` noch /api/v0/models führen ihn). Prüfbar nur in",
-      "der LM-Studio-GUI auf dem Windows-Rechner."
-,
+      "der LM-Studio-GUI auf dem Windows-Rechner.",
       "",
       "03.10.2026 umbenannt: der Schluessel hiess hier «gemma4-31b-it». Diese ID",
       "gibt es in LM Studio nicht — das Modell heisst «google/gemma-4-31b». Es war",
@@ -65,7 +62,6 @@
       "die Anforderung, nicht das Messergebnis."
     ]
   },
-
   "google/gemma-4-12b": {
     "geraet": "lokal",
     "contextLength": 65536,
@@ -77,8 +73,7 @@
       "Seit 25.08. zusätzlich Klassifikator des PII-Proxys."
     ]
   },
-
-  "gemma-4-31b-win": {
+  "gemma-4-31b-it": {
     "geraet": "WHITESTAG-AI",
     "contextLength": 98304,
     "parallel": 2,
@@ -94,15 +89,15 @@
       "1,57 Mio Slot-Token aus den verbleibenden ~6,5 GiB — dieselbe",
       "Ueberbuchung, die auf der rtx am 26.08.2026 die Timeout-Welle ausloeste.",
       "",
-      "WARNUNG: das Modell liegt am Node auch unter dem modelKey",
-      "«gemma-4-31b-it» (Q4_K_M, not-loaded). Diese ID ist die am 03.10.2026",
-      "aus allen Konfigurationen entfernte — sie loest wieder auf (HTTP 200)",
-      "und wuerde bei justInTimeModelLoading eine ZWEITE Instanz mit",
-      "Default-Preset laden. Niemals darauf verweisen."
+      "Seit 19.10.2026 unter der STANDARD-Kennung «gemma-4-31b-it» (vorher",
+      "«gemma-4-31b-win»). Grund: nach jedem Neustart des Windows-PCs kam das",
+      "Modell unter der Standard-Kennung hoch, der Fallback von 38 Agenten zeigte",
+      "auf «-win» ins Leere (14.10. und 19.10.). Die Standard-Kennung ueberlebt",
+      "den Neustart. Die Warnung vom 03.10. (zweite JIT-Instanz) galt nur,",
+      "solange das Modell unter «-win» geladen war."
     ]
   },
-
-  "qwen3.6-35b-win": {
+  "abiray/qwen3.6-35b-a3b": {
     "geraet": "WHITESTAG-AI",
     "contextLength": 98304,
     "parallel": 2,
@@ -110,12 +105,15 @@
       "Fallback der 12 qwen-Agenten inkl. C-Suite auf dem Node seit 06.10.2026,",
       "vorher google/gemma-4-12b (ein 12B als Fallback eines 35B).",
       "",
-      "Gleiche Untergrenze und gleiche Slot-Begruendung wie gemma-4-31b-win.",
+      "Gleiche Untergrenze und gleiche Slot-Begruendung wie gemma-4-31b-it.",
       "",
       "Bewusst Q6_K (28,22 GiB) und NICHT die kleinere Q4_K_M-Variante",
       "(lmstudio-community/qwen3.6-35b-a3b, 20,55 GiB), die am Node ebenfalls",
       "liegt: als Fallback ist Kapazitaet nicht der Engpass, Qualitaet geht vor.",
-      "Primaermodell bleibt qwen3.6-35b-a3b in Q8_0 auf der rtx."
+      "Primaermodell bleibt qwen3.6-35b-a3b in Q8_0 auf der rtx.",
+      "",
+      "Seit 19.10.2026 unter der Standard-Kennung «abiray/qwen3.6-35b-a3b»",
+      "(vorher «qwen3.6-35b-win»), Begruendung siehe gemma-4-31b-it."
     ]
   },
   "google/gemma-4-12b-qat": {

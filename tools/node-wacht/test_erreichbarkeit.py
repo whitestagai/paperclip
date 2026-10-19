@@ -26,8 +26,8 @@ Found 2 devices:
     Status: connected
     Identifier: 55fb4392eb9f978c1bc68abfef0c4b59
     Loaded Models Instances:
-      - gemma-4-31b-win
-      - qwen3.6-35b-win
+      - gemma-4-31b-it
+      - abiray/qwen3.6-35b-a3b
 """
 
 NODE_GETRENNT_ZULETZT = """\
@@ -101,7 +101,7 @@ def lauf(tmp_path, lms_ausgabe, curl_code="200"):
 def test_verbundener_node_wird_als_connected_protokolliert(tmp_path):
     zeile = lauf(tmp_path, NODE_VERBUNDEN)
     assert "| connected |" in zeile
-    assert "gemma-4-31b-win=200" in zeile
+    assert "gemma-4-31b-it=200" in zeile
 
 
 def test_getrennter_node_zuletzt_wird_als_disconnected_protokolliert(tmp_path):
@@ -121,4 +121,4 @@ def test_getrennter_node_mit_folgendem_geraet_wird_nicht_als_connected_gemeldet(
 
 def test_modell_ohne_200_wird_sichtbar(tmp_path):
     zeile = lauf(tmp_path, NODE_VERBUNDEN, curl_code="503")
-    assert "gemma-4-31b-win=503" in zeile
+    assert "gemma-4-31b-it=503" in zeile

@@ -35,3 +35,21 @@ def test_list_pending_skips_non_pending(tmp_path):
 
 def test_load_missing_returns_none(tmp_path):
     assert sa.load(str(tmp_path), "NOPE") is None
+
+def test_load_rejects_traversal_token(tmp_path):
+    outside = tmp_path.parent / "evil.json"
+    assert sa.load(str(tmp_path), "../evil") is None
+    assert not outside.exists()
+
+def test_set_status_traversal_token_is_noop(tmp_path):
+    outside = tmp_path.parent / "evil.json"
+    sa.set_status(str(tmp_path), "../evil", "applied")
+    assert not outside.exists()
+
+def test_create_rejects_invalid_injected_token(tmp_path):
+    try:
+        sa.create(str(tmp_path), "s", "/c.json", "/l.txt", 1, 0, 1,
+                  token="../evil", now=0.0)
+        assert False, "expected ValueError"
+    except ValueError:
+        pass

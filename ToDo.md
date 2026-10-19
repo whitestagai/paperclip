@@ -623,8 +623,8 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 - [ ] **Ersten Kurs nach `_KURS-SPEC.md` v5 gegenlesen** — prüfen, ob der Autor
       `langbeschreibung` (1700–2400 Zeichen, eine Zeile mit `\n\n`) liefert, ob
       `kurzbeschreibung_sie`/`langbeschreibung_sie` **wortgleich in Du-Form** gefüllt sind
-      (kein Sie-Text, Felder nicht gelöscht) und ob der Import den Kurs annimmt. Lektor-Abstufung
-      bei „Sie" an Lernende (GELB, ab zwei Stellen ROT) ggf. auf ROT verschärfen. *(2026-10-19, Chat: ACADEMY Kurs-Langtext)*
+      (kein Sie-Text, Felder nicht gelöscht) und ob der Import den Kurs annimmt. Dabei auch prüfen,
+      ob der Lektor ein „Sie" an Lernende tatsächlich mit ROT bewertet (seit 19.10. Pflicht). *(2026-10-19, Chat: ACADEMY Kurs-Langtext)*
 
 ## Mail-Spiegel und Belege
 

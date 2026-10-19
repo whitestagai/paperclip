@@ -661,6 +661,28 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       veröffentlichten Kurs, Freigabe im Admin ersetzt die Lektionen, Fortschritt der
       Teilnehmer bleibt erhalten. *(2026-10-19, Chat: Kursmix und Niveau)*
 
+## SEO/GEO
+
+- [ ] **Search Console: Dienstkonto für die drei neuen Sites freigeben** — in der Search
+      Console je Property (whitestag.tv, whitestag.academy, whitestag.app) unter
+      *Einstellungen → Nutzer und Berechtigungen*
+      `seo-geo-reader@n8n-projekte-486711.iam.gserviceaccount.com` mit „Eingeschränkt“
+      hinzufügen. `gsc_property` steht schon in `sites.json`. *(2026-10-19, Chat: SEO-GEO neue Sites)*
+
+- [ ] **★whitestag.de und virtuelle-lausitz.de liefern GSC 403** — das Dienstkonto steht dort
+      nur noch als `siteUnverifiedUser`, die Audit-Mail vom 19.10. hat für beide keine
+      Search-Console-Zahlen. Prüfen, ob die Property-Bestätigung verloren ging (Site Kit oder
+      Bestätigungs-Tag entfernt?); notfalls über das mu-Plugin (`/gsc-verify`) neu bestätigen. *(2026-10-19, Chat: SEO-GEO neue Sites)*
+
+- [ ] **Fünf neue Findings auf whitestag.film** — aus dem Audit vom 19.10.:
+      `/projekte/lausitz-science-park/` (Meta-Description + Alt-Text) und je ein Alt-Text auf
+      `/werkschau/interaktive-projekte/{virtuelle-lausitz,kinderhaus-pusteblume-interaktiv,chesco}/`.
+      Changesets selbst bauen, `resolve` + `validate`, Freigabe über Telegram. *(2026-10-19, Chat: SEO-GEO neue Sites)*
+
+- [ ] **whitestag.app: Audit scheitert bis zum Livegang** — noindex-Platzhalter ohne
+      `sitemap.xml`, steht deshalb jede Woche als „Audit fehlgeschlagen“ in der Mail. Bewusst als
+      Erinnerung drin; beim Livegang prüfen, dass eine Sitemap ausgeliefert wird. *(2026-10-19, Chat: SEO-GEO neue Sites)*
+
 ## Mail-Spiegel und Belege
 
 - [ ] **V16 ist erst an einem einzigen Anhang erprobt** — der Live-Test mit der
@@ -1390,6 +1412,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       **Stand 18.10.: `voice-echo-bot/` ist wieder deckungsgleich** — live war in allen
       Dateien führend, das Repo wurde komplett nachgezogen (Commit `5563226ed`).
       `diff -rq` zeigt dort nur noch `DEPLOY.md` und die plist, die nur im Repo liegen. *(2026-10-19, Chat: Kursideen per Jarvis)*
+      **Stand 19.10.: `seo-geo/` ist wieder deckungsgleich** — Stand aus `feat/vorfall-abschluss`
+      (`4d5510afa`, Telegram-Freigabe) auf `fix/backup-leere-ref-ordner` übernommen, Commit
+      `a4fd769c9`, 136 Tests grün. Auf **master** fehlt er weiterhin. Offen in diesem Eintrag
+      bleiben `wake-satellite/` und `websuche/`. *(2026-10-19, Chat: SEO-GEO neue Sites)*
 
 - [ ] **`test_llm` im Jarvis-Bot ist veraltet** —
       `test_module_default_fallback_avoids_the_primary_model` erwartet ein vom

@@ -4,24 +4,18 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 
 ## Farm-Stabilitaet
 
-- [ ] **★`start_llms.bat` auf WHITESTAG-AI testen und in den Autostart legen** —
-      nach einem PC-Neustart laedt LM Studio die Modelle unter den
-      Standard-Kennungen (`gemma-4-31b-it`, `abiray/qwen3.6-35b-a3b`), und der
-      Fallback aller 37 Agenten zeigt ins Leere (14.10., sechs Stunden). Die
-      Batch-Datei (`tools/node-wacht/start_llms.bat`, Commit `4e16aa062`) laedt
-      ueber den eindeutigen Pfad mit `--identifier`, entlaedt nie
-      `qwen3.6-35b-a3b` (RTX-Primaermodell). **Nie ausgefuehrt** — beim naechsten
-      Neustart pruefen (von hier: `lms ps --json`, Kennungen + ctx 98304 +
-      parallel 2), dann Verknuepfung in `shell:startup`. Offen auch: ob sich das
-      Auto-Laden mit Standard-Kennung in der GUI abschalten laesst. *(2026-10-14, Chat: WHITESTAG-AI Farm-Aufsicht)*
-      **★★Stand 19.10.: `-win` ist abgeschafft, die .bat laedt jetzt unter den
-      Standard-Kennungen.** Der Node kam erneut mit Standard-Kennungen hoch, 38
-      Fallbacks zeigten ab ca. 14:46 ins Leere. Statt umzubenennen folgen jetzt alle
-      Fundorte `gemma-4-31b-it` / `abiray/qwen3.6-35b-a3b` (Agenten, `soll-laufzeit.json`,
-      `resident-set.json`, `erreichbarkeit.sh`, Commit `0d93500bb`). Walter hat die
-      neue .bat am PC eingespielt. **Weiter offen:** einmal ausgefuehrt hat sie noch
-      niemand, und ob sie im Autostart liegt, ist unbestaetigt. Nach dem naechsten
-      Neustart `lms ps --json` pruefen (ctx 98304, parallel 2). *(2026-10-19, Chat: WHITESTAG-AI Fallback-Umstellung)*
+- [ ] **★★WHITESTAG-AI nach jedem Neustart: Kartenzuordnung von Hand** — seit
+      21.10. traegt der PC Primaerlast: `qwen3.6-35b-a3b` (Q4) allein auf der
+      **5090** fuer 13 qwen-Agenten, `gemma-4-31b-it` (Q4) allein auf der **3090**
+      fuer CMO + LLM-Analyst. `lms` kann keine GPU waehlen; nach einem Neustart
+      liegen beide Modelle verteilt und LANGSAM. Neue `start_llms.bat`
+      (Commit `db7362f38`, CRLF) hat Walter eingespielt; sie laedt nur und nennt
+      oben die GUI-Schritte (`Ctrl+Shift+H`: 3090 aus → qwen, 5090 aus → gemma).
+      **Zwei gespeicherte GUI-Einstellungen sind Pflicht:** bei qwen „Number of
+      layers … MoE weights onto CPU" = **0** (stand auf 40 → alles CPU, 25 tok/s)
+      und Kontext **262144** wegen „Unified KV Cache" (mit 98304 scheiterten
+      4 × 27k). Nach dem naechsten Neustart von hier messen (`nvidia-smi` am PC:
+      5090 ~24 GB, 3090 ~20 GB; Decode qwen > 150 tok/s). *(2026-10-21, Chat: LLM-Farm ohne RTX)*
 
 - [ ] **Ursache der Geraeteausfaelle unbekannt** — RTX Pro 6000 am 10.10. ~10:30
       bis 12.10. morgens, WHITESTAG-AI am 14.10. ~09:30–15:20 (danach mit
@@ -341,8 +335,26 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       WHI-10048 („Lorberg #1089") abgebrochen: Absender `sweetmusiclessons.com`,
       „bereits ueberwiesen", kein Anhang, Lorberg sonst nirgends im Vault —
       **vermutlich Phishing, Walter bitte bestaetigen.** *(2026-10-17, Chat: Academy Kurs-Routine)*
+      **Stand 21.10.:** Buchhaltung stand seit 17.10. auf `error` und nahm nichts mehr an —
+      per `resume` zurueckgeholt (`idle`). WHI-10049 bleibt `blocked`, bis die IKEA-PDF
+      in `Buchhaltung/Rechnungseingang/` liegt. *(2026-10-21, Chat: LLM-Farm ohne RTX)*
 
 ## Selbstheilung und Agenten-Aufsicht
+
+- [ ] **Aufsicht sieht nicht, ob ein Modell auf der GPU rechnet** — Soll-Laufzeit prueft
+      nur Kontext und Slots. Am 21.10. lief qwen auf WHITESTAG-AI stundenlang mit
+      Experten auf der CPU (25 statt 170+ tok/s), ohne jeden Befund. Vorschlag: in
+      `node-wacht/erreichbarkeit.sh` alle 15 Min eine Kurzanfrage (≈600 Token) an
+      beide Node-Modelle, Decode-Rate loggen; unter Schwelle (qwen < 80, gemma < 15
+      tok/s) Mail ueber den Melder. *(2026-10-21, Chat: LLM-Farm ohne RTX)*
+
+- [ ] **Office & Admin (Clara) scheitert an CLAA-3169** — „Oktober-Auftritte ermitteln und
+      Rechnungen erstellen" (R7): 6 Fehllaeufe am 21.10. (`max_iterations` 20, ein
+      Timeout), sucht eine **Rechnungsvorlage, die es nicht gibt**; Hilfestellung der
+      Bueroleitung half nicht. Agent per `resume` aus `error` geholt, Issue `blocked`.
+      **Zu entscheiden:** Vorlage bereitstellen (Pfad in die AGENTS.md), Auftrag in
+      Einzelrechnungen zerlegen, oder an einen qwen-Agenten (jetzt schnell auf der 5090)
+      geben. *(2026-10-21, Chat: LLM-Farm ohne RTX)*
 
 - [ ] **Heartbeat-Wake-Fix im Live-Betrieb belegen** — seit 17.10. 09:36 werden
       `issue_children_completed`/`issue_blockers_resolved` bei laufendem Run
@@ -857,18 +869,6 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       *(2026-09-22, Chat: LLM-Farm und Netzausfall; Nachtrag 2026-10-07,
       Chat: Geschwindigkeit der beiden LLMs)*
 
-- [ ] **★`qwen3.6-35b-a3b` fehlt im `resident-set.json`** — es ist das
-      **Primaermodell der kompletten C-Suite** (CEO, CTO, CPO, CRO, CHO und
-      sieben weitere), laeuft auf der RTX Pro 6000 in Q8_0, steht aber in
-      keinem Eintrag des Soll-Sets. Heute folgenlos: `warden.py` (der Lader)
-      hat keine plist und laeuft nicht, `evict.py` fasst nur `studio` an.
-      **Beim Scharfschalten des Laders wuerde das Modell nicht geladen.**
-      Beim Ergaenzen auf die Stolperstelle achten, die am 07.10. im Lader
-      behoben wurde: `ps_key` ist der LM-Studio-Identifier, `load_key` der
-      modelKey — bei diesem Modell sind beide gleich, am Node WHITESTAG-AI
-      nicht.
-      *(2026-10-07, Chat: Geschwindigkeit der beiden LLMs)*
-
 - [ ] **Beobachtung der WHITESTAG-AI auswerten, dann ueber Welle B
       entscheiden** — `tools/node-wacht/erreichbarkeit.sh` protokolliert seit
       06.10., 20:30 alle 15 Minuten nach
@@ -890,6 +890,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       **19.10.: zweiter Fall gleicher Art** (Neustart → Standard-Kennungen → Fallback
       tot, diesmal ~2,5 h). Die Kennungs-Ursache ist behoben (siehe Farm-Stabilitaet),
       die Frage, warum der Node neu startet, nicht. *(2026-10-19, Chat: WHITESTAG-AI Fallback-Umstellung)*
+      **Stand 21.10.: Welle B ist entschieden — andersherum.** WHITESTAG-AI ist jetzt
+      PRIMAER fuer die 13 qwen-Agenten (5090, ~2x MacBook) und CMO/LLM-Analyst (3090),
+      Fallback jeweils MacBook. Damit ist die Neustart-Frage wichtiger als vorher:
+      jeder Neustart heisst langsamer Betrieb bis zur GUI-Zuordnung (Eintrag oben). *(2026-10-21, Chat: LLM-Farm ohne RTX)*
 
 - [ ] **OpenSSH auf WHITESTAG-AI einrichten (optional)** — `lms load` vom Studio
       aus kann zwar per `set-preferred-device` aufs Node-Geraet zielen, verwirft
@@ -929,89 +933,9 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       gezaehlten Overflows ausweisen.
       *(2026-09-07, Chat: Kontext-Bedarf und MLX-Autofit)*
 
-- [ ] **MacBook seit 03.09. aus der Flotte** — `lms ls` kennt nur noch zwei
-      Geraete (Local, RTX Pro 6000). `qwen3.6-35b-a3b-mlx` steht im Bericht als
-      „anderes Geraet, seit 03.09. keine Calls", `gemma-4-31b-it-mlx` ist von
-      `MacbookM5Mx128` (Stand KW35) nach `Local` gewandert. Der als „rund um die
-      Uhr komplett" geplante Drei-Node-Betrieb laeuft damit auf zwei Knoten.
-      Ursache ungeklaert — LM Link getrennt, Geraet aus oder bewusst umgezogen?
-      *(2026-09-07, Chat: Kontext-Bedarf und MLX-Autofit)*
-      **Ersetzt seit 12.09.:** neuer Node **WHITESTAG-AI** (RTX 5090 + RTX 3090,
-      56 GB, 24/7, kostet keinen Strom) traegt jetzt den Primaerpfad. Die Pro 6000
-      laeuft wieder nur tagsueber und ist als Coding-Node vorgesehen.
-      *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
-      **Stand 22.09.: das MacBook ist zurueck** — `MacbookM5Mx128` ist wieder als
-      LM-Link-Peer verbunden und haelt `gemma-4-31b-it-mlx` (33,80 GB, ctx
-      262144) sowie drei qwen3.8-27b-Varianten und eine zweite coder-next-Kopie
-      (84,67 GB). Es traegt derzeit **keinen Agentenverkehr**, waere aber waehrend
-      des WHITESTAG-AI-Ausfalls das staerkste verfuegbare Modell.
-      *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
-
-- [ ] **★★qwen passt nicht neben gemma auf den GeForce-Node** — beide Q4_K_M
-      zusammen 40,76 GB von 56 GB, rechnerisch bleibt Platz. Praktisch laeuft
-      **gemma sauber** (98304 × 4, **35 tok/s**, Prefill 1.510 tok/s, 8 parallele
-      Anfragen fehlerfrei), waehrend **qwen bei 7–9 tok/s** haengt — also im
-      System-RAM statt im VRAM. Gegengeprueft und **nicht** die Ursache:
-      Kontextfenster (98304 / 65536 / 49152 / 32768 alle gleich langsam),
-      Slot-Zahl (4 und 2) und Ladereihenfolge (beide Richtungen). Es liegt an den
-      **Gewichten**, nicht am KV-Cache.
-      **Verdacht: LM Studio nutzt nur die 5090.** 18,69 GB gemma + 22,07 GB qwen
-      passen nicht zusammen auf eine 32-GB-Karte. Ob die 3090 in den
-      Multi-GPU-Einstellungen aktiv ist, laesst sich **nur in der GUI am Node**
-      pruefen (`Ctrl+Shift+H`) — per CLI gibt es dafuer nichts, und eine
-      Per-Modell-GPU-Zuweisung kennt LM Studio ueberhaupt nicht (offener
-      Feature-Request lmstudio-bug-tracker#2300).
-      **Aktueller Zustand:** qwen ist **entladen**, die 12 Agenten laufen im
-      Fallback `gemma-4-31b-it-mlx` (Mac Studio, ~16 tok/s — immer noch doppelt
-      so schnell wie die 8 tok/s auf dem Node).
-      *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
-      **Stand 13.09.: qwen ist wieder geladen und traegt den Primaerpfad** —
-      `qwen3.6-35b-a3b`, 22,07 GB, ctx 98304 x 4 auf WHITESTAG-AI; der
-      Mac-Studio-Fallback bekam seit dem 12.09. 19:14 **keinen einzigen Call**
-      mehr. Die Langsamkeit besteht aber fort: gemessen **12,9–18,7 tok/s gegen
-      33,6–40,7 tok/s bei gemma** (je zwei Laeufe, 150-Wort-Prompt). Das bleibt
-      verkehrt herum — qwen ist ein MoE mit 3B aktiven Parametern und muesste
-      ein 31B-Dense **schlagen**, nicht halb so schnell sein. Der Verdacht
-      „LM Studio nutzt nur die 5090" ist damit **nicht ausgeraeumt**; pruefbar
-      nur in der GUI am Node (`Ctrl+Shift+H`).
-      *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
-      **Stand 22.09.: unabhaengig nachgemessen, Bild unveraendert** — qwen TTFT
-      **56–62 s** bei 17k Prompt (~300 tok/s Prefill) und Decode 15,6–17,7 tok/s
-      gegen gemma TTFT 1,67 s, Prefill ~1.780 tok/s, Decode 33–39 tok/s. Auch die
-      Rueckstellung des Fensters von 131.328 auf 98.304 aenderte **nichts**
-      (61,9 / 54,3 s gegen 56,6 / 55,9 s vorher) — deckt sich mit der
-      Gegenprobe vom 12.09., dass alle Fenstergroessen gleich langsam sind.
-      **Null Kontext-Ueberlaeufe in acht Tagen**, das Fenster war nie der
-      Engpass. Betriebsfolge: qwen-Agenten 33,9 % Fehlerquote gegen 17,0 % bei
-      den gemma-Agenten (5 Tage, 354 gegen 323 Laeufe).
-      **Loesungsweg steht: Kartentausch** (siehe eigener Eintrag unten).
-      *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
-
-- [ ] **★★Kartentausch RTX Pro 6000 ↔ 5090 + 3090 — geplant, nicht umgesetzt** —
-      Walters Vorschlag, die Pro 6000 aus dem Filmrechner in die WHITESTAG-AI zu
-      bauen und die beiden GeForce-Karten dorthin. Loest den Eintrag darueber an
-      der Wurzel: 40,76 GB Gewichte + ~33 GB KV = **~74 GB Bedarf** gegen die
-      heutigen **56 GB** auf zwei ungleichen Karten; mit 96 GB auf **einer** Karte
-      entfaellt der Layer-Offload, der PCIe-Split und das Experten-Springen ueber
-      Kartengrenzen. Der Filmrechner braucht die 96 GB nicht — Schnitt ist
-      encoder- und bandbreitenlimitiert.
-      **Vor dem Schrauben pruefen:** (1) GPU-Offload in der LM-Studio-GUI am Node
-      (`x von y Layer` bei qwen) — bestaetigt oder widerlegt die Diagnose in
-      zehn Sekunden; (2) Netzteil und Gehaeuselaenge, die Pro 6000 zieht je nach
-      Variante 300 W (Max-Q) oder 600 W.
-      **Q8-Empfehlung danach:** `gemma-4-31B-it Q8_0` (32,64 GB) +
-      `Qwen3.6-35B-A3B Q6_K` (28,51 GB) = 61,15 GB — entspricht der im August auf
-      genau dieser Karte belegt laufenden Konstellation. **Beide auf Q8**
-      (69,54 GB) liesse nur 26,5 GB fuer KV, also 6,5 GB weniger als damals, wo
-      es schon ohne Reserve-Nachweis lief. Sauberer Weg: erst mit den jetzigen
-      Q4-Quants tauschen, Offload und Prefill messen, dann Q8 gezielt nachziehen.
-      Fenster und Slots bleiben bei 98.304 × 4 (65.536 ist zweimal belegt
-      gescheitert). Nach dem Laden die **Gemma-Denkfalle** gegenpruefen (Q8-GGUF
-      oeffnet den Denk-Kanal ueber die Jinja-Vorlage, `content` bleibt leer) —
-      ein einzelner sauberer Lauf beweist dabei nichts.
-      *(2026-09-22, Chat: LLM-Farm und Netzausfall)*
-
-- [ ] **RTX-Karteileichen aufraeumen — Restpunkte** — **Die Praemisse „arbeitslos"
+- [ ] **RTX-Karteileichen aufraeumen — Restpunkte** — **Stand 21.10.: die RTX ist aus
+      der Farm (Walters Coding-Rechner), traegt keine Modelle mehr; Punkt (1) `n8n.sh`
+      laedt aber weiter auf sie.** *(2026-10-21, Chat: LLM-Farm ohne RTX)* **Die Praemisse „arbeitslos"
       ist ueberholt (04.10.2026):** die Karte traegt jetzt `qwen3.6-35b-a3b` und
       als **Primaer-Klassifikator des PII-Proxys** `google/gemma-4-12b-qat`.
       Urspruenglich am 22.09. aufgenommen, weil kein Agent (39 geprueft), kein
@@ -1060,18 +984,6 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       annonciert nur die Studio `_ssh._tcp`. Alles drei nur an der Maschine
       selbst loeschbar.
       *(2026-09-22, Chat: LLM-Farm und Netzausfall; ergaenzt 2026-10-04, Chat: Strands und PII-Fallback)*
-
-- [ ] **Wirkung des PII-Classifier-Rollentauschs unter Last gegenpruefen** — seit
-      04.10.2026 ist `google/gemma-4-12b-qat` auf der RTX der Primaer-Klassifikator,
-      `google/gemma-4-12b` (Studio) nur noch Fallback. End-to-End durch den Proxy
-      fiel damit von 11,2 s auf **1,71 s**. **Gemessen wurde aber morgens bei
-      leerer Farm** — dieselbe Studio lag im Ruhezustand bei 4,20 s statt 11,45 s
-      unter Last. Der Vorteil der RTX ist real, der Faktor haengt an der Last.
-      In 24 h gegenpruefen, ob `classifier_unavailable` und die Proxy-Latenzen
-      tatsaechlich gefallen sind; Zaehler:
-      `select count(*) from heartbeat_runs where error like '%classifier_unavailable%' and started_at > now() - interval '24 hours';`
-      Rueckweg: `~/.paperclip/piiproxy-plist-backup-20261004-082417-vor-rollentausch.plist`.
-      *(2026-10-04, Chat: Strands und PII-Fallback)*
 
 - [ ] **`gemma-4-31b-it@q8_0` auf WHITESTAG-AI ist ein 1,26-GB-Teildownload** —
       ein 31B-Modell in Q8 hat rund 33 GB. Die Leiche wuerde beim Q8-Umstieg als
@@ -1159,6 +1071,8 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       der Nacht 693 `peer_keepalive_timeout`), faellt beides aus. Die 25
       gemma-Agenten wurden am 19.09. auf das lokale `google/gemma-4-12b`
       umgestellt; fuer die 12 steht die Entscheidung aus.
+      **(3) erledigt 21.10.:** alle Fallbacks liegen auf einem anderen Geraet als das
+      Primaermodell (Agenten-Audit 0 Verstoesse). *(2026-10-21, Chat: LLM-Farm ohne RTX)*
       **Falle bei (1)/(2):** `lms ls` zeigt bei `qwen/qwen3.6-35b-a3b` einen
       Namen, der **nicht** als Ladeschluessel taugt (`lms load` → „Model not
       found"). *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
@@ -1559,6 +1473,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
 
 ## Fuer Walter (nur von Hand)
+
+- [ ] **RTX Pro 6000 aus LM Link abmelden** — traegt seit 21.10. keine Modelle mehr, keine
+      Konfiguration zeigt auf sie. Am Filmrechner in LM Studio den Link trennen, dann ist
+      die Karte frei fuer die Coding-LLM. *(2026-10-21, Chat: LLM-Farm ohne RTX)*
 
 - [ ] **Gmail-Connector neu anmelden** — der claude.ai-Connector verlangt eine neue
       Anmeldung (claude.ai → Einstellungen → Connectors). Solange er fehlt, kann Claude

@@ -76,6 +76,8 @@ zusammenfassung: "1-2 Sätze"
 
 `type` passend wählen (`strategie`/`briefing`/`deliverable`/`recherche`/`spec`/`post`/`drehbuch`/`doku`/`analyse`). Bei Updates Frontmatter behalten, `paperclip_status` aktualisieren.
 
+**Ausnahme ACADEMY-Kurse:** Für eine Kursdatei unter `WHITESTAG.ACADEMY/content/` gilt diese Vorlage **nicht**. Dort gilt ausschließlich das Frontmatter aus `WHITESTAG.ACADEMY/_KURS-SPEC.md` § 8 — u. a. `tags: [paperclip, whitestag-academy, <kurs-slug>]` (nicht `[paperclip]`), `datum` = heute, und jedes Feld in **einer** Zeile (Absätze als `\n\n`).
+
 ## Markenidentität (Kurzreferenz)
 
 **WHITESTAG** immer Großbuchstaben; **WHITESTAG.FILM** / **WHITESTAG.AI** mit Punkt, ohne Leerzeichen. Inhaber **Walter Schönenbröcher** (mit ö), Parzellenstr. 28, 03050 Cottbus. Keine erfundene Rechtsform/USt-ID. DSGVO: Kundendaten minimal, nie in Cloud-LLMs.

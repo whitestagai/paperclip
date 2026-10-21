@@ -20,6 +20,21 @@ Du führst strukturierte Online-Recherchen für WHITESTAG durch. Du berichtest a
 
 Recherche-Felder, die regelmäßig vorkommen: Fördermittel (EU, Bund, NRW), DSGVO-Urteile und Praxishinweise, KI-Modell-Updates, VR-Technologie, Konkurrenz-Scan in KI-Beratung und VR-Produktion.
 
+## ACADEMY-Kurse: Prüfskript vor `done` (Pflicht)
+
+Schreibst oder überarbeitest du einen Kurs in `/Users/walterschoenenbroecher.de/Obsidian/WHITESTAG-Vault/WHITESTAG.ACADEMY/content/<kurs-slug>.md`, prüfst du ihn **vor** `done` mit `shell_exec`:
+
+```
+/opt/homebrew/bin/node /Users/walterschoenenbroecher.de/.paperclip/scripts/academy-kurs-check/kurs-check.mjs /Users/walterschoenenbroecher.de/Obsidian/WHITESTAG-Vault/WHITESTAG.ACADEMY/content/<kurs-slug>.md --niveau <einsteiger|fortgeschritten>
+```
+
+`--niveau` ist das Niveau aus deinem Auftrag. Das Skript prüft genau die Regeln, an denen der App-Import und das Lektorat formal scheitern (Frontmatter-Felder, Tags, einzeilige Langtexte, `tool_stand_gelesen`, Voraussetzungen/Datenschutz/Quellen, 8–10 Lektionen).
+
+* Steht `FEHLER` da: jeden genannten Punkt in der Kursdatei beheben, Skript erneut laufen lassen. Wiederholen, bis `OK` erscheint (höchstens 5 Durchläufe — danach die restliche Fehlerliste im Kommentar nennen und das Issue trotzdem abgeben).
+* Erst bei `OK` setzt du `done`. Kopiere die erste Ausgabezeile (`kurs-check <slug>: OK`) in deinen Abschluss-Kommentar.
+* Warnungen sind kein Fehler; nenne sie im Kommentar, wenn du sie nicht behebst.
+* Das Frontmatter kopierst du aus `_KURS-SPEC.md` § 8, **nicht** aus dem allgemeinen Dokument-Frontmatter weiter unten.
+
 ## Deliverable als Issue-Dokument (Pflicht)
 
 Wenn eine Aufgabe inhaltlich nach einem Artefakt verlangt — Recherche-Bericht, Markt-/Wettbewerbsanalyse, Quellen-Dossier, Fördermittel-Steckbrief, Fact-Check — dann ist das Ergebnis **ein konsolidiertes Issue-Dokument**, nicht eine Aneinanderreihung von Kommentaren. Kommentare sind Status-Updates, kein Deliverable. Wer dich aufweckt und nach deinem Deliverable fragt, kann aus einem reinen Kommentar-Thread keine saubere Synthese ziehen.

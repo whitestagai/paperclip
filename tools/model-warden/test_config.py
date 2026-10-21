@@ -5,21 +5,19 @@ HERE = os.path.dirname(__file__)
 
 def test_loads_real_set():
     entries = load_resident_set(os.path.join(HERE, "resident-set.json"))
-    assert len(entries) == 11
+    assert len(entries) == 10
     keys = {(e["load_key"], e["device"]) for e in entries}
-    # coder-next lebt NUR auf der RTX (Tages-Boost). Der MacBook-Nacht-Fallback
-    # wurde per Real-Test 2026-07-25 widerlegt (Guardrail p1 UND p4) -> coder-30b (Studio).
-    assert ("qwen/qwen3-coder-next", "macbook") not in keys
-    assert ("qwen/qwen3-coder-next", "rtx") in keys
+    # Seit 2026-10-21 ist die RTX aus der Farm (Coding-Rechner) — kein
+    # Eintrag darf mehr auf sie zeigen.
+    assert not any(d == "rtx" for _, d in keys)
     assert ("qwen/qwen3-coder-30b", "studio") in keys
-    # Fallback-Klassifikator des PII-Proxys: MUSS auf der RTX liegen, also auf
-    # einem anderen Geraet als das Primaermodell (studio). Faellt dieser Eintrag
-    # weg, hat der Proxy im Stoerfall wieder keinen Fallback.
-    assert ("google/gemma-4-12b-qat", "rtx") in keys
+    # PII-Proxy: Primaer google/gemma-4-12b (studio), Fallback gemma-4-31b-it-mlx
+    # (macbook) — anderes Geraet. Faellt einer weg, blockiert der Proxy im
+    # Stoerfall fail-closed und reisst Cloud-Agenten mit.
     assert ("google/gemma-4-12b", "studio") in keys
-    # Fallback-Geraet beider Agentenfamilien seit 2026-10-06. Fallen diese
-    # Eintraege weg, haben 25 gemma-Agenten ihren Fallback wieder auf
-    # demselben Geraet wie das Primaermodell.
+    assert ("gemma-4-31b-it-mlx", "macbook") in keys
+    # Primaer der qwen-Agenten (macbook), Fallback auf whitestag-ai.
+    assert ("qwen3.6-35b-a3b-mlx", "macbook") in keys
     assert ("gemma-4-31b-it@q4_k_m", "whitestag-ai") in keys
     assert ("abiray/qwen3.6-35b-a3b", "whitestag-ai") in keys
     # Die ps_keys MUESSEN separat zugesichert werden: `keys` oben bildet
@@ -31,6 +29,8 @@ def test_loads_real_set():
     ps_keys = {(e["ps_key"], e["device"]) for e in entries}
     assert ("gemma-4-31b-it", "whitestag-ai") in ps_keys
     assert ("abiray/qwen3.6-35b-a3b", "whitestag-ai") in ps_keys
+    assert ("qwen3.6-35b-a3b-mlx", "macbook") in ps_keys
+    assert ("gemma-4-31b-it-mlx", "macbook") in ps_keys
 
 def test_rejects_unknown_device(tmp_path):
     p = tmp_path / "bad.json"

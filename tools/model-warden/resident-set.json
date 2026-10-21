@@ -14,38 +14,105 @@
     "mit google/gemma-4-31b).",
     "",
     "Stand 19.09.2026: macbook- und rtx-Eintraege sind unveraendert aus dem",
-    "Juli uebernommen und NICHT geprueft — der Entlade-Waerter ruehrt nur",
-    "'studio' an."
+    "Stand 21.10.2026: rtx-Eintraege entfernt (Karte geht aus der Farm),",
+    "macbook-Eintraege geprueft und belegt."
   ],
-  "devices": ["studio", "macbook", "rtx", "whitestag-ai"],
+  "devices": [
+    "studio",
+    "macbook",
+    "rtx",
+    "whitestag-ai"
+  ],
   "models": [
-    {"device": "studio",  "ps_key": "google/gemma-4-12b",        "load_key": "google/gemma-4-12b",        "ctx": 65536, "parallel": 6, "when": "always",
-     "begruendung": "Fallback der 25 gemma-Agenten (seit 19.09.), FALLBACK-Klassifikator des PII-Proxys (PII_PROXY_CLASSIFIER_FALLBACK_MODEL; war bis zum Rollentausch am 04.10.2026 der Primaer-Klassifikator, ist dafuer aber zu langsam: 11,2 s End-to-End gegen 1,71 s auf der RTX), Modell des Clara-Taggers. Klein genug, um immer zu passen. ctx/parallel siehe modell-wacht/soll-laufzeit.json."},
-
-    {"device": "studio",  "ps_key": "google/gemma-4-31b",        "load_key": "google/gemma-4-31b",        "ctx": 98304, "parallel": 4, "when": "always",
-     "begruendung": "Hauptmodell von 27 Agenten (adapterConfig.model) und des cheap-Profils von 11 weiteren. Ergaenzt 03.10.2026: die Konfigurationen zeigten auf die nicht existierende ID 'gemma-4-31b-it' und fielen deshalb ALLE still auf google/gemma-4-12b zurueck — das war die Ursache von 204 max_iterations-Fehlern in 14 Tagen. 98304 ist die belegte Untergrenze fuer Agentenmodelle (siehe modell-wacht/soll-laufzeit.json): der Versuch mit 65536 am 25.08.2026 trieb die Ueberlaeufe auf 67 % und die Erfolgsquote auf 0, weil der Adapter unterhalb BUDGET_LOOKUP_THRESHOLD_TOKENS=32000 gar nicht kuerzt. Hinweis: dieses Modell ist MLX (safetensors) — LM Studios context auto-fit ignoriert -c und laedt es tatsaechlich mit 262144. Das ist oberhalb der Untergrenze und damit unkritisch, nur speicherhungrig; ein Schalter dagegen existiert in MLX nicht."},
-
-    {"device": "studio",  "ps_key": "openbiollm-llama3-8b.gguf", "load_key": "openbiollm-llama3-8b.gguf", "ctx": 8192,  "parallel": 4, "when": "always",
-     "begruendung": "Medizinisches Modell eines Health-Agenten. Bewusst kleines Fenster."},
-
-    {"device": "studio",  "ps_key": "qwen/qwen3-coder-30b",      "load_key": "qwen/qwen3-coder-30b",      "ctx": 90000, "parallel": 4, "when": "always",
-     "begruendung": "Aus dem Juli uebernommen. Am 19.09.2026 war es nicht geladen und keine Konfiguration zeigte darauf — bewusst stehen gelassen, weil ein Eintrag hier nur SCHUETZT und nichts kostet, solange warden.py nicht laeuft. Vor dem Scharfschalten des Laders pruefen, ob es noch gebraucht wird."},
-
-    {"device": "studio",  "ps_key": "text-embedding-bge-m3",     "load_key": "text-embedding-bge-m3",     "ctx": null,  "parallel": null, "when": "always",
-     "begruendung": "Einbettungen fuer die n8n-RAG-Ketten (WHITESTAG Chat/RAG/DE/FILM)."},
-
-    {"device": "studio",  "ps_key": "text-embedding-nomic-embed-text-v1.5", "load_key": "text-embedding-nomic-embed-text-v1.5", "ctx": null, "parallel": null, "when": "always",
-     "begruendung": "Zweites Einbettungsmodell, 84 MB. Ergaenzt 19.09.2026, weil es geladen war und im Set fehlte."},
-
-    {"device": "macbook", "ps_key": "qwen3.6-35b-a3b-mlx",       "load_key": "qwen3.6-35b-a3b-mlx",       "ctx": 98304, "parallel": 4, "when": "always"},
-    {"device": "rtx",     "ps_key": "qwen/qwen3-coder-next",     "load_key": "qwen/qwen3-coder-next",     "ctx": 131328, "parallel": 4, "when": "day-only"},
-    {"device":     "rtx",     "ps_key": "google/gemma-4-12b-qat",    "load_key": "google/gemma-4-12b-qat",    "ctx": 32768, "parallel": 8, "when": "always",
-     "begruendung": "PRIMAER-Klassifikator des PII-Proxys (PII_PROXY_CLASSIFIER_MODEL), seit dem Rollentausch am 04.10.2026 — davor war es der Fallback. Gemessen am Produktions-Payload (json_schema strict, reasoning_effort none): End-to-End durch den Proxy 1,71 s gegen vorher 11,2 s mit dem Studio-Modell, Faktor ~6,5; 5/5 Entitaeten inkl. ART_9. Der Fallback liegt bewusst auf google/gemma-4-12b auf der STUDIO — anderes Geraet, siehe die WLAN-Lektion vom 22.09.2026. ctx 32768 ist ABSICHT und reicht belegt: der Proxy chunkt bei MAX_CHUNK_CHARS = 4000 Zeichen, ein Aufruf braucht mit System-Prompt rund 1.800 Token. Das Soll stand bis 04.10. auf 65024, geladen war aber 32768 — angeglichen, damit warden.py beim Scharfschalten nicht unnoetig VRAM reserviert. NICHT wegraeumen: faellt dieses Modell aus, blockiert der Proxy fail-closed und reisst auch Cloud-Agenten mit (blocked_by_pii_proxy)."},
-
-    {"device": "whitestag-ai", "ps_key": "gemma-4-31b-it", "load_key": "gemma-4-31b-it@q4_k_m", "ctx": 98304, "parallel": 2, "when": "always",
-     "begruendung": "Fallback der 25 gemma-Agenten seit 06.10.2026. Vorher stand ihr Fallback auf google/gemma-4-12b — demselben Geraet wie ihr Primaermodell google/gemma-4-31b, der Fallback griff also bei einem Studio-Ausfall ins Leere. Geraet ist ein Windows-PC mit RTX 5090 (32 GB) + RTX 3090 (24 GB) = 56 GB VRAM. parallel 2 statt 4: bei 48,99 GB Gewichten beider Modelle bleiben nur ~6,5 GiB fuer zwei KV-Caches, und 4+4 forderten 1,57 Mio Slot-Token — dieselbe Ueberbuchung, die auf der rtx am 26.08.2026 die Timeout-Welle ausloeste. ctx 98304 ist die belegte Untergrenze fuer Agentenmodelle. Q4_K_M gegen MLX 8-bit am studio ist ein Qualitaetsabstieg, aber der ersetzte Fallback war ein 12B."},
-
-    {"device": "whitestag-ai", "ps_key": "abiray/qwen3.6-35b-a3b", "load_key": "abiray/qwen3.6-35b-a3b", "ctx": 98304, "parallel": 2, "when": "always",
-     "begruendung": "Fallback der 12 qwen-Agenten inkl. C-Suite seit 06.10.2026, vorher google/gemma-4-12b (ein 12B als Fallback eines 35B). Bewusst Q6_K (28,22 GiB) und NICHT die kleinere Q4_K_M-Variante (lmstudio-community/qwen3.6-35b-a3b, 20,55 GiB), die ebenfalls am Node liegt: als Fallback ist Kapazitaet nicht der Engpass, Qualitaet geht vor. Primaermodell bleibt qwen3.6-35b-a3b in Q8_0 auf der rtx."}
+    {
+      "device": "studio",
+      "ps_key": "google/gemma-4-12b",
+      "load_key": "google/gemma-4-12b",
+      "ctx": 65536,
+      "parallel": 6,
+      "when": "always",
+      "begruendung": "Seit 21.10.2026 wieder PRIMAER-Klassifikator des PII-Proxys (die RTX mit gemma-4-12b-qat ging aus der Farm); Fallback gemma-4-31b-it-mlx auf dem MacBook. Modell des Link-Detektors und des Clara-Taggers. ctx/parallel siehe modell-wacht/soll-laufzeit.json."
+    },
+    {
+      "device": "studio",
+      "ps_key": "google/gemma-4-31b",
+      "load_key": "google/gemma-4-31b",
+      "ctx": 98304,
+      "parallel": 4,
+      "when": "always",
+      "begruendung": "Seit 21.10.2026 Primaermodell der 18 WHITESTAG/Health-gemma-Agenten (Clara-Sound-gemma liegt auf dem MacBook) und Modell der cheap-Profile; Fallback gemma-4-31b-it-mlx. Hauptmodell von 27 Agenten (adapterConfig.model) und des cheap-Profils von 11 weiteren. Ergaenzt 03.10.2026: die Konfigurationen zeigten auf die nicht existierende ID 'gemma-4-31b-it' und fielen deshalb ALLE still auf google/gemma-4-12b zurueck — das war die Ursache von 204 max_iterations-Fehlern in 14 Tagen. 98304 ist die belegte Untergrenze fuer Agentenmodelle (siehe modell-wacht/soll-laufzeit.json): der Versuch mit 65536 am 25.08.2026 trieb die Ueberlaeufe auf 67 % und die Erfolgsquote auf 0, weil der Adapter unterhalb BUDGET_LOOKUP_THRESHOLD_TOKENS=32000 gar nicht kuerzt. Hinweis: dieses Modell ist MLX (safetensors) — LM Studios context auto-fit ignoriert -c und laedt es tatsaechlich mit 262144. Das ist oberhalb der Untergrenze und damit unkritisch, nur speicherhungrig; ein Schalter dagegen existiert in MLX nicht."
+    },
+    {
+      "device": "studio",
+      "ps_key": "openbiollm-llama3-8b.gguf",
+      "load_key": "openbiollm-llama3-8b.gguf",
+      "ctx": 8192,
+      "parallel": 4,
+      "when": "always",
+      "begruendung": "Medizinisches Modell eines Health-Agenten. Bewusst kleines Fenster."
+    },
+    {
+      "device": "studio",
+      "ps_key": "qwen/qwen3-coder-30b",
+      "load_key": "qwen/qwen3-coder-30b",
+      "ctx": 90000,
+      "parallel": 4,
+      "when": "always",
+      "begruendung": "Aus dem Juli uebernommen. Am 19.09.2026 war es nicht geladen und keine Konfiguration zeigte darauf — bewusst stehen gelassen, weil ein Eintrag hier nur SCHUETZT und nichts kostet, solange warden.py nicht laeuft. Vor dem Scharfschalten des Laders pruefen, ob es noch gebraucht wird."
+    },
+    {
+      "device": "studio",
+      "ps_key": "text-embedding-bge-m3",
+      "load_key": "text-embedding-bge-m3",
+      "ctx": null,
+      "parallel": null,
+      "when": "always",
+      "begruendung": "Einbettungen fuer die n8n-RAG-Ketten (WHITESTAG Chat/RAG/DE/FILM)."
+    },
+    {
+      "device": "studio",
+      "ps_key": "text-embedding-nomic-embed-text-v1.5",
+      "load_key": "text-embedding-nomic-embed-text-v1.5",
+      "ctx": null,
+      "parallel": null,
+      "when": "always",
+      "begruendung": "Zweites Einbettungsmodell, 84 MB. Ergaenzt 19.09.2026, weil es geladen war und im Set fehlte."
+    },
+    {
+      "device": "macbook",
+      "ps_key": "qwen3.6-35b-a3b-mlx",
+      "load_key": "qwen3.6-35b-a3b-mlx",
+      "ctx": 98304,
+      "parallel": 4,
+      "when": "always",
+      "begruendung": "Seit 21.10.2026 Primaermodell der 13 qwen-Agenten und von WHITESTAG RAG V4 (vorher Q8_0 auf der RTX Pro 6000, die zum Coding-Rechner wird). Fallback abiray/qwen3.6-35b-a3b auf whitestag-ai. Details und Messwerte: modell-wacht/soll-laufzeit.json."
+    },
+    {
+      "device": "macbook",
+      "ps_key": "gemma-4-31b-it-mlx",
+      "load_key": "gemma-4-31b-it-mlx",
+      "ctx": 98304,
+      "parallel": 4,
+      "when": "always",
+      "begruendung": "Seit 21.10.2026 Primaermodell der 7 Clara-Sound-gemma-Agenten, Fallback der uebrigen 18 gemma-Agenten und der cheap-Profile, Fallback-Klassifikator des PII-Proxys. Details: modell-wacht/soll-laufzeit.json."
+    },
+    {
+      "device": "whitestag-ai",
+      "ps_key": "gemma-4-31b-it",
+      "load_key": "gemma-4-31b-it@q4_k_m",
+      "ctx": 98304,
+      "parallel": 2,
+      "when": "always",
+      "begruendung": "Seit 21.10.2026 nur noch Reserve, kein Agenten-Fallback (gemessen gestoert, Decode 2,6-8,6 tok/s). Fallback der 25 gemma-Agenten seit 06.10.2026. Vorher stand ihr Fallback auf google/gemma-4-12b — demselben Geraet wie ihr Primaermodell google/gemma-4-31b, der Fallback griff also bei einem Studio-Ausfall ins Leere. Geraet ist ein Windows-PC mit RTX 5090 (32 GB) + RTX 3090 (24 GB) = 56 GB VRAM. parallel 2 statt 4: bei 48,99 GB Gewichten beider Modelle bleiben nur ~6,5 GiB fuer zwei KV-Caches, und 4+4 forderten 1,57 Mio Slot-Token — dieselbe Ueberbuchung, die auf der rtx am 26.08.2026 die Timeout-Welle ausloeste. ctx 98304 ist die belegte Untergrenze fuer Agentenmodelle. Q4_K_M gegen MLX 8-bit am studio ist ein Qualitaetsabstieg, aber der ersetzte Fallback war ein 12B."
+    },
+    {
+      "device": "whitestag-ai",
+      "ps_key": "abiray/qwen3.6-35b-a3b",
+      "load_key": "abiray/qwen3.6-35b-a3b",
+      "ctx": 98304,
+      "parallel": 2,
+      "when": "always",
+      "begruendung": "Fallback der 12 qwen-Agenten inkl. C-Suite seit 06.10.2026, vorher google/gemma-4-12b (ein 12B als Fallback eines 35B). Bewusst Q6_K (28,22 GiB) und NICHT die kleinere Q4_K_M-Variante (lmstudio-community/qwen3.6-35b-a3b, 20,55 GiB), die ebenfalls am Node liegt: als Fallback ist Kapazitaet nicht der Engpass, Qualitaet geht vor. Primaermodell seit 21.10.2026: qwen3.6-35b-a3b-mlx auf dem macbook."
+    }
   ]
 }

@@ -5,27 +5,6 @@
     "Einbettungsmodelle haben bewusst kleine Fenster und gehören nicht hierher.",
     "Wer einen Wert ändert, ändert ihn hier und nennt den Grund."
   ],
-  "qwen3.6-35b-a3b": {
-    "geraet": "RTX Pro 6000",
-    "contextLength": 98304,
-    "parallel": 4,
-    "begruendung": [
-      "98.304 ist die kleinste sichere Größe, solange im lmstudio-Adapter",
-      "BUDGET_LOOKUP_THRESHOLD_TOKENS = 32.000 steht: unterhalb dieser",
-      "Schätzung wird weder das Fenster abgefragt noch gekürzt, und chars/4",
-      "unterschätzt JSON um Faktor 2,19 — bis zu 70.000 echte Token gehen",
-      "ungekürzt durch. Der Versuch mit 65.536 am 25.08. trieb die Überläufe",
-      "auf 67 % und die Erfolgsquote auf 0.",
-      "",
-      "4 statt 5 Plätze seit dem 30.08. — siehe Slot-Hinweis bei google/gemma-4-31b.",
-      "",
-      "03.10.2026 umbenannt: der Schlüssel hieß hier «abiray/qwen3.6-35b-a3b».",
-      "Diese ID kennt LM Studio nicht (HTTP 400); `lms ps` meldet das Modell",
-      "als «qwen3.6-35b-a3b». Die Aufsicht prüft gegen die ps-Identifier und",
-      "meldete deshalb täglich ein unbekanntes Modell — in Agenten-Konfigurationen",
-      "stand die Präfix-Variante schon seit dem 19.09. nicht mehr."
-    ]
-  },
   "google/gemma-4-31b": {
     "geraet": "lokal",
     "contextLength": 98304,
@@ -70,7 +49,10 @@
       "Kein Agentenmodell, daher nicht an die 98.304 gebunden. 65.536 statt",
       "der ursprünglich geplanten 16.384, weil das Maximum des Link-Detektors",
       "bei 47.180 Token liegt — sein p50 von 0 wäre die falsche Bezugsgröße.",
-      "Seit 25.08. zusätzlich Klassifikator des PII-Proxys."
+      "Seit 25.08. zusätzlich Klassifikator des PII-Proxys.",
+      "",
+      "Seit 21.10.2026 wieder PRIMAER-Klassifikator des PII-Proxys (die RTX mit",
+      "gemma-4-12b-qat geht aus der Farm); Fallback gemma-4-31b-it-mlx (MacBook)."
     ]
   },
   "gemma-4-31b-it": {
@@ -94,7 +76,11 @@
       "Modell unter der Standard-Kennung hoch, der Fallback von 38 Agenten zeigte",
       "auf «-win» ins Leere (14.10. und 19.10.). Die Standard-Kennung ueberlebt",
       "den Neustart. Die Warnung vom 03.10. (zweite JIT-Instanz) galt nur,",
-      "solange das Modell unter «-win» geladen war."
+      "solange das Modell unter «-win» geladen war.",
+      "",
+      "21.10.2026: Stand der Rollen siehe qwen3.6-35b-a3b-mlx / gemma-4-31b-it-mlx.",
+      "Seit 21.10. KEIN Agenten-Fallback mehr (gemessen gestoert: Decode 2,6-8,6",
+      "tok/s, Verdacht VRAM-Ueberbuchung/CPU-Offload). Bleibt als Reserve geladen."
     ]
   },
   "abiray/qwen3.6-35b-a3b": {
@@ -113,21 +99,42 @@
       "Primaermodell bleibt qwen3.6-35b-a3b in Q8_0 auf der rtx.",
       "",
       "Seit 19.10.2026 unter der Standard-Kennung «abiray/qwen3.6-35b-a3b»",
-      "(vorher «qwen3.6-35b-win»), Begruendung siehe gemma-4-31b-it."
+      "(vorher «qwen3.6-35b-win»), Begruendung siehe gemma-4-31b-it.",
+      "",
+      "21.10.2026: Stand der Rollen siehe qwen3.6-35b-a3b-mlx / gemma-4-31b-it-mlx.",
+      "Seit 21.10. Fallback fuer qwen3.6-35b-a3b-mlx (MacBook)."
     ]
   },
-  "google/gemma-4-12b-qat": {
-    "geraet": "RTX Pro 6000",
-    "contextLength": 32768,
-    "parallel": 8,
+  "qwen3.6-35b-a3b-mlx": {
+    "geraet": "MacbookM5Mx128",
+    "contextLength": 98304,
+    "parallel": 4,
     "begruendung": [
-      "Primaer-Klassifikator des PII-Proxys seit 04.10.2026 (Fallback ist",
-      "google/gemma-4-12b auf dem Studio). 32768 reichen belegt: der Proxy",
-      "chunkt bei MAX_CHUNK_CHARS = 4000, rund 1.800 Token je Aufruf.",
-      "",
-      "12.10.2026 ins Soll aufgenommen, damit der Ausfall der RTX auch an",
-      "diesem Modell sichtbar wird — vorher stand es nirgends im Soll, und die",
-      "Aufsicht sah den RTX-Ausfall vom 10.10. nur als «ID unbekannt»."
+      "Primaermodell der 13 qwen-Agenten und des n8n-Workflows WHITESTAG RAG V4",
+      "seit 21.10.2026 (vorher qwen3.6-35b-a3b Q8_0 auf der RTX Pro 6000, die aus",
+      "der Farm geht und zum Coding-Rechner wird). MLX 8-bit, 37,74 GB.",
+      "Gemessen 21.10.: 27k-Prompt Prefill 2.900 tok/s, Decode 89 tok/s; 4 parallel",
+      "2.700 tok/s Gesamtdurchsatz (RTX: 3.800). Wochenlast ~155 Mio Input-Token",
+      "= ~260 tok/s Mittel, also rund 10 % Auslastung.",
+      "Fallback: abiray/qwen3.6-35b-a3b auf WHITESTAG-AI (anderes Geraet).",
+      "Eigene Kennung mit -mlx, damit LM Link nicht still zwischen gleichnamigen",
+      "Kopien auf verschiedenen Geraeten umleitet."
+    ]
+  },
+  "gemma-4-31b-it-mlx": {
+    "geraet": "MacbookM5Mx128",
+    "contextLength": 98304,
+    "parallel": 4,
+    "begruendung": [
+      "Seit 21.10.2026: Primaermodell der 7 Clara-Sound-gemma-Agenten (~32 Mio",
+      "Token/14 Tage, Fallback google/gemma-4-31b auf dem Studio), Fallback der",
+      "18 WHITESTAG/Health-gemma-Agenten und der 11 cheap-Profile, und",
+      "FALLBACK-Klassifikator des PII-Proxys (Primaer google/gemma-4-12b, Studio).",
+      "Grund der Aufteilung: dense-gemma ist der Rechen-Engpass (pro Token ~6x",
+      "teurer als die qwen-MoE); die Studio-gemma lag am 21.10. unter Live-Last",
+      "bei 336 s fuer eine 28k-Anfrage. MLX 8-bit, 33,80 GB.",
+      "Gemessen 21.10.: Prefill 510 tok/s, Decode 13,7 tok/s einzeln; PII-Aufruf",
+      "stabil 12,4 s."
     ]
   }
 }

@@ -86,7 +86,9 @@
       "abgeschaltet). Gemessen: kurz 1,3 s / Decode 29 tok/s, 28k Prefill 722 tok/s —",
       "schneller als MacBook-gemma (547 / 14). Seither PRIMAER fuer CMO und",
       "LLM-Konfigurationsanalyst (~23 Mio Token/14 Tage), Fallback gemma-4-31b-it-mlx.",
-      "Die Zeile oben «kein Agenten-Fallback mehr» ist damit ueberholt."
+      "Die Zeile oben «kein Agenten-Fallback mehr» ist damit ueberholt.",
+      "21.10. abends erneut allein auf der 3090 geladen, wieder primaer fuer CMO",
+      "und LLM-Konfigurationsanalyst (28k 40 s, Prefill 722, Decode 22; MacBook 55 s)."
     ]
   },
   "qwen3.6-35b-a3b-mlx": {
@@ -102,7 +104,11 @@
       "= ~260 tok/s Mittel, also rund 10 % Auslastung.",
       "Fallback: abiray/qwen3.6-35b-a3b auf WHITESTAG-AI (anderes Geraet).",
       "Eigene Kennung mit -mlx, damit LM Link nicht still zwischen gleichnamigen",
-      "Kopien auf verschiedenen Geraeten umleitet."
+      "Kopien auf verschiedenen Geraeten umleitet.",
+      "",
+      "Seit 21.10. abends FALLBACK der qwen-Agenten (Primaer: qwen3.6-35b-a3b auf",
+      "der 5090, ~2x schneller). Primaer bleibt es fuer Link-Detektor und RAG V4 —",
+      "die haben keinen Fallback und gehoeren nicht hinter die WLAN-Kette."
     ]
   },
   "gemma-4-31b-it-mlx": {
@@ -123,17 +129,20 @@
   },
   "qwen3.6-35b-a3b": {
     "geraet": "WHITESTAG-AI",
-    "contextLength": 98304,
+    "contextLength": 262144,
     "parallel": 4,
     "begruendung": [
-      "Seit 21.10.2026 Q4_K_M (lmstudio-community, 21,17 GB) allein auf der RTX 5090,",
-      "geladen mit abgeschalteter 3090 (Kartenzuordnung nur per GUI, uebersteht keinen",
-      "Neustart). Ersetzt abiray/qwen3.6-35b-a3b (Q6_K, auf beide Karten verteilt).",
-      "Rolle: FALLBACK der 13 qwen-Agenten (Primaer qwen3.6-35b-a3b-mlx, MacBook).",
-      "Gemessen 21.10.: 27k-Prompt 107 s bis zum ersten Token (251 tok/s), 65k 323 s,",
-      "4 parallel Abbruch — 15x langsamer als das MacBook, deshalb NICHT primaer.",
-      "Verdacht: Experten-Gewichte/KV nicht voll auf der GPU; am PC pruefen.",
-      "Identifier ist der Standardname, die RTX traegt seit 21.10. nichts mehr."
+      "Seit 21.10.2026 abends PRIMAER der 13 qwen-Agenten (Fallback qwen3.6-35b-a3b-mlx,",
+      "MacBook). Q4_K_M allein auf der RTX 5090.",
+      "Zwei Fallen, beide am 21.10. gefunden:",
+      "1) In den gespeicherten Ladeeinstellungen stand «Number of layers for which to",
+      "   force MoE weights onto CPU» = 40 -> alle Experten auf der CPU, nur 5,6 GB auf",
+      "   der Karte, Decode 25 tok/s. Muss 0 sein (GUI, kein lms-Schalter).",
+      "2) «Unified KV Cache» ist an: alle Slots teilen EIN Fenster. Mit 98304 und",
+      "   4 Slots scheiterten 4 x 27k mit «Context size has been exceeded». Daher 262144",
+      "   (Modellmaximum); KV kostet bei qwen3.6 wenig (nur jede 4. Schicht klassisch).",
+      "Gemessen danach: 27k 4,5 s (Prefill 5.961, Decode 170), 65k 11 s, 4 x 27k",
+      "31,6 s, 4 x 65k 100 s. MacBook: 7 s / 23 s / 39-44 s."
     ]
   }
 }

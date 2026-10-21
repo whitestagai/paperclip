@@ -85,7 +85,7 @@
       "ctx": 98304,
       "parallel": 4,
       "when": "always",
-      "begruendung": "Seit 21.10.2026 Primaermodell der 13 qwen-Agenten und von WHITESTAG RAG V4 (vorher Q8_0 auf der RTX Pro 6000, die zum Coding-Rechner wird). Fallback abiray/qwen3.6-35b-a3b auf whitestag-ai. Details und Messwerte: modell-wacht/soll-laufzeit.json."
+      "begruendung": "Seit 21.10.2026 abends Fallback der 13 qwen-Agenten (Primaer qwen3.6-35b-a3b auf whitestag-ai/5090) und Primaer fuer Link-Detektor + WHITESTAG RAG V4. Details: modell-wacht/soll-laufzeit.json."
     },
     {
       "device": "macbook",
@@ -103,16 +103,16 @@
       "ctx": 98304,
       "parallel": 2,
       "when": "always",
-      "begruendung": "Seit 21.10.2026 allein auf der RTX 3090, PRIMAER fuer CMO und LLM-Konfigurationsanalyst (gemessen schneller als MacBook-gemma), Fallback gemma-4-31b-it-mlx. Details: modell-wacht/soll-laufzeit.json."
+      "begruendung": "Seit 21.10.2026 allein auf der RTX 3090, PRIMAER fuer CMO und LLM-Konfigurationsanalyst, Fallback gemma-4-31b-it-mlx. Details: modell-wacht/soll-laufzeit.json."
     },
     {
       "device": "whitestag-ai",
       "ps_key": "qwen3.6-35b-a3b",
-      "load_key": "lmstudio-community/qwen3.6-35b-a3b",
-      "ctx": 98304,
+      "load_key": "qwen3.6-35b-a3b",
+      "ctx": 262144,
       "parallel": 4,
       "when": "always",
-      "begruendung": "Seit 21.10.2026 Q4_K_M allein auf der RTX 5090, Fallback der 13 qwen-Agenten (Primaer qwen3.6-35b-a3b-mlx auf dem macbook). Gemessen 15x langsamer als das MacBook, daher nicht primaer. Details: modell-wacht/soll-laufzeit.json."
+      "begruendung": "Seit 21.10.2026 abends PRIMAER der 13 qwen-Agenten, Q4_K_M allein auf der RTX 5090 (MoE-Experten NICHT auf CPU, Unified KV mit 262144). Fallback qwen3.6-35b-a3b-mlx (macbook). Details: modell-wacht/soll-laufzeit.json."
     }
   ]
 }

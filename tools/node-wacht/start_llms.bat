@@ -8,7 +8,11 @@ REM  Dieses Skript laedt beide nur, damit nach einem Neustart ueberhaupt
 REM  etwas laeuft - verteilt ueber beide Karten und damit LANGSAM.
 REM  RICHTIG geht es nur in der GUI (Ctrl+Shift+H, Hardware):
 REM    1. beide Modelle entladen
-REM    2. 3090 aus  -> qwen laden (Identifier qwen3.6-35b-a3b, 98304, parallel 4)
+REM    2. 3090 aus  -> qwen laden (Identifier qwen3.6-35b-a3b, 262144, parallel 4)
+REM       In den Modell-Einstellungen MUSS "Number of layers ... MoE weights onto
+REM       CPU" auf 0 stehen (stand am 21.10. auf 40 -> alles auf der CPU).
+REM       262144 statt 98304, weil "Unified KV Cache" alle Slots EIN Fenster
+REM       teilen laesst (4 x 27k scheiterten mit 98304).
 REM    3. 5090 aus, 3090 an -> gemma laden (gemma-4-31b-it, 98304, parallel 2)
 REM    4. beide GPUs wieder an
 REM  Vorher "Limit Model Offload to Dedicated GPU Memory" einschalten.
@@ -33,6 +37,7 @@ setlocal
 set CTX=98304
 set SLOTS=2
 set QSLOTS=4
+set QCTX=262144
 
 echo Warte auf LM Studio ...
 set /a VERSUCH=0
@@ -63,7 +68,7 @@ lms load "lmstudio-community/gemma-4-31B-it-GGUF/gemma-4-31B-it-Q4_K_M.gguf" --i
 
 echo.
 echo Lade qwen3.6-35b-a3b (Q4_K_M) ...
-lms load lmstudio-community/qwen3.6-35b-a3b --identifier qwen3.6-35b-a3b -c %CTX% --parallel %QSLOTS% -y
+lms load qwen3.6-35b-a3b --identifier qwen3.6-35b-a3b -c %QCTX% --parallel %QSLOTS% --gpu max -y
 
 echo.
 echo ACHTUNG: Beide Modelle liegen jetzt auf BEIDEN Karten verteilt (langsam).

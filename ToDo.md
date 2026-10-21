@@ -651,16 +651,17 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Ausschnitt (Kontextkürzung bei 39 KB)? Für Punkt 9a/§ 8 wäre eine deterministische
       Vorprüfung (Lektionen zählen, Feldlängen messen) zuverlässiger als das Modell. *(2026-10-19, Chat: WHITESTAG-AI Fallback-Umstellung)*
 
-- [ ] **Ersten Fortgeschrittenen-Kurs gegenlesen (Do 22.10.)** — erster Lauf der
-      Routine `afb99dc2` („Fortgeschritten (Do)“). Prüfen: `kurs_niveau: fortgeschritten`
+- [ ] **Ersten Fortgeschrittenen-Kurs gegenlesen (Do 22.10.)** — Routine `afb99dc2`
+      („Fortgeschritten (Mi–Do)“, seit 20.10. Mi+Do). Prüfen: `kurs_niveau: fortgeschritten`
       und `kurs_gruppe: grundlagen` im Frontmatter, Abschnitte `## Voraussetzungen` und
       `## Quellen` (Spec § 10 F1/F4), Sicherheitsrahmen in ausführenden Übungen (F3), ob
       der Lektor die Prüfpunkte 15–17 anwendet und ob die Kurskarte „Fortgeschritten“ mit
       zwei Balken zeigt. *(2026-10-19, Chat: Kursmix und Niveau)*
-      **Achtung:** Seit 19.10. stehen 20 Listen-Ideen im Ideen-Eingang (alle `einsteiger`).
-      Am 22.10. baut die Routine deshalb voraussichtlich eine Listen-Idee statt eines
-      Fortgeschrittenen-Kurses. Der Punkt wird erst nach der Liste fällig (ca. Mitte November)
-      oder früher, wenn Walter Fortgeschrittenen-Ideen dazwischenschiebt. *(2026-10-19, Chat: Kursideen-Liste einspielen)*
+      **Stand 21.10.:** Der erste Mittwochslauf (WHI-10320) nahm noch die Einsteiger-Idee L01,
+      bewusst nicht abgebrochen. Seitdem nimmt Schritt 0 an Mi/Do nur Ideen vom Typ
+      `allgemein · fortgeschritten` (im Eingang gibt es gerade keine). Am 22.10. also zusätzlich
+      prüfen: lässt der CEO die Einsteiger- und Branchen-Ideen `offen` liegen und beauftragt ein
+      eigenes Werkzeug-Thema? *(2026-10-21, Chat: Kursmix Fortgeschrittene)*
 
 - [ ] **Ersten Kurs aus Walters Ideenliste gegenlesen** — 20 Ideen `K-20261019-L01…L20`
       im `_ideen-eingang.md`, gemeinsames Material `Workshops/_ideen/Ideenliste-2026-10-19.md`.

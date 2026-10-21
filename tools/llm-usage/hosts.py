@@ -64,9 +64,11 @@ ZUORDNUNG = {
     "gemma-4-31b-it-mlx":                       "MacBook",
     "qwen3.6-35b-a3b-mlx":                      "MacBook",
     "mistral-small-3.2-24b-instruct-2506-mlx":  "MacBook",
-    "openbiollm-llama3-8b.gguf":                "MacBook",
     # --- Mac Studio M4 (128 GB, "Local") ---
     "google/gemma-4-12b":                       "Mac Studio",
+    "google/gemma-4-31b":                       "Mac Studio",   # seit 03.10., Hauptmodell der gemma-Agenten
+    "openbiollm-llama3-8b.gguf":                "Mac Studio",   # Umzugstag vom MacBook unbekannt
+    "text-embedding-nomic-embed-text-v1.5":     "Mac Studio",
     "qwen/qwen3-coder-30b":                     "Mac Studio",
     "text-embedding-bge-m3":                    "Mac Studio",
 

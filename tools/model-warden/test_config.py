@@ -19,7 +19,7 @@ def test_loads_real_set():
     # Primaer der qwen-Agenten (macbook), Fallback auf whitestag-ai.
     assert ("qwen3.6-35b-a3b-mlx", "macbook") in keys
     assert ("gemma-4-31b-it@q4_k_m", "whitestag-ai") in keys
-    assert ("abiray/qwen3.6-35b-a3b", "whitestag-ai") in keys
+    assert ("lmstudio-community/qwen3.6-35b-a3b", "whitestag-ai") in keys
     # Die ps_keys MUESSEN separat zugesichert werden: `keys` oben bildet
     # sich aus load_key (der Modelldatei), aber der Wert, der bei 37
     # Agenten als fallbackModel steht und ueber den sie den Node
@@ -28,7 +28,7 @@ def test_loads_real_set():
     # modell-wacht liest resident-set.json nicht, nur soll-laufzeit.json.
     ps_keys = {(e["ps_key"], e["device"]) for e in entries}
     assert ("gemma-4-31b-it", "whitestag-ai") in ps_keys
-    assert ("abiray/qwen3.6-35b-a3b", "whitestag-ai") in ps_keys
+    assert ("qwen3.6-35b-a3b", "whitestag-ai") in ps_keys
     assert ("qwen3.6-35b-a3b-mlx", "macbook") in ps_keys
     assert ("gemma-4-31b-it-mlx", "macbook") in ps_keys
 

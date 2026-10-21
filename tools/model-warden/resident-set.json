@@ -103,16 +103,16 @@
       "ctx": 98304,
       "parallel": 2,
       "when": "always",
-      "begruendung": "Seit 21.10.2026 nur noch Reserve, kein Agenten-Fallback (gemessen gestoert, Decode 2,6-8,6 tok/s). Fallback der 25 gemma-Agenten seit 06.10.2026. Vorher stand ihr Fallback auf google/gemma-4-12b — demselben Geraet wie ihr Primaermodell google/gemma-4-31b, der Fallback griff also bei einem Studio-Ausfall ins Leere. Geraet ist ein Windows-PC mit RTX 5090 (32 GB) + RTX 3090 (24 GB) = 56 GB VRAM. parallel 2 statt 4: bei 48,99 GB Gewichten beider Modelle bleiben nur ~6,5 GiB fuer zwei KV-Caches, und 4+4 forderten 1,57 Mio Slot-Token — dieselbe Ueberbuchung, die auf der rtx am 26.08.2026 die Timeout-Welle ausloeste. ctx 98304 ist die belegte Untergrenze fuer Agentenmodelle. Q4_K_M gegen MLX 8-bit am studio ist ein Qualitaetsabstieg, aber der ersetzte Fallback war ein 12B."
+      "begruendung": "Seit 21.10.2026 allein auf der RTX 3090, PRIMAER fuer CMO und LLM-Konfigurationsanalyst (gemessen schneller als MacBook-gemma), Fallback gemma-4-31b-it-mlx. Details: modell-wacht/soll-laufzeit.json."
     },
     {
       "device": "whitestag-ai",
-      "ps_key": "abiray/qwen3.6-35b-a3b",
-      "load_key": "abiray/qwen3.6-35b-a3b",
+      "ps_key": "qwen3.6-35b-a3b",
+      "load_key": "lmstudio-community/qwen3.6-35b-a3b",
       "ctx": 98304,
-      "parallel": 2,
+      "parallel": 4,
       "when": "always",
-      "begruendung": "Fallback der 12 qwen-Agenten inkl. C-Suite seit 06.10.2026, vorher google/gemma-4-12b (ein 12B als Fallback eines 35B). Bewusst Q6_K (28,22 GiB) und NICHT die kleinere Q4_K_M-Variante (lmstudio-community/qwen3.6-35b-a3b, 20,55 GiB), die ebenfalls am Node liegt: als Fallback ist Kapazitaet nicht der Engpass, Qualitaet geht vor. Primaermodell seit 21.10.2026: qwen3.6-35b-a3b-mlx auf dem macbook."
+      "begruendung": "Seit 21.10.2026 Q4_K_M allein auf der RTX 5090, Fallback der 13 qwen-Agenten (Primaer qwen3.6-35b-a3b-mlx auf dem macbook). Gemessen 15x langsamer als das MacBook, daher nicht primaer. Details: modell-wacht/soll-laufzeit.json."
     }
   ]
 }

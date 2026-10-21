@@ -80,29 +80,13 @@
       "",
       "21.10.2026: Stand der Rollen siehe qwen3.6-35b-a3b-mlx / gemma-4-31b-it-mlx.",
       "Seit 21.10. KEIN Agenten-Fallback mehr (gemessen gestoert: Decode 2,6-8,6",
-      "tok/s, Verdacht VRAM-Ueberbuchung/CPU-Offload). Bleibt als Reserve geladen."
-    ]
-  },
-  "abiray/qwen3.6-35b-a3b": {
-    "geraet": "WHITESTAG-AI",
-    "contextLength": 98304,
-    "parallel": 2,
-    "begruendung": [
-      "Fallback der 12 qwen-Agenten inkl. C-Suite auf dem Node seit 06.10.2026,",
-      "vorher google/gemma-4-12b (ein 12B als Fallback eines 35B).",
+      "tok/s, Verdacht VRAM-Ueberbuchung/CPU-Offload). Bleibt als Reserve geladen.",
       "",
-      "Gleiche Untergrenze und gleiche Slot-Begruendung wie gemma-4-31b-it.",
-      "",
-      "Bewusst Q6_K (28,22 GiB) und NICHT die kleinere Q4_K_M-Variante",
-      "(lmstudio-community/qwen3.6-35b-a3b, 20,55 GiB), die am Node ebenfalls",
-      "liegt: als Fallback ist Kapazitaet nicht der Engpass, Qualitaet geht vor.",
-      "Primaermodell bleibt qwen3.6-35b-a3b in Q8_0 auf der rtx.",
-      "",
-      "Seit 19.10.2026 unter der Standard-Kennung «abiray/qwen3.6-35b-a3b»",
-      "(vorher «qwen3.6-35b-win»), Begruendung siehe gemma-4-31b-it.",
-      "",
-      "21.10.2026: Stand der Rollen siehe qwen3.6-35b-a3b-mlx / gemma-4-31b-it-mlx.",
-      "Seit 21.10. Fallback fuer qwen3.6-35b-a3b-mlx (MacBook)."
+      "21.10.2026 nachmittags: allein auf der RTX 3090 neu geladen (5090 beim Laden",
+      "abgeschaltet). Gemessen: kurz 1,3 s / Decode 29 tok/s, 28k Prefill 722 tok/s —",
+      "schneller als MacBook-gemma (547 / 14). Seither PRIMAER fuer CMO und",
+      "LLM-Konfigurationsanalyst (~23 Mio Token/14 Tage), Fallback gemma-4-31b-it-mlx.",
+      "Die Zeile oben «kein Agenten-Fallback mehr» ist damit ueberholt."
     ]
   },
   "qwen3.6-35b-a3b-mlx": {
@@ -135,6 +119,21 @@
       "bei 336 s fuer eine 28k-Anfrage. MLX 8-bit, 33,80 GB.",
       "Gemessen 21.10.: Prefill 510 tok/s, Decode 13,7 tok/s einzeln; PII-Aufruf",
       "stabil 12,4 s."
+    ]
+  },
+  "qwen3.6-35b-a3b": {
+    "geraet": "WHITESTAG-AI",
+    "contextLength": 98304,
+    "parallel": 4,
+    "begruendung": [
+      "Seit 21.10.2026 Q4_K_M (lmstudio-community, 21,17 GB) allein auf der RTX 5090,",
+      "geladen mit abgeschalteter 3090 (Kartenzuordnung nur per GUI, uebersteht keinen",
+      "Neustart). Ersetzt abiray/qwen3.6-35b-a3b (Q6_K, auf beide Karten verteilt).",
+      "Rolle: FALLBACK der 13 qwen-Agenten (Primaer qwen3.6-35b-a3b-mlx, MacBook).",
+      "Gemessen 21.10.: 27k-Prompt 107 s bis zum ersten Token (251 tok/s), 65k 323 s,",
+      "4 parallel Abbruch — 15x langsamer als das MacBook, deshalb NICHT primaer.",
+      "Verdacht: Experten-Gewichte/KV nicht voll auf der GPU; am PC pruefen.",
+      "Identifier ist der Standardname, die RTX traegt seit 21.10. nichts mehr."
     ]
   }
 }

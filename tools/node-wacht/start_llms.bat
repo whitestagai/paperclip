@@ -1,6 +1,17 @@
 @echo off
 REM ==========================================================================
-REM  start_llms.bat - Fallback-Modelle auf WHITESTAG-AI nach einem Neustart
+REM  start_llms.bat - Modelle auf WHITESTAG-AI nach einem Neustart
+REM
+REM  STAND 21.10.2026: qwen Q4_K_M gehoert allein auf die RTX 5090, gemma
+REM  Q4_K_M allein auf die RTX 3090. Das kann lms NICHT (keine GPU-Auswahl).
+REM  Dieses Skript laedt beide nur, damit nach einem Neustart ueberhaupt
+REM  etwas laeuft - verteilt ueber beide Karten und damit LANGSAM.
+REM  RICHTIG geht es nur in der GUI (Ctrl+Shift+H, Hardware):
+REM    1. beide Modelle entladen
+REM    2. 3090 aus  -> qwen laden (Identifier qwen3.6-35b-a3b, 98304, parallel 4)
+REM    3. 5090 aus, 3090 an -> gemma laden (gemma-4-31b-it, 98304, parallel 2)
+REM    4. beide GPUs wieder an
+REM  Vorher "Limit Model Offload to Dedicated GPU Memory" einschalten.
 REM ==========================================================================
 REM
 REM  Warum: Nach einem Neustart laedt LM Studio die Modelle unter ihren
@@ -11,10 +22,8 @@ REM  Neustart ins Leere zeigte). Dieses Skript laedt sie nur neu, damit
 REM  Kontext 98304 und 2 Slots sicher stimmen - die Kennung bleibt gleich.
 REM
 REM  VORSICHT beim Aendern:
-REM  - qwen wird ueber den PFAD geladen, nicht ueber den Key. Der Key
-REM    "qwen3.6-35b-a3b" gibt es zweimal (hier Q6_K und auf der RTX Q8_0).
-REM  - NIE "lms unload qwen3.6-35b-a3b": das ist die Kennung des
-REM    RTX-Primaermodells der C-Suite.
+REM  - qwen ist seit 21.10. Q4_K_M (lmstudio-community), nicht mehr Q6_K
+REM    (abiray). Die RTX Pro 6000 traegt seit 21.10. keine Modelle mehr.
 REM  - gemma-4-31b-it@q8_0 ist ein 1,26-GB-Fragment - nicht laden.
 REM
 REM  Autostart: Verknuepfung auf diese Datei in  shell:startup  ablegen.
@@ -23,6 +32,7 @@ REM ==========================================================================
 setlocal
 set CTX=98304
 set SLOTS=2
+set QSLOTS=4
 
 echo Warte auf LM Studio ...
 set /a VERSUCH=0
@@ -41,6 +51,7 @@ goto warten
 echo.
 echo Entlade vorhandene Instanzen (Fehler hier sind normal) ...
 lms unload gemma-4-31b-it 2>nul
+lms unload qwen3.6-35b-a3b 2>nul
 lms unload abiray/qwen3.6-35b-a3b 2>nul
 REM Altlast bis 19.10.2026
 lms unload gemma-4-31b-win 2>nul
@@ -51,8 +62,12 @@ echo Lade gemma-4-31b-it (Q4_K_M) ...
 lms load "lmstudio-community/gemma-4-31B-it-GGUF/gemma-4-31B-it-Q4_K_M.gguf" --identifier gemma-4-31b-it -c %CTX% --parallel %SLOTS% -y
 
 echo.
-echo Lade abiray/qwen3.6-35b-a3b (Q6_K) ...
-lms load "Abiray/Qwen3.6-35B-A3B-Q6_K-GGUF/Qwen3.6-35B-A3B-Q6_K.gguf" --identifier abiray/qwen3.6-35b-a3b -c %CTX% --parallel %SLOTS% -y
+echo Lade qwen3.6-35b-a3b (Q4_K_M) ...
+lms load lmstudio-community/qwen3.6-35b-a3b --identifier qwen3.6-35b-a3b -c %CTX% --parallel %QSLOTS% -y
+
+echo.
+echo ACHTUNG: Beide Modelle liegen jetzt auf BEIDEN Karten verteilt (langsam).
+echo Kartenzuordnung per GUI nachziehen, siehe Kopf dieser Datei.
 
 echo.
 echo Stand:

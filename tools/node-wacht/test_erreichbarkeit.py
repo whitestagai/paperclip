@@ -27,7 +27,7 @@ Found 2 devices:
     Identifier: 55fb4392eb9f978c1bc68abfef0c4b59
     Loaded Models Instances:
       - gemma-4-31b-it
-      - abiray/qwen3.6-35b-a3b
+      - qwen3.6-35b-a3b
 """
 
 NODE_GETRENNT_ZULETZT = """\

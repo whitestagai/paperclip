@@ -27,7 +27,7 @@ def test_1m_variante_zaehlt_wie_das_basismodell():
 def test_bekannte_lokale_modelle_auf_ihrem_geraet():
     """Stand 22.08.2026: Primaerpfad RTX, Netz MacBook, Studio haelt den 12b."""
     assert hosts.ort("gemma4-31b-it") == "RTX"
-    assert hosts.ort("abiray/qwen3.6-35b-a3b") == "RTX"
+    assert hosts.ort("abiray/qwen3.6-35b-a3b", date(2026, 8, 22)) == "RTX"
     assert hosts.ort("gemma-4-31b-it-mlx") == "MacBook"
     assert hosts.ort("qwen3.6-35b-a3b-mlx") == "MacBook"
     assert hosts.ort("google/gemma-4-12b") == "Mac Studio"
@@ -65,7 +65,7 @@ def test_stillgelegte_modelle_behalten_ihren_letzten_ort():
     assert hosts.ort("google/gemma-4-26b-a4b") == "Mac Studio"
     assert hosts.ort("qwen2.5-32b-instruct-mlx") == "Mac Studio"
     # Danach verteilt: der Q8-Zwilling ohne Suffix lag auf der RTX.
-    assert hosts.ort("qwen3.6-35b-a3b") == "RTX"
+    assert hosts.ort("qwen3.6-35b-a3b", date(2026, 7, 15)) == "RTX"
     assert hosts.ort("qwen/qwen3-coder-next") == "RTX"
     assert hosts.ort("openai/gpt-oss-120b") == "MacBook"
 
@@ -105,9 +105,12 @@ def test_datum_darf_auch_als_string_kommen():
 
 
 def test_der_q8_zwilling_wird_nicht_mit_dem_mlx_modell_verwechselt():
-    """`qwen3.6-35b-a3b` (RTX, Q8) und `qwen3.6-35b-a3b-mlx` (MacBook) sind
-    zwei Maschinen — laut Memory die groesste Fehlerklasse der Flotte."""
-    assert hosts.ort("qwen3.6-35b-a3b") == "RTX"
+    """`qwen3.6-35b-a3b` (bis 21.10. RTX Q8, seither WHITESTAG-AI Q4) und
+    `qwen3.6-35b-a3b-mlx` (MacBook) sind zwei Maschinen — laut Memory die
+    groesste Fehlerklasse der Flotte."""
+    assert hosts.ort("qwen3.6-35b-a3b", date(2026, 8, 22)) == "RTX"
+    assert hosts.ort("qwen3.6-35b-a3b") == "WHITESTAG-AI"
+    assert hosts.ort("qwen3.6-35b-a3b") != hosts.ort("qwen3.6-35b-a3b-mlx")
     assert hosts.ort("qwen3.6-35b-a3b-mlx") == "MacBook"
 
 
@@ -187,3 +190,24 @@ def test_unbekanntes_modell_das_live_liegt_wird_als_abweichung_gemeldet():
     assert hosts.abweichungen(["irgendwas/neues-42b"], live) == [
         ("irgendwas/neues-42b", "unbekannt", "RTX")
     ]
+
+
+def test_umzuege_werden_nach_aufruftag_aufgeloest():
+    """21.10.2026: RTX raus, WHITESTAG-AI (5090 + 3090) traegt qwen und gemma.
+    Dieselbe Modell-ID lag vorher woanders — der Tag des Aufrufs entscheidet,
+    sonst wandert die ganze RTX-Historie rueckwirkend auf WHITESTAG-AI."""
+    assert hosts.ort("qwen3.6-35b-a3b", date(2026, 10, 20)) == "RTX"
+    assert hosts.ort("qwen3.6-35b-a3b", date(2026, 10, 22)) == "WHITESTAG-AI"
+    assert hosts.ort("qwen3.6-35b-a3b") == "WHITESTAG-AI"
+    assert hosts.ort("gemma-4-31b-it", date(2026, 7, 10)) == "Mac Studio"
+    assert hosts.ort("gemma-4-31b-it", date(2026, 10, 19)) == "WHITESTAG-AI"
+    assert hosts.ort("gemma-4-31b-it") == "WHITESTAG-AI"
+    assert hosts.ort("abiray/qwen3.6-35b-a3b", date(2026, 10, 19)) == "WHITESTAG-AI"
+    assert hosts.ort("gemma-4-31b-win") == "WHITESTAG-AI"
+    assert hosts.ort("qwen3.6-35b-win") == "WHITESTAG-AI"
+
+
+def test_whitestag_ai_ist_ein_bekanntes_geraet():
+    kopf = "IDENTIFIER          MODEL               STATUS    DEVICE          TTL"
+    zeile = "qwen3.6-35b-a3b     qwen3.6-35b-a3b     IDLE      WHITESTAG-AI       "
+    assert hosts.parse_lms_ps(kopf + "\n" + zeile) == {"qwen3.6-35b-a3b": "WHITESTAG-AI"}

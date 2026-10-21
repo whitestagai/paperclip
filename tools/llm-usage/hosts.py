@@ -50,6 +50,7 @@ GERAETE = {
     "Local": "Mac Studio",
     "MacbookM5Mx128": "MacBook",
     "RTX Pro 6000": "RTX",
+    "WHITESTAG-AI": "WHITESTAG-AI",   # Windows-PC, RTX 5090 + RTX 3090
 }
 
 # Modell-ID exakt so, wie sie in `cost_events.model` steht -> Ort.
@@ -92,6 +93,33 @@ ZUORDNUNG = {
     "qwen3.6-35b-a3b":                          "RTX",          # 13.-18.07.
     "qwen/qwen3-coder-next":                    "RTX",          # bis 29.07.
     "openai/gpt-oss-120b":                      "MacBook",      # 06.07.
+    # --- WHITESTAG-AI (Windows, RTX 5090 + 3090) ---
+    "gemma-4-31b-win":                          "WHITESTAG-AI", # 07.-19.10.
+    "qwen3.6-35b-win":                          "WHITESTAG-AI", # 07.-19.10.
+}
+
+# Modell-IDs, die im Lauf der Zeit auf ein ANDERES Geraet umgezogen sind,
+# ohne den Namen zu wechseln. Je ID eine Liste (ab-Tag, Ort), aufsteigend;
+# es gilt der letzte Eintrag, dessen ab-Tag <= Aufruftag ist. Ohne Tag gilt
+# der juengste Eintrag (= aktueller Ort, fuer den 7-Tage-Block und lms-Abgleich). Diese Liste geht der Tabelle ZUORDNUNG vor — ohne sie
+# wanderte nach jedem Umzug die ganze Historie rueckwirkend aufs neue Geraet.
+#
+# 21.10.2026: RTX Pro 6000 raus (Walters Coding-Rechner). qwen3.6-35b-a3b
+# lief am 21.10. vormittags noch auf der RTX und erst ab ~20:20 auf der 5090
+# von WHITESTAG-AI; der Tag wird der RTX zugeschlagen (Tagesaufloesung).
+UMZUEGE = {
+    "qwen3.6-35b-a3b": [
+        (date(2026, 7, 6), "RTX"),
+        (date(2026, 10, 22), "WHITESTAG-AI"),
+    ],
+    "gemma-4-31b-it": [
+        (date(2026, 7, 6), "Mac Studio"),
+        (date(2026, 10, 19), "WHITESTAG-AI"),   # vorher unter -win geladen
+    ],
+    "abiray/qwen3.6-35b-a3b": [
+        (date(2026, 7, 6), "RTX"),
+        (date(2026, 10, 19), "WHITESTAG-AI"),   # Q6_K-Fallback, bis 21.10.
+    ],
 }
 
 LMS_CLI = os.path.expanduser("~/.lmstudio/bin/lms")
@@ -130,7 +158,7 @@ def _als_datum(tag):
 
 
 def ort(model, tag: Optional[date] = None) -> str:
-    """'Cloud', 'Mac Studio', 'MacBook', 'RTX' — oder 'unbekannt'.
+    """'Cloud', 'Mac Studio', 'MacBook', 'RTX', 'WHITESTAG-AI' — oder 'unbekannt'.
 
     `tag` ist der Kalendertag des Aufrufs. Liegt er vor `VERTEILUNG_AB`, war
     der Mac Studio die einzige Maschine und die Tabelle (= heutiger Stand)
@@ -144,6 +172,13 @@ def ort(model, tag: Optional[date] = None) -> str:
         return CLOUD
     if _als_datum(tag) is not None and _als_datum(tag) < VERTEILUNG_AB:
         return "Mac Studio"
+    if m in UMZUEGE:
+        stichtag = _als_datum(tag)
+        if stichtag is None:          # ohne Tag: der aktuelle Ort
+            return UMZUEGE[m][-1][1]
+        gueltig = [o for ab, o in UMZUEGE[m] if ab <= stichtag]
+        if gueltig:
+            return gueltig[-1]
     return ZUORDNUNG.get(m, UNBEKANNT)
 
 

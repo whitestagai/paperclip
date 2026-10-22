@@ -662,6 +662,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       (`log_ref` des Runs `8f8e2402`) — hat er die Datei ganz gelesen oder nur einen
       Ausschnitt (Kontextkürzung bei 39 KB)? Für Punkt 9a/§ 8 wäre eine deterministische
       Vorprüfung (Lektionen zählen, Feldlängen messen) zuverlässiger als das Modell. *(2026-10-19, Chat: WHITESTAG-AI Fallback-Umstellung)*
+      **Stand 22.10.: die deterministische Vorprüfung gibt es jetzt** — `kurs-check.mjs` (Formfehler, Feldlängen,
+      Lektionszahl) läuft vor jedem Lektorat. Bei WHI-10320 übersah der Lektor erneut einen mehrzeiligen Langtext,
+      den fehlenden Abschnitt `## Quellen` und ein erfundenes `datum`. Offen bleibt nur die Auswertung des
+      Laufprotokolls (liest er die Datei ganz?). *(2026-10-22, Chat: ACADEMY Kurs-Formprüfung)*
 
 - [ ] **Ersten Fortgeschrittenen-Kurs gegenlesen (Do 22.10.)** — Routine `afb99dc2`
       („Fortgeschritten (Mi–Do)“, seit 20.10. Mi+Do). Prüfen: `kurs_niveau: fortgeschritten`
@@ -674,13 +678,9 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       `allgemein · fortgeschritten` (im Eingang gibt es gerade keine). Am 22.10. also zusätzlich
       prüfen: lässt der CEO die Einsteiger- und Branchen-Ideen `offen` liegen und beauftragt ein
       eigenes Werkzeug-Thema? *(2026-10-21, Chat: Kursmix Fortgeschrittene)*
-
-- [ ] **Ersten Kurs aus Walters Ideenliste gegenlesen** — 20 Ideen `K-20261019-L01…L20`
-      im `_ideen-eingang.md`, gemeinsames Material `Workshops/_ideen/Ideenliste-2026-10-19.md`.
-      Beim ersten Listen-Kurs prüfen: Übernimmt der CEO den Kurstyp aus der Notiz? Nutzt der
-      Autor das Briefing (8–10 Lektionen nach Spec, nicht „etwa sieben“ aus der Liste)? Setzt
-      der CEO den Status `gebaut (<slug>)`, und zwar nur in der eigenen Zeile, obwohl alle 20
-      dieselbe Material-Datei nennen? *(2026-10-19, Chat: Kursideen-Liste einspielen)*
+      **Stand 22.10.:** WHI-10365 baute `ki-automatisierung-n8n` (8 Lektionen, Lektorat GELB, importiert),
+      also ein eigenes Werkzeug-Thema. Formprüfung lief vor beiden Runden mit OK. Noch offen aus diesem Eintrag:
+      F3-Sicherheitsrahmen in den Übungen, Prüfpunkte 15–17 beim Lektor und die Kurskarte mit zwei Balken. *(2026-10-22, Chat: ACADEMY Kurs-Formprüfung)*
 
 - [ ] **Ersten Kurs mit 8–10 Lektionen beobachten** — seit 19.10. verlangt Spec § 5
       8 bis 10 statt 7 Lektionen (Prüfprofil Punkt 9a, ROT). Längere Kurse heißen
@@ -688,6 +688,15 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       und mehr Kontext beim Lektor. Beim ersten Kurs danach prüfen: Lektionszahl,
       `**Umfang:**`-Angabe, Laufzahl und Fehlläufe des Autors gegenüber den 7er-Kursen.
       *(2026-10-19, Chat: Kursmix und Niveau)*
+
+- [ ] **Ruft der Autor `kurs-check` selbst auf?** — seit 21.10. Pflicht in `roles/online-rechercheur.role.md`
+      (vor `done`, bis OK). Im ersten Lauf (22.10., WHI-10367) ist der Aufruf nur beim CEO belegt; in den
+      Run-Events des Online-Rechercheurs fand sich kein Treffer. Beim nächsten Kurs im Run-Protokoll des Autors
+      (`log_ref` → ndjson, `shell_exec` mit `kurs-check.mjs`) nachsehen. *(2026-10-22, Chat: ACADEMY Kurs-Formprüfung)*
+
+- [ ] **`is_free` bei `ki-werkzeug-auswahl` widersprüchlich** — die Kursdatei sagt `is_free: true`,
+      das Themen-Log (beide Tabellen) „❌ kostenpflichtig“. Walter entscheidet, was gilt; danach Datei oder
+      Log angleichen. *(2026-10-22, Chat: ACADEMY Kurs-Formprüfung)*
 
 - [ ] **Überarbeitung veröffentlichter Kurse — Entscheidung offen** — der Import fasst
       einen einmal veröffentlichten Kurs nie wieder an (`409 already_published`,

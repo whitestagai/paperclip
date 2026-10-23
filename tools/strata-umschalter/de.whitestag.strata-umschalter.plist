@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>de.whitestag.strata-umschalter</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/walterschoenenbroecher.de/.paperclip/scripts/strata-umschalter/umschalter.py</string>
+  </array>
+  <key>StartInterval</key><integer>300</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/walterschoenenbroecher.de/.paperclip/logs/strata-umschalter.launchd.log</string>
+  <key>StandardErrorPath</key><string>/Users/walterschoenenbroecher.de/.paperclip/logs/strata-umschalter.launchd.log</string>
+</dict>
+</plist>

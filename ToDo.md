@@ -694,6 +694,14 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Run-Events des Online-Rechercheurs fand sich kein Treffer. Beim nächsten Kurs im Run-Protokoll des Autors
       (`log_ref` → ndjson, `shell_exec` mit `kurs-check.mjs`) nachsehen. *(2026-10-22, Chat: ACADEMY Kurs-Formprüfung)*
 
+- [ ] **CEO-Mail nach dem API-Key-Fix im Echtbetrieb belegen** — seit 14.05. scheiterte jede Mail eines
+      lmstudio-Agenten (CEO u. a.) an „PAPERCLIP_API_KEY nicht im Env“, Fix im Adapter `fbe4976` seit 23.10. 08:20 live.
+      Nach dem nächsten Kurslauf (06:00) im `~/.paperclip/instances/default/logs/walter-deliverable.log` nach
+      `SENT … agent=CEO` sehen. Kommt stattdessen ein anderer Fehler, ist das der nächste Befund. *(2026-10-23, Chat: Kurs-Import und CEO-Mail)*
+
+- [ ] **Kfz-Kurs im Admin freigeben** — `ki-kfz-betrieb` (8 Lektionen, Lektorat GELB) liegt seit 23.10. als Entwurf
+      in der Akademie. Nur Walter kann freigeben. *(2026-10-23, Chat: Kurs-Import und CEO-Mail)*
+
 - [ ] **`is_free` bei `ki-werkzeug-auswahl` widersprüchlich** — die Kursdatei sagt `is_free: true`,
       das Themen-Log (beide Tabellen) „❌ kostenpflichtig“. Walter entscheidet, was gilt; danach Datei oder
       Log angleichen. *(2026-10-22, Chat: ACADEMY Kurs-Formprüfung)*
@@ -1373,6 +1381,12 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       (`4d5510afa`, Telegram-Freigabe) auf `fix/backup-leere-ref-ordner` übernommen, Commit
       `a4fd769c9`, 136 Tests grün. Auf **master** fehlt er weiterhin. Offen in diesem Eintrag
       bleiben `wake-satellite/` und `websuche/`. *(2026-10-19, Chat: SEO-GEO neue Sites)*
+
+- [ ] **★★Vor jedem lmstudio-Adapter-Build gegen `origin/main` abgleichen** — der Cloud-Ordner
+      `opensource/paperclip-adapter-lmstudio` hatte den Header-Fix `e8b772a` nur als `dist/`, nie als Quellcode.
+      Ein Build am 23.10. überschrieb ihn live (15 Minuten, ohne Folgen). Pflicht vor `npm run build`:
+      `git fetch && git log HEAD..origin/main` muss leer sein. Dauerhaft wäre ein Hinweis in der README des
+      Adapters oder ein `prebuild`-Check, der bei Rückstand abbricht. *(2026-10-23, Chat: Kurs-Import und CEO-Mail)*
 
 - [ ] **`test_llm` im Jarvis-Bot ist veraltet** —
       `test_module_default_fallback_avoids_the_primary_model` erwartet ein vom

@@ -186,3 +186,37 @@ def test_kein_grund_bei_kaputter_datei(tmp_path):
     s = tmp_path / "status.json"
     s.write_text("kein json")
     assert waechter.status_grund(str(s)) is None
+
+
+# --- Academy-Dumps (seit 25.10.2026) ----------------------------------------
+# Die woechentliche Abholung lief vom 15.10. an nie unter launchd (TCC) —
+# zehn Tage lang lag nur der eine Handlauf da, und niemand sah es.
+
+def test_academy_juengster_dump_gewinnt(tmp_path):
+    import os
+    import time
+    alt = tmp_path / "academy-2026-10-15.sql.gz"
+    neu = tmp_path / "academy-2026-10-25.sql.gz"
+    alt.write_text("x")
+    neu.write_text("x")
+    os.utime(alt, (time.time() - 10 * 86400, time.time() - 10 * 86400))
+    stand = waechter.academy_stand(str(tmp_path))
+    assert stand.timestamp() > (time.time() - 60)
+
+
+def test_academy_pull_log_zaehlt_nicht(tmp_path):
+    """pull.log wird bei jedem Lauf beschrieben — auch einem, der nichts
+    geholt hat. Er darf nicht als frischer Dump durchgehen."""
+    (tmp_path / "pull.log").write_text("ok")
+    assert waechter.academy_stand(str(tmp_path)) is None
+
+
+def test_academy_fehlender_ordner_ergibt_unbekannt(tmp_path):
+    assert waechter.academy_stand(str(tmp_path / "gibtsnicht")) is None
+
+
+def test_academy_grenze_laesst_den_wochenrhythmus_durch():
+    """Abholung montags 09:30, Waechter taeglich 07:00: am Montag vor der
+    Abholung ist der juengste Dump gut sieben Tage alt."""
+    assert waechter.GRENZE_ACADEMY >= timedelta(days=8)
+    assert waechter.GRENZE_ACADEMY <= timedelta(days=10)

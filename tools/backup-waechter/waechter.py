@@ -15,6 +15,8 @@ schickt auch keine Fehlermeldung.
   7. Systemgeheimnisse, Nextcloud   (täglich 05:45)  — Grenze 30 h
   8. NAS-Projektordner, Nextcloud   (täglich 06:15)  — Grenze 30 h
   9. n8n, Nextcloud                 (täglich 05:45)  — Grenze 30 h
+ 10. Backups-Ordner, Nextcloud      (täglich 05:15)  — Grenze 30 h
+ 11. Academy-DB-Abholung, Synology  (montags 09:30)  — Grenze 9 Tage
 Dazu die Belegung des Nextcloud-Kontos (Warnung ab 80 %).
 
 WICHTIG: Nicht direkt per launchd starten. macOS verweigert einem launchd-Job
@@ -65,6 +67,16 @@ TAG_NAS = "nas-projekte"
 # n8n mit eigenem Schlagwort: die 2,2-GB-Datenbank aendert sich taeglich
 # komplett, ihre Aufbewahrung soll getrennt kuerzbar bleiben.
 TAG_N8N = "n8n"
+# Seit 25.10.2026: SynologyDrive-Mac/Backups/ mit den Academy-DB-Dumps.
+TAG_BACKUPS = "synology-backups"
+
+# Hier legt de.whitestag.academy-backup-pull die DB-Dumps vom Academy-Server
+# ab. Geprueft wird das Alter des juengsten DUMPS, nicht das des Snapshots:
+# der Snapshot entsteht jede Nacht, auch wenn seit Wochen kein neuer Dump
+# angekommen ist. Genau so lief es vom 15. bis 25.10.2026 — die Abholung
+# scheiterte unter launchd an TCC, und nichts schlug an.
+ACADEMY_DUMPS = os.path.expanduser(
+    "~/Library/CloudStorage/SynologyDrive-Mac/Backups/WHITESTAG.ACADEMY/db")
 
 # Lokale Sicherung auf die Thunderbolt-SSD (de.whitestag.ssd-backup).
 # Die Statusdatei liegt bewusst lokal und nicht auf der Platte selbst: sonst
@@ -85,6 +97,9 @@ GRENZE_SYNOLOGY = 7 * TAG
 # schlagen aber an, wenn ein Termin ganz ausfaellt. Enger waere ein
 # Fehlalarm-Automat, weiter wuerde einen echten Ausfall zu lange decken.
 GRENZE_REPO_PRUEFUNG = 45 * TAG
+# Abholung montags 09:30, der Waechter laeuft um 07:00 davor: am Montagmorgen
+# ist der juengste Dump regulaer gut sieben Tage alt. 9 Tage wie beim Vault.
+GRENZE_ACADEMY = 9 * TAG
 
 # Gebuchter Speicher des Hetzner-Tarifs, VON HAND eingetragen: weder OCS-API
 # noch WebDAV verraten ihn — Nextcloud meldet fuer das Konto nur „unbegrenzt"
@@ -176,6 +191,28 @@ def ordner_stand(pfad):
         log(f"Synology-Spiegel ist leer: {pfad}")
         return None
     return datetime.fromtimestamp(max(zeiten))
+
+
+def academy_stand(pfad):
+    """Zeitstempel des juengsten academy-*.sql.gz, oder None.
+
+    rsync -a uebernimmt die mtime vom Server, sie ist also der Zeitpunkt des
+    Dumps und nicht der der Abholung. pull.log zaehlt nicht: es wird auch von
+    einem Lauf beschrieben, der nichts geholt hat."""
+    try:
+        namen = os.listdir(pfad)
+    except OSError as exc:
+        log(f"Academy-Dumps nicht lesbar: {exc}")
+        return None
+    zeiten = []
+    for n in namen:
+        if not (n.startswith("academy-") and n.endswith(".sql.gz")):
+            continue
+        try:
+            zeiten.append(os.path.getmtime(os.path.join(pfad, n)))
+        except OSError:
+            continue
+    return datetime.fromtimestamp(max(zeiten)) if zeiten else None
 
 
 def status_stand(pfad):
@@ -378,7 +415,8 @@ def baue_bericht(kennzahlen, vorher):
                              ("obsidian-vault", "Obsidian-Vault"),
                              ("system-secrets", "Systemgeheimnisse"),
                              ("nas-projekte", "NAS-Projektordner"),
-                             ("n8n", "n8n")):
+                             ("n8n", "n8n"),
+                             ("synology-backups", "Backups-Ordner")):
         n = kennzahlen.get("snaps", {}).get(schluessel)
         if n is None:
             continue
@@ -488,6 +526,11 @@ def main():
                            GRENZE_TAEGLICH, "restic"),
         pruefung.Pruefling("n8n (Nextcloud)", aus_repo(TAG_N8N),
                            GRENZE_TAEGLICH, "restic"),
+        pruefung.Pruefling("Backups-Ordner (Nextcloud)", aus_repo(TAG_BACKUPS),
+                           GRENZE_TAEGLICH, "restic"),
+        pruefung.Pruefling("Academy-DB-Abholung (Synology)",
+                           academy_stand(ACADEMY_DUMPS),
+                           GRENZE_ACADEMY, "Dump-Ordner"),
     ]
     befund = pruefung.bewerte(jetzt, prueflinge)
 
@@ -512,7 +555,8 @@ def main():
     vorher = vorheriger_stand()
     kennzahlen = {
         "snaps": zaehle_je_tag(snaps, [TAG_CODE, TAG_DEV, TAG_DB, TAG_VAULT,
-                                       TAG_SECRETS, TAG_NAS, TAG_N8N]),
+                                       TAG_SECRETS, TAG_NAS, TAG_N8N,
+                                       TAG_BACKUPS]),
         "nc_used_gb": (belegt_bytes / 1024 ** 3
                        if belegt_bytes is not None else None),
     }

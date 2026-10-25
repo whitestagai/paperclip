@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Auswaerts-Sicherung nach Hetzner/Nextcloud: Paperclip-Datenbank + Claude-Code-Ordner.
 #
-# Usage: nextcloud-backup.sh [--nur-db] [--nur-code] [--nur-vault] [--nur-developer] [--kein-versand]
+# Usage: nextcloud-backup.sh [--nur-db] [--nur-code] [--nur-vault] [--nur-developer] [--nur-backups] [--kein-versand]
 #
 # WICHTIG: Nicht direkt per launchd starten. macOS verweigert einem launchd-Job
 # aus zsh/bash den Zugriff auf CloudStorage (SynologyDrive) UND auf
@@ -31,6 +31,7 @@ PG_RESTORE="/opt/homebrew/bin/pg_restore"
 CODE_DIR="$HOME/Library/CloudStorage/SynologyDrive-Mac/Claude Code MAC"
 VAULT_DIR="$HOME/Obsidian/WHITESTAG-Vault"
 DEV_DIR="$HOME/Developer"
+BACKUPS_DIR="$HOME/Library/CloudStorage/SynologyDrive-Mac/Backups"
 AUSSCHLUSS="$DIR/ausschluss-claude-code.txt"
 ARBEIT="$HOME/.paperclip/backups/nextcloud"
 LOG="$HOME/.paperclip/logs/nextcloud-backup.log"
@@ -41,6 +42,7 @@ TAG_DB="paperclip-db"
 TAG_CODE="claude-code"
 TAG_VAULT="obsidian-vault"
 TAG_DEV="developer"
+TAG_BACKUPS="synology-backups"
 HOST="MacStudio"
 
 # Restic wartet auf eine fremde Repo-Sperre, statt abzubrechen: das
@@ -55,14 +57,14 @@ MAILHUB_URL="http://127.0.0.1:5678/webhook/mailhub/send"
 MAILHUB_ENV="$HOME/.paperclip/instances/default/secrets/mailhub.env"
 VON="cto@whitestag.ai"; AN="ws@whitestag.ai"
 
-MACH_DB=1; MACH_CODE=1; MACH_VAULT=1; MACH_DEV=1; VERSAND=1
+MACH_DB=1; MACH_CODE=1; MACH_VAULT=1; MACH_DEV=1; MACH_BACKUPS=1; VERSAND=1
 # Mehrere --nur-* lassen sich kombinieren: das erste schaltet alles ab und
 # waehlt seinen Datensatz, jedes weitere legt einen dazu. Einzeln benutzt
 # verhaelt es sich unveraendert.
 AUSWAHL=0
 waehle() {
   if [ "$AUSWAHL" -eq 0 ]; then
-    MACH_DB=0; MACH_CODE=0; MACH_VAULT=0; MACH_DEV=0; AUSWAHL=1
+    MACH_DB=0; MACH_CODE=0; MACH_VAULT=0; MACH_DEV=0; MACH_BACKUPS=0; AUSWAHL=1
   fi
 }
 while [ $# -gt 0 ]; do
@@ -71,6 +73,7 @@ while [ $# -gt 0 ]; do
     --nur-code)     waehle; MACH_CODE=1; shift ;;
     --nur-vault)    waehle; MACH_VAULT=1; shift ;;
     --nur-developer) waehle; MACH_DEV=1; shift ;;
+    --nur-backups)  waehle; MACH_BACKUPS=1; shift ;;
     --kein-versand) VERSAND=0; shift ;;
     # Nur fuer die Tests: ein Wegwerf-Repo in tmp_path statt Hetzner.
     --repo)         export RESTIC_REPOSITORY="$2"; shift 2 ;;
@@ -264,6 +267,23 @@ sichere_developer() {
 }
 [ "$MACH_DEV" -eq 1 ] && sichere_developer
 
+# --- 3c. Backups-Ordner im Synology-Ordner ---------------------------------
+# Seit 25.10.2026. Hier legt de.whitestag.academy-backup-pull woechentlich die
+# DB-Dumps der WHITESTAG.ACADEMY vom Server ab. Der Ordner liegt NEBEN
+# "Claude Code MAC" und war deshalb nur per Synology Drive auf der NAS — im
+# selben Gebaeude wie der Mac. Die Dumps sind schon gzip-komprimiert, eine
+# Ausschlussliste braucht es nicht.
+sichere_backups() {
+  [ -d "$BACKUPS_DIR" ] || { merke_fehler "Ordner nicht erreichbar: $BACKUPS_DIR"; return 1; }
+  log "Sichere $BACKUPS_DIR ..."
+  if ! "$RESTIC" backup "$BACKUPS_DIR" --tag "$TAG_BACKUPS" --host "$HOST" \
+        --exclude ".DS_Store" $WARTEN >>"$LOG" 2>&1; then
+    merke_fehler "restic-Sicherung des Backups-Ordners fehlgeschlagen"; return 1
+  fi
+  log "Backups-Ordner gesichert (Schlagwort $TAG_BACKUPS)."
+}
+[ "$MACH_BACKUPS" -eq 1 ] && sichere_backups
+
 # --- 4. Aufbewahrung -------------------------------------------------------
 # Verwaiste Sperren zuerst wegraeumen. Am 16.09.2026 lagen vier davon im
 # Repo, die aelteste seit 27 Stunden von einem laengst toten Prozess. Jedes
@@ -279,7 +299,7 @@ if ! "$RESTIC" unlock >>"$LOG" 2>&1; then
 fi
 
 # Je Schlagwort getrennt. NIEMALS ohne --tag: im selben Repo liegt der Vault.
-for T in "$TAG_DB" "$TAG_CODE" "$TAG_VAULT" "$TAG_DEV"; do
+for T in "$TAG_DB" "$TAG_CODE" "$TAG_VAULT" "$TAG_DEV" "$TAG_BACKUPS"; do
   if ! "$RESTIC" forget --tag "$T" --keep-daily 14 --keep-weekly 8 \
         --keep-monthly 12 $WARTEN >>"$LOG" 2>&1; then
     # Frueher nur eine Logzeile. Genau deshalb fiel zwei Tage lang nicht auf,

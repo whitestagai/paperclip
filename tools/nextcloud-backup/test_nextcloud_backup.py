@@ -195,3 +195,24 @@ def test_developer_ordner_wird_ohne_abhaengigkeiten_gesichert(tmp_path):
     assert "node_modules" not in ls and "Pods" not in ls, ls
     s = status(tmp_path)
     assert s and s["stand"] == "ok", s
+
+
+def test_backups_ordner_mit_academy_dumps_wird_gesichert(tmp_path):
+    """Seit 25.10.2026. Die DB-Dumps der WHITESTAG.ACADEMY landen in
+    SynologyDrive-Mac/Backups/ — neben, nicht in "Claude Code MAC". Bis dahin
+    lagen sie damit nur in Synology Drive, im selben Gebaeude wie der Mac."""
+    repo, passwort, umgebung = baue_repo(tmp_path)
+    db = (tmp_path / "Library" / "CloudStorage" / "SynologyDrive-Mac"
+          / "Backups" / "WHITESTAG.ACADEMY" / "db")
+    db.mkdir(parents=True)
+    (db / "academy-2026-10-25.sql.gz").write_bytes(b"\x1f\x8b dump")
+
+    r = lauf(repo, passwort, tmp_path, ["--nur-backups"])
+
+    assert "synology-backups" in schlagworte(umgebung), \
+        f"Backups-Ordner wurde nicht gesichert. stdout:\n{r.stdout}\n{r.stderr}"
+    ls = subprocess.run([RESTIC, "ls", "latest", "--tag", "synology-backups"],
+                        env=umgebung, capture_output=True, text=True).stdout
+    assert "academy-2026-10-25.sql.gz" in ls, ls
+    s = status(tmp_path)
+    assert s and s["stand"] == "ok", s

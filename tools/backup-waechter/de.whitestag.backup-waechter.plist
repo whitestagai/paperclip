@@ -13,12 +13,12 @@
         <string>/Users/walterschoenenbroecher.de/.paperclip/scripts/backup-waechter/run-waechter.js</string>
     </array>
 
-    <!-- 09:00: nach der DB-Sicherung (02:30) und nach dem Vault-Backup
-         (sonntags 03:30), damit ein frischer Lauf schon gezaehlt ist. -->
+    <!-- 07:00: nach dem letzten Sicherungslauf der Nacht (NAS-Projekte,
+         06:15), damit jeder frische Lauf schon gezaehlt ist. -->
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>
-        <integer>9</integer>
+        <integer>7</integer>
         <key>Minute</key>
         <integer>0</integer>
     </dict>

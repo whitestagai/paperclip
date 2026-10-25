@@ -77,7 +77,15 @@ def referenzen_aus_agenten(zeilen: List[Dict[str, Any]]) -> List[Referenz]:
     for z in zeilen:
         quelle = "Paperclip-Agent {}/{}".format(z.get("firma", "?"), z.get("name", "?"))
         ac = z.get("adapter_config") or {}
-        for feld in ("model", "defaultModel", "fallbackModel"):
+        # claude_local-Agenten bedient, was in env.ANTHROPIC_BASE_URL steht (PII-Proxy,
+        # Strata …), nie LM Studio — ihr Modell gehört nicht in diesen Abgleich (25.10.).
+        basis = ((ac.get("env") or {}).get("ANTHROPIC_BASE_URL") or {})
+        basis = basis.get("value") if isinstance(basis, dict) else basis
+        if isinstance(basis, str) and basis and ":1234" not in basis:
+            felder = ()
+        else:
+            felder = ("model", "defaultModel", "fallbackModel")
+        for feld in felder:
             wert = ac.get(feld)
             if isinstance(wert, str) and wert:
                 refs.append(Referenz(quelle, "adapterConfig." + feld, wert))

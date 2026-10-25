@@ -130,6 +130,28 @@ def test_agent_referenzen_erfassen_auch_das_wirksame_cheap_profil():
     assert all(r.quelle == "Paperclip-Agent WHITESTAG/CTO" for r in refs)
 
 
+def test_agent_hinter_fremder_anthropic_basis_wird_nicht_gegen_lm_studio_geprueft():
+    """25.10.: VP Engineering (claude_local) läuft über Strata — sein Modell steht
+    nie in LM Studio. Wer über `env.ANTHROPIC_BASE_URL` bedient wird, gehört nicht
+    in den LM-Studio-Abgleich; der Strata-Umschalter zieht die ID aus `/health`."""
+    zeilen = [{
+        "firma": "WHITESTAG", "name": "VP Engineering",
+        "adapter_config": {
+            "model": "qwen3.8-flash-next-unsloth-ud-q4_k_xl",
+            "env": {"ANTHROPIC_BASE_URL": {"type": "plain", "value": "http://192.168.2.181:1235"}},
+        },
+    }]
+    assert referenzen_aus_agenten(zeilen) == []
+
+
+def test_agent_mit_lm_studio_url_wird_weiter_geprueft():
+    zeilen = [{
+        "firma": "WHITESTAG", "name": "CTO",
+        "adapter_config": {"model": "qwen3.6-35b-a3b", "url": "http://localhost:1234"},
+    }]
+    assert [r.modell for r in referenzen_aus_agenten(zeilen)] == ["qwen3.6-35b-a3b"]
+
+
 def test_agent_ohne_modellfeld_erzeugt_keine_referenz():
     """`adapterType: process` legt Agenten ganz ohne Modellfeld an."""
     assert referenzen_aus_agenten([{"firma": "X", "name": "Y", "adapter_config": {}}]) == []

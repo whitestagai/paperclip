@@ -1126,24 +1126,32 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 
 ## Kontaktrecherche-Agent (Clara Sound, R9)
 
-- [ ] **★Große Charge läuft — Ergebnis prüfen** — der deterministische Vorlauf
-      ist seit dem 08.09. gebaut (Booker-Commit `4958d35`, 801 Tests grün) und
-      läuft seit dem **11.09. 20:01 über alle 5.299 Zeilen**, rund vier Stunden,
-      per `nohup`. Protokoll:
-      `~/Library/Logs/booker-research-prefetch-20260911-2001.log`.
-      Sicherung davor: `Backup/booker-2026-09-11.dump` (32,7 MB).
-      Erstlauf über 50 Zeilen zum Vergleich: 25 Funde (davon 14 triviale
-      `mailto:`), Stichprobe **12 von 12 wörtlich belegt, kein Fehltreffer**.
-      Nach dem Durchlauf: Zahlen aus dem Protokoll auswerten und eine **zweite
-      Stichprobe** ziehen — die erste war klein. *(2026-09-11, Chat: Vorlauf Kontaktrecherche)*
+**Stand 25.10.: Die Recherche wandert in den Booker** (Walters Entscheidung,
+Spec `WHITESTAG Booker/docs/superpowers/specs/2026-10-25-recherche-im-booker-design.md`,
+Umsetzung läuft in einer Booker-Session). R9 ist angehalten
+(`heartbeat.enabled=false`, `wakeOnDemand=false`).
 
-- [ ] **★CLAA-2568 auf `todo` setzen — der Agent ist wach, hat aber keine
-      Arbeit** — `heartbeat.enabled` steht seit dem 11.09. wieder auf `true`,
-      das Issue aber weiterhin auf `backlog` und wird deshalb nicht ausgecheckt.
-      Bewusst so: Er soll erst ran, wenn die Charge durch ist und die Reste
-      vollständig vorliegen (erwartet rund 2.600 statt bisher 25). **Beim
-      Umsetzen kein `comment` mitschicken** — siehe Aufräum-Rezept unten.
-      *(2026-09-11, Chat: Vorlauf Kontaktrecherche)*
+- [ ] **R9 stilllegen, CLAA-3376 schließen** — sobald die Recherche im Booker
+      läuft. CLAA-3376 (Probelauf) steht `blocked`: R9 baute den Login selbst
+      (`booker.clara.ai`, Feld `username` → `400 invalid`) trotz wörtlichem
+      Rezept in seiner AGENTS.md. Danach Konto `agent-recherche@booker.local`
+      prüfen — wird es noch gebraucht? *(2026-10-25, Chat: Recherche-Agent Booker)*
+
+- [ ] **★Claras Passwort aus der Mail „Aufgabenbooker" (14.10.) — Hinweis
+      schicken, Fundstellen ungeschwärzt** — Text für Clara steht im Chatverlauf
+      (Walter schickt ihn). Das Passwort steht im Klartext in **20 Lauf-Logs**
+      (seit 14.10., Clara-Agenten), **16 Zeilen `heartbeat_runs`** und **2
+      Kommentaren an CLAA-3376**; Schwärzung am 25.10. bewusst nicht beauftragt.
+      Ursache bleibt: Die Mail liegt in `Clara-Vault/E-Mails/` und wird von den
+      Agenten gelesen. Werte nie in Protokolle übernehmen. *(2026-10-25, Chat: Recherche-Agent Booker)*
+
+- [ ] **★Recovery-Owner darf Zugangsdateien überschreiben** — die Büroleitung
+      schrieb als Recovery-Owner von CLAA-3376 per `shell_exec cat <<EOF >`
+      ein Passwort aus einer Mail in `~/.booker-agent.env` (`fs_write_file` war
+      gesperrt, die Shell nicht). Eine Regel in ihrer AGENTS.md („keine
+      Zugangsdateien schreiben, Credential-Probleme an Walter") wurde am 25.10.
+      nicht beauftragt — zu entscheiden. Gedächtnis:
+      `project_recovery_agent_ueberschreibt_zugangsdaten`. *(2026-10-25, Chat: Recherche-Agent Booker)*
 
 - [ ] **Fehlerklasse „wörtlich richtig, inhaltlich falsch"** — bei
       `meinbezirk.at` steht jetzt `info@rtr.at` im Bestand: die österreichische
@@ -1154,6 +1162,11 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Ob eine Ausschlussliste (Aufsichtsbehörden, Hoster, CMS-Agenturen) lohnt,
       an den Zahlen der großen Charge entscheiden.
       *(2026-09-11, Chat: Vorlauf Kontaktrecherche)*
+      **Stand 25.10.:** Stichprobe bestätigt die Klasse (5 von 37). Ausschlussliste
+      für Registrare/Hoster/`noreply`/`datenschutz`/`widerspruch` gebaut
+      (`unsuitable-address.ts`), 17 Funde zurückgenommen; Aufsichtsbehörden wie
+      `rtr.at` sind NICHT abgedeckt. Der Rest geht in den Nachprüfmodus der
+      Booker-Spec (Modell prüft Zugehörigkeit). *(2026-10-25, Chat: Recherche-Agent Booker)*
 
 - [ ] **Vorrangregel bei mehreren Adressen — bewusst nicht gebaut** — mit rund
       einem Drittel die größte Restgruppe, oft nur `info@` plus `datenschutz@`.
@@ -1162,6 +1175,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Adressen aber ausdrücklich dem Agenten zu. Entscheidung vertagt, bis die
       Charge zeigt, wie groß der Anteil wirklich ist.
       *(2026-09-11, Chat: Vorlauf Kontaktrecherche)*
+      **Stand 25.10.:** 1.160 mehrdeutige Reste. Teilweise gelöst: Ist die
+      zweite Adresse `datenschutz@` o.ä., fällt sie per Ausschlussregel weg.
+      Den Rest entscheidet künftig das Modell im Booker (Auswahl per Nummer,
+      siehe Spec). *(2026-10-25, Chat: Recherche-Agent Booker)*
 
 - [ ] **Die Instruktion des R9 ist nirgends versioniert** — der Agent steht
       **nicht** in `tools/agents-instructions/agents-manifest.json`, seine
@@ -1192,15 +1209,9 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Zeilen bearbeiten lassen zeigt Gemmas **Treffer**quote im Vergleich, nicht
       nur seine Fehlerquote. *(2026-09-06, Chat: Kontaktrecherche-Agent Clara)*
 
-- [ ] **Routine fuer den Regelbetrieb anlegen** — bewusst noch nicht geschehen.
-      Erst muss eine Stichprobe von 50 Ergebnissen sauber sein (ueber null
-      Fehltreffer = Alarmzeichen). **Für den Vorlauf ist diese Hürde am 11.09.
-      genommen** (12 von 12 belegt) — für den *Agenten* steht sie weiter aus, er
-      hat bis heute keine verwertbaren Funde geliefert. Wichtig: `heartbeat.enabled: false` heisst
-      **kein Zeitplan** — die anderen Clara-Agenten laufen nur, weil ihre
-      Routinen Issues anlegen und **das Anlegen** das weckende Ereignis ist. Fuer
-      Einzelanstoesse: `POST /api/agents/:id/heartbeat/invoke`.
-      *(2026-09-06, Chat: Kontaktrecherche-Agent Clara)*
+- [ ] **Push im Booker-Repo** — `f5914e1` (Ausschlussregel + Rücknahme) und
+      `cf1eb40` (Spec) liegen lokal auf `main`, dazu Commits der parallelen
+      Booker-Session. Push ist Ansage-pflichtig. *(2026-10-25, Chat: Recherche-Agent Booker)*
 
 - [ ] **Vier blockierte R2-Issues bei Clara** — „Akquise & Booking" haengt seit
       dem 03.09. mit `R2 Taegliche Akquise-Pflege`, `R2 Woechentliche

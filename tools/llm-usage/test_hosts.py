@@ -207,6 +207,13 @@ def test_umzuege_werden_nach_aufruftag_aufgeloest():
     assert hosts.ort("qwen3.6-35b-win") == "WHITESTAG-AI"
 
 
+def test_strata_modelle_laufen_auf_der_rtx_und_nicht_in_der_cloud():
+    """Seit 23.10. faehrt VP Engineering (claude_local) ueber Strata auf der Pro 6000.
+    cost_events nennt dann provider=anthropic, aber das Modell ist lokal."""
+    assert hosts.ort("qwen3.8-flash-next-unsloth-ud-q4_k_xl") == "RTX"
+    assert hosts.ort("qwen3.8-flash-next-iq3_s") == "RTX"
+
+
 def test_whitestag_ai_ist_ein_bekanntes_geraet():
     kopf = "IDENTIFIER          MODEL               STATUS    DEVICE          TTL"
     zeile = "qwen3.6-35b-a3b     qwen3.6-35b-a3b     IDLE      WHITESTAG-AI       "

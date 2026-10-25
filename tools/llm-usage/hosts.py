@@ -98,6 +98,11 @@ ZUORDNUNG = {
     # --- WHITESTAG-AI (Windows, RTX 5090 + 3090) ---
     "gemma-4-31b-win":                          "WHITESTAG-AI", # 07.-19.10.
     "qwen3.6-35b-win":                          "WHITESTAG-AI", # 07.-19.10.
+    # --- Strata auf der RTX Pro 6000 (kein LM Studio, kein lms ps) ---
+    # VP Engineering ueber den Strata-Umschalter, nur solange Walter am Film-Rechner
+    # angemeldet ist. cost_events: provider=anthropic, das Modell laeuft lokal.
+    "qwen3.8-flash-next-unsloth-ud-q4_k_xl":    "RTX",          # ab 23.10.
+    "qwen3.8-flash-next-iq3_s":                 "RTX",          # 22.10., Probebetrieb
 }
 
 # Modell-IDs, die im Lauf der Zeit auf ein ANDERES Geraet umgezogen sind,

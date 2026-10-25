@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Auswaerts-Sicherung nach Hetzner/Nextcloud: Paperclip-Datenbank + Claude-Code-Ordner.
 #
-# Usage: nextcloud-backup.sh [--nur-db] [--nur-code] [--nur-vault] [--kein-versand]
+# Usage: nextcloud-backup.sh [--nur-db] [--nur-code] [--nur-vault] [--nur-developer] [--kein-versand]
 #
 # WICHTIG: Nicht direkt per launchd starten. macOS verweigert einem launchd-Job
 # aus zsh/bash den Zugriff auf CloudStorage (SynologyDrive) UND auf
@@ -30,6 +30,7 @@ PG_RESTORE="/opt/homebrew/bin/pg_restore"
 
 CODE_DIR="$HOME/Library/CloudStorage/SynologyDrive-Mac/Claude Code MAC"
 VAULT_DIR="$HOME/Obsidian/WHITESTAG-Vault"
+DEV_DIR="$HOME/Developer"
 AUSSCHLUSS="$DIR/ausschluss-claude-code.txt"
 ARBEIT="$HOME/.paperclip/backups/nextcloud"
 LOG="$HOME/.paperclip/logs/nextcloud-backup.log"
@@ -39,6 +40,7 @@ LOCK="$ARBEIT/backup.lock"
 TAG_DB="paperclip-db"
 TAG_CODE="claude-code"
 TAG_VAULT="obsidian-vault"
+TAG_DEV="developer"
 HOST="MacStudio"
 
 # Restic wartet auf eine fremde Repo-Sperre, statt abzubrechen: das
@@ -53,14 +55,14 @@ MAILHUB_URL="http://127.0.0.1:5678/webhook/mailhub/send"
 MAILHUB_ENV="$HOME/.paperclip/instances/default/secrets/mailhub.env"
 VON="cto@whitestag.ai"; AN="ws@whitestag.ai"
 
-MACH_DB=1; MACH_CODE=1; MACH_VAULT=1; VERSAND=1
+MACH_DB=1; MACH_CODE=1; MACH_VAULT=1; MACH_DEV=1; VERSAND=1
 # Mehrere --nur-* lassen sich kombinieren: das erste schaltet alles ab und
 # waehlt seinen Datensatz, jedes weitere legt einen dazu. Einzeln benutzt
 # verhaelt es sich unveraendert.
 AUSWAHL=0
 waehle() {
   if [ "$AUSWAHL" -eq 0 ]; then
-    MACH_DB=0; MACH_CODE=0; MACH_VAULT=0; AUSWAHL=1
+    MACH_DB=0; MACH_CODE=0; MACH_VAULT=0; MACH_DEV=0; AUSWAHL=1
   fi
 }
 while [ $# -gt 0 ]; do
@@ -68,6 +70,7 @@ while [ $# -gt 0 ]; do
     --nur-db)       waehle; MACH_DB=1; shift ;;
     --nur-code)     waehle; MACH_CODE=1; shift ;;
     --nur-vault)    waehle; MACH_VAULT=1; shift ;;
+    --nur-developer) waehle; MACH_DEV=1; shift ;;
     --kein-versand) VERSAND=0; shift ;;
     # Nur fuer die Tests: ein Wegwerf-Repo in tmp_path statt Hetzner.
     --repo)         export RESTIC_REPOSITORY="$2"; shift 2 ;;
@@ -236,6 +239,31 @@ sichere_vault() {
 }
 [ "$MACH_VAULT" -eq 1 ] && sichere_vault
 
+# --- 3b. Developer-Ordner --------------------------------------------------
+# Seit 17.10.2026. Die Expo-/Next-Projekte liegen bewusst unter ~/Developer
+# statt im Synology-Ordner (Datei-Sync verschluckt sich an node_modules und
+# Pods) — und standen deshalb in KEINER Sicherung. Zwei davon haben kein
+# Git-Remote; bei den uebrigen fehlen auf GitHub .env und Uncommittetes.
+# Dieselbe Ausschlussliste wie fuer den Claude-Code-Ordner, dazu die
+# iOS-/Expo-Bauordner. Von rund 7 GB bleiben gut 0,5 GB.
+sichere_developer() {
+  [ -d "$DEV_DIR" ] || { merke_fehler "Ordner nicht erreichbar: $DEV_DIR"; return 1; }
+  [ -f "$AUSSCHLUSS" ] || { merke_fehler "Ausschlussliste fehlt: $AUSSCHLUSS"; return 1; }
+  log "Sichere $DEV_DIR ..."
+  if ! "$RESTIC" backup "$DEV_DIR" --tag "$TAG_DEV" --host "$HOST" \
+        --exclude-file "$AUSSCHLUSS" \
+        --exclude "Pods" \
+        --exclude ".expo" \
+        --exclude ".next-*" \
+        --exclude ".gradle" \
+        --exclude "DerivedData" \
+        $WARTEN >>"$LOG" 2>&1; then
+    merke_fehler "restic-Sicherung des Developer-Ordners fehlgeschlagen"; return 1
+  fi
+  log "Developer-Ordner gesichert (Schlagwort $TAG_DEV)."
+}
+[ "$MACH_DEV" -eq 1 ] && sichere_developer
+
 # --- 4. Aufbewahrung -------------------------------------------------------
 # Verwaiste Sperren zuerst wegraeumen. Am 16.09.2026 lagen vier davon im
 # Repo, die aelteste seit 27 Stunden von einem laengst toten Prozess. Jedes
@@ -251,7 +279,7 @@ if ! "$RESTIC" unlock >>"$LOG" 2>&1; then
 fi
 
 # Je Schlagwort getrennt. NIEMALS ohne --tag: im selben Repo liegt der Vault.
-for T in "$TAG_DB" "$TAG_CODE" "$TAG_VAULT"; do
+for T in "$TAG_DB" "$TAG_CODE" "$TAG_VAULT" "$TAG_DEV"; do
   if ! "$RESTIC" forget --tag "$T" --keep-daily 14 --keep-weekly 8 \
         --keep-monthly 12 $WARTEN >>"$LOG" 2>&1; then
     # Frueher nur eine Logzeile. Genau deshalb fiel zwei Tage lang nicht auf,
@@ -270,6 +298,7 @@ fi
 # --- 5. Stand --------------------------------------------------------------
 N_DB="$("$RESTIC" snapshots --tag "$TAG_DB" --json 2>/dev/null | /usr/bin/python3 -c 'import json,sys;print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
 N_CODE="$("$RESTIC" snapshots --tag "$TAG_CODE" --json 2>/dev/null | /usr/bin/python3 -c 'import json,sys;print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
+N_DEV="$("$RESTIC" snapshots --tag "$TAG_DEV" --json 2>/dev/null | /usr/bin/python3 -c 'import json,sys;print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
 # Erst jetzt urteilen — nachdem JEDER Datensatz seine Chance hatte. Gab es
 # unterwegs Fehler, werden sie hier gesammelt gemeldet: eine Mail mit allen
 # Punkten statt einer, die beim ersten stehenbleibt und den Rest verschweigt.
@@ -277,6 +306,6 @@ if [ "$FEHLER_ANZAHL" -gt 0 ]; then
   melde_fehler "$FEHLER_TEXT"
 fi
 
-printf '{"stand":"ok","zeit":"%s","snapshots_db":%s,"snapshots_code":%s}\n' \
-  "$(ts)" "$N_DB" "$N_CODE" > "$STATUS"
-log "===== Fertig. Snapshots: DB $N_DB, Code $N_CODE."
+printf '{"stand":"ok","zeit":"%s","snapshots_db":%s,"snapshots_code":%s,"snapshots_developer":%s}\n' \
+  "$(ts)" "$N_DB" "$N_CODE" "$N_DEV" > "$STATUS"
+log "===== Fertig. Snapshots: DB $N_DB, Code $N_CODE, Developer $N_DEV."

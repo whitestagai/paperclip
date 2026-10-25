@@ -57,6 +57,7 @@ RESTIC_PASS = os.path.expanduser("~/.restic/repo.pass")
 TAG_VAULT = "obsidian-vault"
 TAG_DB = "paperclip-db"
 TAG_CODE = "claude-code"
+TAG_DEV = "developer"
 # Seit 04.09.2026: Schluessel, Secrets, .claude und Postgres@18 (Port 5432),
 # sowie die Projektordner von Windows-Rechner und MacBook.
 TAG_SECRETS = "system-secrets"
@@ -372,6 +373,7 @@ def baue_bericht(kennzahlen, vorher):
             f"{wert}<span style='color:#5f6368'>{zuwachs}</span></td></tr>")
 
     for schluessel, name in (("claude-code", "Claude-Code-Ordner"),
+                             ("developer", "Developer-Ordner"),
                              ("paperclip-db", "Paperclip-Datenbank"),
                              ("obsidian-vault", "Obsidian-Vault"),
                              ("system-secrets", "Systemgeheimnisse"),
@@ -453,6 +455,9 @@ def main():
                            GRENZE_TAEGLICH, "restic"),
         pruefung.Pruefling("Claude-Code-Ordner (Nextcloud)", aus_repo(TAG_CODE),
                            GRENZE_TAEGLICH, "restic"),
+        # Seit 17.10.2026 — ~/Developer war vorher in keiner Sicherung.
+        pruefung.Pruefling("Developer-Ordner (Nextcloud)", aus_repo(TAG_DEV),
+                           GRENZE_TAEGLICH, "restic"),
         pruefung.Pruefling("Vault-Spiegel (NAS)",
                            status_stand(VAULT_SYNC_STATUS),
                            GRENZE_TAEGLICH, "Statusdatei",
@@ -506,7 +511,7 @@ def main():
     # sonst vergleicht der Zuwachs gegen sich selbst.
     vorher = vorheriger_stand()
     kennzahlen = {
-        "snaps": zaehle_je_tag(snaps, [TAG_CODE, TAG_DB, TAG_VAULT,
+        "snaps": zaehle_je_tag(snaps, [TAG_CODE, TAG_DEV, TAG_DB, TAG_VAULT,
                                        TAG_SECRETS, TAG_NAS, TAG_N8N]),
         "nc_used_gb": (belegt_bytes / 1024 ** 3
                        if belegt_bytes is not None else None),

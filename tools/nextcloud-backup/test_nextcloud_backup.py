@@ -168,3 +168,30 @@ def test_gescheiterte_aufbewahrung_wird_nicht_als_ok_gemeldet(tmp_path):
     finally:
         halter.kill()
         halter.wait(timeout=10)
+
+
+def test_developer_ordner_wird_ohne_abhaengigkeiten_gesichert(tmp_path):
+    """Seit 17.10.2026. ~/Developer lag bis dahin in KEINER Sicherung —
+    die Expo-/Next-Projekte stehen bewusst ausserhalb des Synology-Ordners.
+
+    Gesichert werden Quelltext, .git und .env; Pods und node_modules nicht,
+    die entstehen aus den Lockfiles neu."""
+    repo, passwort, umgebung = baue_repo(tmp_path)
+    projekt = tmp_path / "Developer" / "app"
+    (projekt / "node_modules" / "x").mkdir(parents=True)
+    (projekt / "ios" / "Pods" / "y").mkdir(parents=True)
+    (projekt / ".env").write_text("GEHEIM=1")
+    (projekt / "App.tsx").write_text("export default 1")
+    (projekt / "node_modules" / "x" / "index.js").write_text("x")
+    (projekt / "ios" / "Pods" / "y" / "pod.m").write_text("y")
+
+    r = lauf(repo, passwort, tmp_path, ["--nur-developer"])
+
+    assert "developer" in schlagworte(umgebung), \
+        f"Developer wurde nicht gesichert. stdout:\n{r.stdout}\n{r.stderr}"
+    ls = subprocess.run([RESTIC, "ls", "latest", "--tag", "developer"],
+                        env=umgebung, capture_output=True, text=True).stdout
+    assert "App.tsx" in ls and ".env" in ls, ls
+    assert "node_modules" not in ls and "Pods" not in ls, ls
+    s = status(tmp_path)
+    assert s and s["stand"] == "ok", s

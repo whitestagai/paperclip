@@ -758,6 +758,15 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 
 ## Modelle und Agenten
 
+- [ ] **VP Engineering auf Strata bei echter Code-Arbeit gegenlesen** — seit 23.10.
+      faehrt er tagsueber `qwen3.8-flash-next-unsloth-ud-q4_k_xl` ueber Strata
+      (Film-Rechner), der Umschalter `de.whitestag.strata-umschalter` stellt bei Ausfall
+      auf Sonnet. Erprobt ist nur eine Lese-/Testaufgabe (WHI-10497, sauber). Bei den
+      ersten Fixes pruefen: Aufrufe nicht vorhandener Werkzeuge (das Modell nennt im
+      Denken Claude-Code-Tools wie „Glob“), Schleifen, inhaltliche Fehler, und ob der
+      beim Probelauf verlorene `done`-PATCH wiederkehrt. Welches Modell lief, steht in
+      `cost_events.model`; Wechsel im `~/.paperclip/logs/strata-umschalter.log`. *(2026-10-25, Chat: Strata für Agenten)*
+
 - [ ] **Sechs INAKTIVE n8n-Workflows tragen die tote Modell-ID noch** — die sechs
       aktiven wurden am 04.10. korrigiert; bewusst nicht angefasst wurden
       `Dokumente Clara V5`, `Google-Alert V10`, `Paperclip Daily Digest V13`
@@ -1434,22 +1443,6 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Hat funktioniert, aendert aber die Voraussetzung der spaeteren Aufgaben.
       *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
 
-- [ ] **Entscheidung vertagt: wie VP Engineering an den lokalen Coder kommt** —
-      die Pro 6000 soll Coding-Node werden, VP Engineering damit lokale Projekte
-      bearbeiten. Drei Wege, keiner entschieden: (1) **eigener neuer Agent** fuer
-      den Coder, VP Engineering bleibt `claude_local` — seine 13 Skills und die
-      Nachtschicht bleiben unangetastet; (2) **Anthropic-kompatibler Proxy** vor
-      LM Studio, Adaptertyp bleibt; (3) **voller Wechsel auf `lmstudio_local`** —
-      kostet die 13 Skills doppelt: technisch faellt `paperclipSkillSync` beim
-      Adaptertyp-Wechsel heraus, und konzeptionell erreicht einen
-      `lmstudio_local`-Agenten ohnehin nur seine `AGENTS.md`.
-      **Empfehlung aus dem Chat:** erst eine Woche mit funktionierendem PII-Proxy
-      abwarten — bei 1,1 % Erfolgsquote war jede Bewertung Blindflug. Gegen
-      lokal spricht die Nacht (968 Nacht-Runs in 14 Tagen, Karte laeuft nur
-      tagsueber), fuer lokal spricht der Wegfall der Classifier-Abhaengigkeit.
-      Kosten sind **kein** Argument: ~350 Calls/30 Tage, nach Erfahrungsregel
-      35–95 €/Monat. *(2026-09-12, Chat: LLM-Farm GeForce-Umzug)*
-
 - [ ] **DeepSeek V4 Flash liegt ungenutzt auf der Pro 6000** — 156,38 GB MXFP4.
       Laeuft dort nicht: `lms load --estimate-only` meldet **145,64 GiB**
       GPU-Bedarf bei 96 GB Karte, und die Metadaten melden
@@ -1500,6 +1493,13 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 - [ ] **RTX Pro 6000 aus LM Link abmelden** — traegt seit 21.10. keine Modelle mehr, keine
       Konfiguration zeigt auf sie. Am Filmrechner in LM Studio den Link trennen, dann ist
       die Karte frei fuer die Coding-LLM. *(2026-10-21, Chat: LLM-Farm ohne RTX)*
+      **Stand 25.10.:** Die Karte ist inzwischen frei, Strata laeuft dort statt LM Studio.
+      Uebrig ist nur der verwaiste Eintrag „RTX Pro 6000 — disconnected“ in `lms link status`. *(2026-10-25, Chat: Strata für Agenten)*
+
+- [ ] **Proxy-Auto-Neustart auf dem Film-Rechner einrichten lassen** — Prompt fuer die
+      Windows-KI (geplante Aufgabe „Claude-Proxy-1235“, alle 5 Min + bei Anmeldung, mit
+      Absturz- und Doppelstarttest) steht im Chatverlauf vom 25.10. Danach vom Mac pruefen:
+      `/health` 200, `/status` 403. Proxy UND Strata starten weiterhin nur bei Windows-Anmeldung. *(2026-10-25, Chat: Strata für Agenten)*
 
 - [ ] **Gmail-Connector neu anmelden** — der claude.ai-Connector verlangt eine neue
       Anmeldung (claude.ai → Einstellungen → Connectors). Solange er fehlt, kann Claude

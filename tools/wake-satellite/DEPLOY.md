@@ -13,6 +13,10 @@ GUI-Session — nur so bekommt der Prozess Mikrofon-Zugriff.
   in `sat_config.py` anpassen und neu deployen.
 - `~/.paperclip/voice-echo-bot.env` existiert bereits (vom Telegram-Jarvis) mit
   `WHISPER_MODEL`, `ELEVENLABS_API_KEY`, `CHAT_MODEL`. Der Satellit nutzt sie.
+- Stimme: Ollama läuft auf dem Studio (`:11434`) mit `ollama pull phonon:40m-de`.
+  Modell und Stimme (`LOKAL_TTS_*`) stehen in `sat_config.py`. Fehlt Ollama oder
+  das Modell, spricht der Satellit mit ElevenLabs weiter — im Log steht dann ein
+  Traceback mit `Phonon request failed` bzw. `Phonon HTTP …`.
 
 ## Deploy
 
@@ -67,10 +71,12 @@ tail -f ~/.paperclip/logs/wake-satellite.log
 - Kam nach dem Wake-Wort nur die Anrede („Hey Jarvis" und dann eine Pause),
   quittiert der Satellit mit „Ja?" und hört `ANREDE_START_FENSTER_SEC` (8 s)
   weiter zu, ohne das Sprachmodell zu fragen. Die Quittung wird beim ersten Mal
-  von ElevenLabs gerendert und liegt danach als
-  `~/.paperclip/wake-satellite/quittung.mp3`; zum Neu-Rendern (anderer Text oder
-  andere Stimme) die Datei löschen. Ohne ElevenLabs-Schlüssel kommt statt der
-  Stimme ein 520-Hz-Ton — hörbar anders als der 880-Hz-Wake-Ton.
+  mit Phonon gerendert und liegt danach als
+  `~/.paperclip/wake-satellite/quittung-phonon-<stimme>.wav` (ein Stimmwechsel
+  rendert also von selbst neu); zum Neu-Rendern bei anderem Text die Datei
+  löschen. Ist Phonon nicht zu haben, kommt die ElevenLabs-Fassung
+  `quittung.mp3`, ohne beides ein 520-Hz-Ton — hörbar anders als der
+  880-Hz-Wake-Ton.
 - Dazwischenreden (Barge-in) geht nicht: was während der Wiedergabe gesagt wird,
   verwirft `flush_mic()` bewusst, sonst hörte sich Jarvis selbst zu.
 - Deploy-Lücke Repo <-> Live ist ansage-pflichtig: nach Code-Änderung erneut

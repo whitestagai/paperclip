@@ -12,10 +12,17 @@ import os
 import traceback
 
 import earcon
+import lokal_tts
 import playback
+import sat_config
 import tts
 
 DEFAULT_PATH = os.path.expanduser("~/.paperclip/wake-satellite/quittung.mp3")
+# Seit 26.10.2026 zuerst in der Phonon-Stimme der Antworten; ElevenLabs
+# (DEFAULT_PATH) nur noch, wenn Phonon nicht zu haben ist. Die Stimme steht im
+# Dateinamen, damit ein Stimmwechsel neu rendert statt die alte zu spielen.
+LOKAL_PATH = os.path.expanduser("~/.paperclip/wake-satellite/quittung-phonon-{}.wav".format(
+    sat_config.LOKAL_TTS_STIMME.lower()))
 TEXT = "Ja?"
 FORMAT = "mp3_44100_128"
 
@@ -24,9 +31,9 @@ TON_PATH = os.path.expanduser("~/.paperclip/wake-satellite/quittung-ton.wav")
 TON_FREQ = 520
 
 
-def ensure_audio(api_key, path=DEFAULT_PATH, text=TEXT, output_format=FORMAT):
-    """Pfad zur zwischengespeicherten Quittung; rendert sie beim ersten Mal.
-    None, wenn kein Audio zu bekommen ist.
+def _render_einmal(path, render):
+    """Pfad zur zwischengespeicherten Datei; ruft `render(tmp)` beim ersten Mal.
+    None, wenn das Rendern scheitert.
 
     Geschrieben wird über eine temporäre Datei und `os.replace`: eine halb
     geschriebene Datei würde beim nächsten Start als fertig gelten und die
@@ -34,14 +41,12 @@ def ensure_audio(api_key, path=DEFAULT_PATH, text=TEXT, output_format=FORMAT):
     """
     if os.path.exists(path) and os.path.getsize(path) > 0:
         return path
-    if not api_key:
-        return None
     parent = os.path.dirname(path)
     if parent:
         os.makedirs(parent, exist_ok=True)
     tmp = path + ".tmp"
     try:
-        tts.synthesize(text, api_key, tmp, output_format=output_format)
+        render(tmp)
         os.replace(tmp, path)
         return path
     except Exception:  # noqa: BLE001
@@ -53,9 +58,22 @@ def ensure_audio(api_key, path=DEFAULT_PATH, text=TEXT, output_format=FORMAT):
         return None
 
 
-def spiele(api_key, path=DEFAULT_PATH, device=None):
+def ensure_audio(api_key, path=DEFAULT_PATH, text=TEXT, output_format=FORMAT):
+    """Quittung in der ElevenLabs-Stimme. None ohne Schlüssel oder bei Fehler."""
+    if not (os.path.exists(path) and os.path.getsize(path) > 0) and not api_key:
+        return None
+    return _render_einmal(
+        path, lambda tmp: tts.synthesize(text, api_key, tmp, output_format=output_format))
+
+
+def ensure_lokal(path=LOKAL_PATH, text=TEXT):
+    """Quittung in der Phonon-Stimme. None, wenn Phonon nicht zu haben ist."""
+    return _render_einmal(path, lambda tmp: lokal_tts.synthesize(text, tmp))
+
+
+def spiele(api_key, path=DEFAULT_PATH, device=None, lokal_path=LOKAL_PATH):
     """Spielt die Quittung. Gibt "stimme" oder "ton" zurück. Nie fatal."""
-    pfad = ensure_audio(api_key, path=path)
+    pfad = ensure_lokal(path=lokal_path) or ensure_audio(api_key, path=path)
     if pfad:
         playback.play(pfad, device=device)
         return "stimme"

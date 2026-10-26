@@ -332,3 +332,62 @@ def test_verunstaltetes_wakeword_wird_quittiert(monkeypatch):
     satellite.handle_interaction(frames, _deps())
     assert len(m["quittiert"]) == 1
     assert m["gefragt"] == ["Wie spät ist es?"]
+
+
+# ---- Sprachausgabe: Phonon lokal, ElevenLabs als Netz ---------------------
+
+def _speak_doubles(monkeypatch, lokal_ok=True, eleven_ok=True):
+    m = {"lokal": [], "eleven": [], "gespielt": []}
+
+    def lokal(text, dest):
+        m["lokal"].append(text)
+        if not lokal_ok:
+            raise satellite.tts.TtsError("Ollama nicht erreichbar")
+        open(dest, "wb").close()
+        return dest
+
+    def eleven(text, api_key, dest, output_format=None):
+        m["eleven"].append((text, api_key, output_format))
+        if not eleven_ok:
+            raise satellite.tts.TtsError("ElevenLabs HTTP 401")
+        open(dest, "wb").close()
+        return dest
+
+    monkeypatch.setattr(satellite.lokal_tts, "synthesize", lokal)
+    monkeypatch.setattr(satellite.tts, "synthesize", eleven)
+    monkeypatch.setattr(satellite.playback, "play",
+                        lambda pfad, device=None: m["gespielt"].append((pfad, device)))
+    return m
+
+
+def test_speak_nutzt_phonon_und_nicht_elevenlabs(monkeypatch):
+    m = _speak_doubles(monkeypatch)
+    satellite._speak("Guten Morgen.", _deps())
+    assert m["lokal"] == ["Guten Morgen."]
+    assert m["eleven"] == []
+    assert len(m["gespielt"]) == 1
+    pfad, device = m["gespielt"][0]
+    assert pfad.endswith(".wav")
+    assert device == sat_config.HOMEPOD_DEVICE
+
+
+def test_speak_weicht_auf_elevenlabs_aus_wenn_phonon_scheitert(monkeypatch):
+    # Ollama aus oder Modell entladen: Jarvis spricht trotzdem, nur mit der
+    # alten Stimme — Schweigen wäre schlechter als die falsche Stimme.
+    m = _speak_doubles(monkeypatch, lokal_ok=False)
+    satellite._speak("Guten Morgen.", _deps())
+    assert m["eleven"] == [("Guten Morgen.", "k", sat_config.TTS_FORMAT)]
+    assert len(m["gespielt"]) == 1
+    assert m["gespielt"][0][0].endswith(".mp3")
+
+
+def test_speak_schweigt_wenn_beide_stimmen_scheitern(monkeypatch):
+    m = _speak_doubles(monkeypatch, lokal_ok=False, eleven_ok=False)
+    satellite._speak("Guten Morgen.", _deps())
+    assert m["gespielt"] == []
+
+
+def test_speak_ohne_text_ruft_keine_stimme(monkeypatch):
+    m = _speak_doubles(monkeypatch)
+    satellite._speak("   ", _deps())
+    assert m["lokal"] == [] and m["eleven"] == [] and m["gespielt"] == []

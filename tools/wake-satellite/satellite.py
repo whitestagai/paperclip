@@ -20,6 +20,7 @@ import sat_config
 import anrede
 import capture
 import earcon
+import lokal_tts
 import playback
 import quittung
 import wake
@@ -51,18 +52,28 @@ def _transcribe(recorded, deps):
         shutil.rmtree(workdir, ignore_errors=True)
 
 
+def _synthesize(text, deps, workdir):
+    """Phonon lokal, bei Ausfall ElevenLabs. Pfad zur Audiodatei oder None."""
+    try:
+        return lokal_tts.synthesize(text, os.path.join(workdir, "reply.wav"))
+    except tts.TtsError:
+        traceback.print_exc()
+    try:
+        return tts.synthesize(text, deps["eleven_key"], os.path.join(workdir, "reply.mp3"),
+                              output_format=sat_config.TTS_FORMAT)
+    except tts.TtsError:
+        traceback.print_exc()
+        return None
+
+
 def _speak(text, deps):
     if not (text or "").strip():
         return
     workdir = tempfile.mkdtemp()
-    dest = os.path.join(workdir, "reply.mp3")
     try:
-        try:
-            tts.synthesize(text, deps["eleven_key"], dest, output_format=sat_config.TTS_FORMAT)
-        except tts.TtsError:
-            traceback.print_exc()
-            return
-        playback.play(dest, device=sat_config.HOMEPOD_DEVICE)
+        dest = _synthesize(text, deps, workdir)
+        if dest:
+            playback.play(dest, device=sat_config.HOMEPOD_DEVICE)
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 

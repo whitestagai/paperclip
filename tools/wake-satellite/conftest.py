@@ -22,6 +22,7 @@ def keine_echte_hardware(monkeypatch):
     Wiedergabe. Tests, die genau diese Schicht prüfen, setzen ihre eigenen
     Doubles; die greifen, weil sie später gesetzt werden als diese Fixture.
     """
+    import lokal_tts
     import tts
 
     def verboten(*args, **kwargs):
@@ -31,3 +32,4 @@ def keine_echte_hardware(monkeypatch):
     monkeypatch.setattr(subprocess, "run", verboten)
     monkeypatch.setattr(subprocess, "Popen", verboten)
     monkeypatch.setattr(tts, "synthesize", verboten)
+    monkeypatch.setattr(lokal_tts, "synthesize", verboten)

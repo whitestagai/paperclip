@@ -53,7 +53,19 @@ MAX_HISTORY_MESSAGES = 16
 # das an das zuletzt gewählte AirPlay-Ziel (hier: HomePod Studio) routet. Ein
 # per-Gerätename "Homepod Studio" existiert nicht als Ausgabegerät.
 HOMEPOD_DEVICE = "AirPlay"
+# Nur noch das Format des ElevenLabs-Rückfalls (siehe unten).
 TTS_FORMAT = "mp3_44100_128"
+
+# Stimme: Phonon (deutsches 40M-TTS) lokal in Ollama auf dem Studio, seit
+# 26.10.2026 statt ElevenLabs. Walter hat aus 13 deutschen Stimmen „Anton"
+# gewählt. Gemessen: 6-10 s Sprache in 0,1-0,2 s erzeugt, kalt ~2,3 s; Whisper
+# las alle Proben wortgleich zurück. ElevenLabs bleibt das Netz, falls Ollama
+# nicht läuft oder das Modell fehlt (`ollama pull phonon:40m-de`).
+# Ausgabe ist WAV — afplay spielt sie direkt, AirPlay streamt den Systemton.
+LOKAL_TTS_URL = "http://127.0.0.1:11434/v1/audio/speech"
+LOKAL_TTS_MODEL = "phonon:40m-de"
+LOKAL_TTS_STIMME = "Anton"
+LOKAL_TTS_TIMEOUT_SEC = 20
 
 # Antwort-LLM: Mistral-Small-24B (Q4) resident auf der RTX Pro 6000 (ctx 8192)
 # → schnell (~1 s) UND deutlich bessere Antwortqualität als die 12B-gemma-qat.

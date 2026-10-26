@@ -23,7 +23,7 @@ SITES="$HERE/sites.json"
 NAMES=()
 while IFS= read -r line; do
   [ -n "$line" ] && NAMES+=("$line")
-done < <("$PY" -c "import json;print('\n'.join(s['name'] for s in json.load(open('$SITES'))['sites']))")
+done < <("$PY" -c "import json;print('\n'.join(s['name'] for s in json.load(open('$SITES'))['sites'] if s.get('live', True)))")
 
 echo "[$(date '+%F %T')] Audit-Lauf: ${NAMES[*]:-KEINE}"
 for name in "${NAMES[@]}"; do
@@ -44,7 +44,7 @@ DATE="$(date '+%F')"
 ALERT_FILE="$HOME/.paperclip/seo-geo/_audit-history/${DATE}-alert.txt"
 SUBJECT="SEO/GEO Wochen-Audit ${DATE}"
 if [[ -f "$ALERT_FILE" ]] && [[ "$(cat "$ALERT_FILE")" == "ALERT" ]]; then
-  SUBJECT="⚠️ SEO/GEO Wochen-Audit ${DATE} — Verschlechterung"
+  SUBJECT="⚠️ SEO/GEO Wochen-Audit ${DATE} — Verschlechterung oder Störung"
 fi
 if [[ -x "$SEND" ]]; then
   "$SEND" "$SUBJECT" "$BODY" && echo "Mail versendet ($SUBJECT)" || echo "WARN: Mailversand fehlgeschlagen"

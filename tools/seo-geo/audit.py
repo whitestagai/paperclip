@@ -17,7 +17,8 @@ def run_audit(site, fetch, sitemap_urls) -> AuditReport:
             html = fetch(url)
         except Exception:
             continue
-        sig = parse_page(url, html)
+        # seo_plugin "none" = statische Site ohne WordPress
+        sig = parse_page(url, html, leeres_alt_ist_schmuck=site.seo_plugin == "none")
         pages.append(sig)
         findings.extend(evaluate_page(sig))
     llms = ""

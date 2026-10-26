@@ -79,3 +79,19 @@ def test_parse_records_which_images_lack_alt():
 def test_images_without_alt_empty_when_all_have_alt():
     s = parse_page("https://x.de/p", '<html><body><img src="a.jpg" alt="da"></body></html>')
     assert s.images_without_alt == []
+
+LEER = '<html><body><img src="a.jpg" alt=""><img src="b.jpg"><img src="c.jpg" alt=" "></body></html>'
+
+def test_leeres_alt_ist_auf_statischen_sites_schmuck():
+    s = parse_page("https://x.de/p", LEER, leeres_alt_ist_schmuck=True)
+    # alt="" bewusst gesetzt; fehlendes Attribut und reine Leerzeichen bleiben Befund
+    assert s.images_without_alt == ["b.jpg", "c.jpg"]
+    assert s.images_missing_alt == 2
+
+def test_leeres_alt_bleibt_bei_wordpress_befund():
+    s = parse_page("https://x.de/p", LEER)
+    assert s.images_missing_alt == 3
+
+def test_robots_meta_wird_gelesen():
+    s = parse_page("https://x.de/p", '<html><head><meta name="robots" content="noindex, nofollow"></head></html>')
+    assert s.robots == "noindex, nofollow"

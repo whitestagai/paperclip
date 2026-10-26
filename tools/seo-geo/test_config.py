@@ -33,3 +33,9 @@ def test_gsc_property_default_none_wenn_fehlt():
     p = _write([{"name": "a", "url": "https://a.de", "wp_rest_base": "https://a.de/wp-json",
                  "credential_ref": "A", "crawl_limit": 10, "seo_plugin": "yoast"}])
     assert load_sites(p)[0].gsc_property is None
+
+def test_live_default_true_und_abschaltbar():
+    base = {"name": "a", "url": "https://a.de", "wp_rest_base": "", "credential_ref": "NONE",
+            "crawl_limit": 10, "seo_plugin": "none"}
+    assert load_sites(_write([base]))[0].live is True
+    assert load_sites(_write([{**base, "live": False}]))[0].live is False

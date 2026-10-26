@@ -12,6 +12,11 @@ def evaluate_page(sig: PageSignals) -> list[Finding]:
     out: list[Finding] = []
     def add(field, sev, issue): out.append(Finding(sig.url, field, sev, issue))
 
+    # Die Seite steht in der Sitemap, soll also in den Index — ein noindex
+    # widerspricht dem und kostet still die Sichtbarkeit.
+    if sig.robots and "noindex" in sig.robots.lower():
+        add("indexierung", "high", f"Sitemap-Seite trägt noindex ({sig.robots})")
+
     if not sig.title:
         add("seo_title", "high", "Kein Title vorhanden")
     elif len(sig.title) > 60:

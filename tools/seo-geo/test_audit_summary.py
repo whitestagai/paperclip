@@ -193,3 +193,42 @@ def test_main_geo_absturz_kippt_nicht_die_mail(tmp_path, monkeypatch):
     today = datetime.date.today().isoformat()
     assert not (hist_dir / f"{today}-geo.json").exists()
     assert (hist_dir / f"{today}.md").exists()
+
+
+def test_collect_ueberspringt_nicht_live(tmp_path):
+    sites = tmp_path / "sites.json"
+    sites.write_text('{"report_root":"%s","sites":[{"name":"app","live":false}]}' % tmp_path)
+    counts = audit_summary.collect(str(sites))
+    assert counts == {"app": {"skipped": "noch nicht live"}}
+    assert audit_summary.stoerungen(counts, [], "") == []
+
+
+def test_stoerungen_sammelt_audit_und_gsc_fehler():
+    counts = {"a": {"error": "kein report.json (Audit fehlgeschlagen?)"}, "b": {"total": 0}}
+    blocks = [{"name": "b", "ok": False, "error": "GSC-Abruf fehlgeschlagen (403)"},
+              {"name": "c", "ok": True}]
+    s = audit_summary.stoerungen(counts, blocks, "")
+    assert s == ["Audit a: kein report.json (Audit fehlgeschlagen?)",
+                 "GSC b: GSC-Abruf fehlgeschlagen (403)"]
+    assert "Störungen" in audit_summary.render_stoerungen(s)
+    assert audit_summary.render_stoerungen([]) == ""
+
+
+def test_main_stoerung_setzt_alert(tmp_path):
+    report_root = tmp_path / "reports"
+    report_root.mkdir()
+    sites = tmp_path / "sites.json"
+    sites.write_text('{"report_root":"%s","sites":[{"name":"a","url":"https://a.de",'
+                     '"wp_rest_base":"","credential_ref":"NONE","crawl_limit":5,'
+                     '"seo_plugin":"none"}]}' % report_root)
+    assert main(["--sites", str(sites), "--out", str(tmp_path / "o.md")]) == 0
+    today = datetime.date.today().isoformat()
+    # kein report.json für a → Störung → ALERT statt OK
+    assert (report_root / "_audit-history" / f"{today}-alert.txt").read_text() == "ALERT"
+
+
+def test_index_section_ohne_key_ist_failsoft(tmp_path):
+    sites = tmp_path / "sites.json"
+    sites.write_text('{"report_root":"%s","sites":[]}' % tmp_path)
+    md, alarm, data, stoer = audit_summary.index_section(str(sites), {}, str(tmp_path), "2026-10-26")
+    assert "nicht konfiguriert" in md and alarm is False and stoer == []

@@ -20,6 +20,8 @@ import sys
 from collections import Counter
 
 _SNAP_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.json$")
+_INDEX_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-index\.json$")
+NICHT_LIVE = "noch nicht live"
 
 
 def _load_sites(path: str) -> tuple[str, list[dict]]:
@@ -56,6 +58,9 @@ def collect(sites_path: str) -> dict:
     out: dict[str, dict] = {}
     for site in sites:
         name = site["name"]
+        if not site.get("live", True):
+            out[name] = {"skipped": NICHT_LIVE}
+            continue
         jpath = os.path.join(root, name, "report.json")
         if not os.path.exists(jpath):
             out[name] = {"error": "kein report.json (Audit fehlgeschlagen?)"}
@@ -104,6 +109,9 @@ def render(counts: dict, report_root: str, today: str) -> str:
     lines.append("| Site | Ampel | Findings | high | medium | low |")
     lines.append("|------|-------|----------|------|--------|-----|")
     for name, c in counts.items():
+        if "skipped" in c:
+            lines.append(f"| {name} | ⏸ | {c['skipped']} | | | |")
+            continue
         if "error" in c:
             lines.append(f"| {name} | ⚠️ | {c['error']} | | | |")
             continue
@@ -116,7 +124,7 @@ def render(counts: dict, report_root: str, today: str) -> str:
 
     # Detail je Site nach Feld
     for name, c in counts.items():
-        if "error" in c:
+        if "error" in c or "skipped" in c:
             continue
         if not c["by_field"]:
             lines.append(f"**{name}** — keine Findings \U0001F7E2")
@@ -146,7 +154,8 @@ def gsc_section(sites_path: str, environ: dict, today: datetime.date) -> tuple[s
         session = gsc.build_authorized_session(os.path.expanduser(key_file))
         client = gsc.GSCClient(session)
         windows = gsc.report_windows(today)
-        blocks = [gsc_report.build_site_block(s, client, windows) for s in load_sites(sites_path)]
+        blocks = [gsc_report.build_site_block(s, client, windows)
+                  for s in load_sites(sites_path) if s.live]
         return gsc_report.render_markdown(blocks), gsc_report.overall_ampel(blocks), blocks
     except Exception as e:  # noqa: BLE001 — niemals die Mail kippen
         return (f"\n## Google Search Console\n\nGSC-Abruf global fehlgeschlagen ({e}).\n", "\U0001F7E2", [])
@@ -169,7 +178,7 @@ def diff_section(cur_counts: dict, gsc_blocks: list[dict], hist_dir: str, today_
         gsc_amp = {b.get("name"): b.get("ampel") for b in (gsc_blocks or [])}
         per_site = []
         for name, cur in cur_counts.items():
-            if "error" in cur:
+            if "error" in cur or "skipped" in cur:
                 continue
             cur_f = cur.get("findings", [])
             prev_entry = prev.get(name, {}) if isinstance(prev, dict) else {}
@@ -229,6 +238,12 @@ def geo_section(sites_path, environ, today):
         lines.append("")
         lines.append(f"**KI-Bot-Zugriffe (Woche {wk}):**")
         for site in load_sites(sites_path):
+            if not site.live:
+                continue
+            if not site.wp_rest_base:
+                # Statische Site: das Bot-Zählwerk ist ein WordPress-mu-Plugin.
+                lines.append(f"  - {site.name}: keine Bot-Zählung (statische Site, kein WordPress)")
+                continue
             try:
                 client = WPClient(site.wp_rest_base, resolve_credential(site, environ))
                 hits = geo_bots.current_week_hits(client.get_ai_bot_hits(), wk)
@@ -267,6 +282,8 @@ def rank_section(sites_path, environ, today):
         per_site = []
         errs = []
         for site in load_sites(sites_path):
+            if not site.live:
+                continue
             try:
                 prop = gsc_report.resolve_property(site, client)
                 if not prop:
@@ -295,6 +312,73 @@ def rank_section(sites_path, environ, today):
         return (f"\n## Keyword-Rankings (GSC, Ø-Position)\n\nRank-Tracking fehlgeschlagen ({e}).\n", {})
 
 
+def _prev_index(hist_dir: str, today: str) -> dict:
+    if not os.path.isdir(hist_dir):
+        return {}
+    older = sorted(fn for fn in os.listdir(hist_dir)
+                   if (m := _INDEX_RE.match(fn)) and m.group(1) < today)
+    if not older:
+        return {}
+    try:
+        return json.loads(open(os.path.join(hist_dir, older[-1])).read())
+    except Exception:  # noqa: BLE001 — defekte Datei = keine Vergleichsbasis
+        return {}
+
+
+def index_section(sites_path, environ, hist_dir, today_str):
+    """Fail-soft Indexstatus je Sitemap-Seite. Rückgabe: (markdown, alarm, data, störungen)."""
+    key_file = environ.get("GSC_SA_KEY_FILE")
+    if not key_file or not os.path.exists(os.path.expanduser(key_file)):
+        return ("\n## Indexstatus\n\nGSC nicht konfiguriert — kein Indexstatus.\n", False, {}, [])
+    try:
+        import gsc, gsc_report, index_status
+        from config import load_sites
+        report_root, _ = _load_sites(sites_path)
+        session = gsc.build_authorized_session(os.path.expanduser(key_file))
+        client = gsc.GSCClient(session)
+        prev = _prev_index(hist_dir, today_str)
+        per_site, data, stoer, any_alarm = [], {}, [], False
+        for site in load_sites(sites_path):
+            if not site.live:
+                continue
+            try:
+                rpath = os.path.join(os.path.expanduser(report_root), site.name, "report.json")
+                urls = [p["url"] for p in json.loads(open(rpath).read()).get("pages", [])]
+                prop = gsc_report.resolve_property(site, client)
+                if not prop:
+                    raise RuntimeError("nicht in GSC / nicht verifiziert")
+                results = index_status.inspect_urls(session, prop, urls)
+                a = index_status.auswerten(results, prev.get(site.name))
+                data[site.name] = results
+                any_alarm = any_alarm or index_status.alarm(a)
+                if urls and len(a["fehler"]) == len(urls):
+                    stoer.append(f"Indexstatus {site.name}: alle Prüfungen fehlgeschlagen")
+                per_site.append({"name": site.name, "auswertung": a})
+            except Exception as e:  # noqa: BLE001
+                per_site.append({"name": site.name, "error": f"kein Indexstatus ({e})"})
+                stoer.append(f"Indexstatus {site.name}: {e}")
+        return index_status.render_markdown(per_site), any_alarm, data, stoer
+    except Exception as e:  # noqa: BLE001 — niemals die Mail kippen
+        return (f"\n## Indexstatus\n\nIndexstatus fehlgeschlagen ({e}).\n", False, {},
+                [f"Indexstatus global: {e}"])
+
+
+def stoerungen(counts: dict, gsc_blocks: list[dict], gsc_md: str) -> list[str]:
+    """Was diese Woche nicht gemessen werden konnte. Nicht-live-Sites zählen nicht."""
+    out = [f"Audit {n}: {c['error']}" for n, c in counts.items() if "error" in c]
+    out += [f"GSC {b['name']}: {b.get('error') or 'keine Daten'}"
+            for b in gsc_blocks or [] if not b.get("ok")]
+    if "global fehlgeschlagen" in gsc_md:
+        out.append("GSC: Abruf global fehlgeschlagen")
+    return out
+
+
+def render_stoerungen(items: list[str]) -> str:
+    if not items:
+        return ""
+    return "\n## ⚠️ Störungen — nicht gemessen\n\n" + "\n".join(f"- {s}" for s in items) + "\n"
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="audit-summary")
     ap.add_argument("--sites", default="sites.json")
@@ -316,7 +400,20 @@ def main(argv: list[str] | None = None) -> int:
 
     gsc_md, gsc_amp, gsc_blocks = gsc_section(args.sites, os.environ, today_date)
     diff_md, diff_alert = diff_section(counts, gsc_blocks, hist_dir, today)
-    body = body + diff_md + gsc_md
+    stoer = stoerungen(counts, gsc_blocks, gsc_md)
+
+    index_md, index_alert = "", False
+    try:  # Indexstatus darf die Mail nie kippen (wie GEO/Diff)
+        index_md, index_alert, index_data, index_stoer = index_section(
+            args.sites, os.environ, hist_dir, today)
+        stoer += index_stoer
+        if index_data:
+            with open(os.path.join(hist_dir, f"{today}-index.json"), "w") as fh:
+                json.dump(index_data, fh, ensure_ascii=False, indent=2)
+    except Exception as e:  # noqa: BLE001
+        stoer.append(f"Indexstatus: {e}")
+
+    body = body + render_stoerungen(stoer) + diff_md + gsc_md + index_md
 
     # GEO-Sektion + History-Datei sind best-effort: ein Fehler hier darf die
     # onpage+diff+GSC-Mail nicht mitreissen (audit-all.sh macht `|| exit 2`
@@ -341,7 +438,7 @@ def main(argv: list[str] | None = None) -> int:
         with open(os.path.join(hist_dir, f"{today}-gsc.json"), "w") as fh:
             json.dump(gsc_blocks, fh, ensure_ascii=False, indent=2)
     with open(os.path.join(hist_dir, f"{today}-alert.txt"), "w") as fh:
-        fh.write("ALERT" if diff_alert else "OK")
+        fh.write("ALERT" if (diff_alert or index_alert or stoer) else "OK")
 
     with open(os.path.join(hist_dir, f"{today}.md"), "w") as fh:
         fh.write(body)

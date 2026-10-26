@@ -24,3 +24,11 @@ def test_clean_page_has_no_findings():
                       canonical="https://x.de/c", h1_count=1, images_total=0,
                       images_missing_alt=0, jsonld_types=["WebPage"])
     assert evaluate_page(sig) == []
+
+def test_noindex_auf_sitemap_seite_ist_high():
+    from crawl import PageSignals
+    sig = PageSignals(url="https://a.de/", title="T", meta_description="x" * 130,
+                      og_title="T", og_description="D", h1_count=1,
+                      jsonld_types=["WebPage"], robots="noindex")
+    f = [x for x in evaluate_page(sig) if x.field == "indexierung"]
+    assert len(f) == 1 and f[0].severity == "high"

@@ -4,29 +4,29 @@
     {
       "name": "whitestag.ai",
       "url": "https://www.whitestag.ai",
-      "wp_rest_base": "https://www.whitestag.ai/wp-json",
-      "credential_ref": "WHITESTAG_AI_WP",
+      "wp_rest_base": "",
+      "credential_ref": "NONE",
       "crawl_limit": 100,
-      "seo_plugin": "yoast",
+      "seo_plugin": "none",
       "gsc_property": "https://www.whitestag.ai/"
     },
     {
       "name": "whitestag.film",
       "url": "https://www.whitestag.film",
-      "wp_rest_base": "https://www.whitestag.film/wp-json",
-      "credential_ref": "WHITESTAG_FILM_WP",
+      "wp_rest_base": "",
+      "credential_ref": "NONE",
       "crawl_limit": 160,
-      "seo_plugin": "yoast",
+      "seo_plugin": "none",
       "gsc_property": "https://www.whitestag.film/"
     },
     {
       "name": "whitestag.de",
       "url": "https://whitestag.de",
-      "wp_rest_base": "https://whitestag.de/wp-json",
-      "credential_ref": "WHITESTAG_DE_WP",
+      "wp_rest_base": "",
+      "credential_ref": "NONE",
       "crawl_limit": 60,
-      "seo_plugin": "yoast",
-      "gsc_property": "https://whitestag.de/"
+      "seo_plugin": "none",
+      "gsc_property": "sc-domain:whitestag.de"
     },
     {
       "name": "virtuelle-lausitz.de",
@@ -53,7 +53,7 @@
       "credential_ref": "NONE",
       "crawl_limit": 100,
       "seo_plugin": "none",
-      "gsc_property": "https://www.whitestag.academy/"
+      "gsc_property": "sc-domain:whitestag.academy"
     },
     {
       "name": "whitestag.app",
@@ -62,7 +62,8 @@
       "credential_ref": "NONE",
       "crawl_limit": 30,
       "seo_plugin": "none",
-      "gsc_property": "https://whitestag.app/"
+      "gsc_property": "https://whitestag.app/",
+      "live": false
     }
   ]
 }

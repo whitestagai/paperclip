@@ -10,6 +10,9 @@ class Site:
     crawl_limit: int
     seo_plugin: str
     gsc_property: str | None = None
+    # false = Domain noch nicht live (Baustellenseite, keine Sitemap):
+    # wird nicht auditiert und löst keinen Störungsalarm aus.
+    live: bool = True
 
 def load_sites(path: str) -> list[Site]:
     data = json.loads(open(os.path.expanduser(path)).read())
@@ -19,6 +22,8 @@ def load_sites(path: str) -> list[Site]:
         kw = {k: s[k] for k in keys}
         if s.get("gsc_property"):
             kw["gsc_property"] = s["gsc_property"]
+        if "live" in s:
+            kw["live"] = bool(s["live"])
         out.append(Site(**kw))
     return out
 

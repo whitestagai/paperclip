@@ -25,12 +25,23 @@ FRAME_SAMPLES = 1280
 # nicht am Anfang abgeschnitten wird (Wake-Erkennungs-Latenz + Bestätigungston).
 PREROLL_SEC = 1.2
 PREROLL_FRAMES = int(PREROLL_SEC * SAMPLE_RATE / FRAME_SAMPLES)  # ~15
-# Nachfrage-Fenster ohne Wake-Word: kurz + streng, damit am Schreibtisch nicht
-# jedes Nebengespräch aufgeschnappt wird. Nur eine zügige, kurz anhaltende
-# Anschlussfrage direkt nach Jarvis' Antwort löst eine weitere Runde aus.
-FOLLOWUP_WINDOW_SEC = 2.5
-FOLLOWUP_WINDOW_FRAMES = int(FOLLOWUP_WINDOW_SEC * SAMPLE_RATE / FRAME_SAMPLES)  # ~31
-FOLLOWUP_MIN_SPEECH_FRAMES = 3  # ~0,24 s zusammenhängende Sprache nötig (kein kurzer Knacks)
+# Nachfrage-Fenster ohne Wake-Word: wie lange nach Jarvis' Antwort auf einen
+# Sprachbeginn gewartet wird. Waren es 2,5 s, kam Walter fast nie hinterher —
+# seine Antwort spielt allein schon 4-7 s, und danach muss er den Satz erst
+# anfangen. 5 s ist der Kompromiss: lang genug zum Nachfassen, kurz genug,
+# dass am Schreibtisch nicht jedes Nebengespräch aufgeschnappt wird.
+FOLLOWUP_START_FENSTER_SEC = 5.0
+FOLLOWUP_START_FENSTER_FRAMES = int(FOLLOWUP_START_FENSTER_SEC * SAMPLE_RATE / FRAME_SAMPLES)  # ~62
+
+# Nach der Quittung („Ja?") darf es deutlich länger dauern: hier hat Walter das
+# Wake-Wort bewusst allein gesagt und formuliert seine Frage erst noch.
+ANREDE_START_FENSTER_SEC = 8.0
+ANREDE_START_FENSTER_FRAMES = int(ANREDE_START_FENSTER_SEC * SAMPLE_RATE / FRAME_SAMPLES)  # ~100
+
+# So viele zusammenhängende laute Frames müssen es sein, damit eine Aufnahme
+# OHNE Wake-Wort startet (~0,24 s) — sonst startet ein Türklappen die Aufnahme.
+# Gilt nicht für die erste Runde: die ist bereits durch das Wake-Wort gedeckt.
+MIN_START_RUN_FRAMES = 3
 # Deckel für die Nachfrage-Kette: nach so vielen Antworten ist ohne erneutes
 # Wake-Wort Schluss. Ohne Deckel hält ein Gespräch im Raum die Schleife
 # beliebig lange am Leben und Jarvis beantwortet alles Gesagte.
@@ -54,8 +65,6 @@ TTS_FORMAT = "mp3_44100_128"
 # gesprochenes Deutsch natuerlicher. Der Preis ist gemessen und bewusst:
 #   mistral-small-24b (RTX, lokal)  1,8 / 0,9 / 0,9 s
 #   gemma-4-31b-it-mlx (MacBook)    4,1 / 3,2 / 3,2 s
-# Das Modell lag auf dem MacBook (`lms ps` -> MacbookM5Mx128), der Sprachpfad
-# hing damit an LM Link statt nur am Studio.
 #
 # 22.08.2026 auf die GGUF-Q8-Kopie derselben Gemma umgestellt, die jetzt auf
 # der RTX liegt. Gleiches Modell, gleiche Sprachqualitaet, nur schneller —
@@ -66,23 +75,29 @@ TTS_FORMAT = "mp3_44100_128"
 # Das MacBook traegt weiterhin 7 aktive n8n-Workflows, zwei Reports und den
 # Fallback von 14 Agenten bei ~2 GB freiem RAM; daher der Einbruch.
 #
-# 04.09.2026: Diese Repo-Fassung hinkte seit dem 22.08. hinterher und trug
-# weiter "gemma-4-31b-it-mlx" — ein Modell, das es nach der Archivierung gar
-# nicht mehr gibt. Live lief laengst die Zeile unten; ein `deploy.sh` haette
-# den Satelliten also auf ein totes Modell zurueckgeworfen. Deshalb hier
-# nachgezogen.
-#
-# Zum Fallback in llm.chat(): der steht seit dem 04.09. auf dem lokalen
-# `google/gemma-4-12b`. Vorher zeigte er auf das entfernte MLX-Modell und lief
-# damit ebenfalls ins Leere. Der Primaerpfad hier liegt auf der RTX und damit
-# hinter LM Link — genau dessen Ausfall soll der Fallback abfangen, also muss
-# er lokal liegen. Zurueck geht es mit einer Zeile.
+# NEBENEFFEKT auf den Fallback in llm.chat(): CHAT_MODEL ist jetzt NICHT mehr
+# gleich llm.FALLBACK_MODEL, also greift kein Ausweichen auf DEFAULT_MODEL
+# mehr — das Netz ist ab sofort `gemma-4-31b-it-mlx` auf dem MacBook. Also
+# gleiche Modellqualitaet im Fallback statt Abstieg auf die 12b, und weiterhin
+# ein ANDERES Geraet als der Primaerpfad. Zurueck geht es mit einer Zeile.
 #
 # 15.09.2026: Die ID war "gemma4-31b-it" — der Bindestrich nach "gemma" fehlte.
 # LM Studio kennt sie nicht und antwortet auf JEDEN Aufruf mit «Invalid model
-# identifier», der Sprachpfad lief also ins Leere. Gegengeprobt: "gemma-4-31b-it"
-# antwortet (finish_reason "stop").
-CHAT_MODEL = "gemma-4-31b-it"
+# identifier», der Sprachpfad lief also ins Leere.
+#
+# 04.10.2026: GENAU DASSELBE WIEDER — diesmal hiess die ID "gemma-4-31b-it",
+# und auch die kennt LM Studio nicht mehr. Das Modell heisst "google/gemma-4-31b".
+# Gegengeprobt: `GET /api/v0/models/google/gemma-4-31b` -> 200, die alte ID -> 400.
+# Der Satellit lief mit der toten ID und dem laufenden launchd-Job
+# `de.whitestag.wake-satellite` — ein stiller Ausfall des Sprachpfads.
+# Es war der sechste Fundort derselben Umbenennung (27 Agenten-Konfigurationen,
+# 11 cheap-Profile, 6 n8n-Workflows, zwei Soll-Dateien der Modell-Aufsicht).
+#
+# KORREKTUR zum Absatz oben: dort steht, das Netz sei `gemma-4-31b-it-mlx` auf
+# dem MacBook. Das stimmt nicht — `llm.py` setzt FALLBACK_MODEL und DEFAULT_MODEL
+# beide auf `google/gemma-4-12b`. Der Fallback ist also die 12B, nicht ein
+# zweites 31B. Wer das aendern will, aendert llm.py, nicht diesen Kommentar.
+CHAT_MODEL = "google/gemma-4-31b"
 
 # Mandant fest verdrahtet.
 TENANT = {

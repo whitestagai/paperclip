@@ -1,4 +1,4 @@
-"""Mikrofon-Aufnahme: Wake-Trigger-Aufnahme + Nachfrage-Fenster + wav-Export.
+"""Mikrofon-Aufnahme: Äusserungen aufnehmen + wav-Export.
 
 Energie-basierte Stille-Erkennung (kein externes VAD), damit mit synthetischen
 Frames testbar. Der Mikrofon-Stream (`MicStream`) ist der einzige Hardware-Teil
@@ -26,18 +26,34 @@ def _rms(frame):
 
 def record_until_silence(frames, *, silence_rms=SILENCE_RMS,
                          hang=SILENCE_HANG_FRAMES, max_frames=MAX_RECORD_FRAMES,
-                         max_start_frames=MAX_START_FRAMES):
+                         max_start_frames=MAX_START_FRAMES,
+                         min_start_run=1):
+    """Nimmt eine Äusserung auf: wartet auf den Sprachbeginn, endet nach `hang`
+    stillen Frames. Leere Liste = niemand hat gesprochen.
+
+    `min_start_run` verlangt so viele AUFEINANDERFOLGENDE laute Frames, bevor
+    die Aufnahme startet — Schutz gegen einen einzelnen Knacks. Diese Frames
+    werden mit aufgezeichnet: sie sind der Anfang des Satzes. (Vorher sass
+    dieser Schutz in `wait_for_speech`, das die Frames beim Erkennen verbrauchte
+    — im Transkript fehlten dadurch die ersten Wörter.)
+    """
     collected = []
     started = False
     silent_run = 0
     waited = 0
+    anlauf = []            # laute Frames, die den Start noch nicht ausgelöst haben
     for frame in frames:
         is_loud = _rms(frame) >= silence_rms
         if not started:
             if is_loud:
-                started = True
-                collected.append(frame)
-                continue
+                anlauf.append(frame)
+                if len(anlauf) >= min_start_run:
+                    started = True
+                    collected.extend(anlauf)   # Satzanfang mitnehmen
+                    anlauf = []
+                    continue
+            else:
+                anlauf = []                    # Lauf unterbrochen -> von vorn
             waited += 1
             if waited >= max_start_frames:
                 break          # niemand spricht -> nichts aufnehmen
@@ -47,23 +63,6 @@ def record_until_silence(frames, *, silence_rms=SILENCE_RMS,
         if silent_run >= hang or len(collected) >= max_frames:
             break
     return collected
-
-
-def wait_for_speech(frames, *, window_frames, silence_rms=SILENCE_RMS, min_run=1):
-    """True, sobald innerhalb von `window_frames` Frames `min_run` aufeinander-
-    folgende laute Frames auftreten (gegen Fehlauslösung durch kurze Geräusche);
-    sonst False. min_run=1 = jeder laute Frame genügt (altes Verhalten)."""
-    run = 0
-    for i, frame in enumerate(frames):
-        if i >= window_frames:
-            return False
-        if _rms(frame) >= silence_rms:
-            run += 1
-            if run >= min_run:
-                return True
-        else:
-            run = 0
-    return False
 
 
 def frames_to_wav(frames, path, sample_rate=SAMPLE_RATE):

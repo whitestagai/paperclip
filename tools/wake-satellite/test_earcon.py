@@ -17,6 +17,17 @@ def test_ensure_wav_is_idempotent(tmp_path):
     assert __import__("os").path.getmtime(path) == mtime1
 
 
+def test_beep_reicht_die_frequenz_an_die_wav_durch(monkeypatch, tmp_path):
+    # Die Quittung („ich höre jetzt zu") braucht einen anderen Ton als der
+    # Wake-Treffer („hab dich gehört") — sonst klingt beides gleich.
+    monkeypatch.setattr(earcon.subprocess, "run", lambda *a, **k: None)
+    erzeugt, referenz = str(tmp_path / "a.wav"), str(tmp_path / "b.wav")
+    earcon.beep(erzeugt, freq=520)
+    earcon.ensure_wav(referenz, freq=520)
+    with open(erzeugt, "rb") as a, open(referenz, "rb") as b:
+        assert a.read() == b.read()
+
+
 def test_beep_never_raises(monkeypatch, tmp_path):
     def boom(*a, **k): raise RuntimeError("afplay weg")
     monkeypatch.setattr(earcon.subprocess, "run", boom)

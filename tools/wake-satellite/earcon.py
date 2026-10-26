@@ -28,9 +28,9 @@ def ensure_wav(path=DEFAULT_PATH, freq=880, ms=150, sample_rate=16000):
     return path
 
 
-def beep(path=DEFAULT_PATH):
+def beep(path=DEFAULT_PATH, freq=880):
     try:
-        ensure_wav(path)
+        ensure_wav(path, freq=freq)
         subprocess.run(["afplay", path], check=True, capture_output=True)
     except Exception:  # noqa: BLE001
         traceback.print_exc()

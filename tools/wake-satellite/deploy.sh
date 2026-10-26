@@ -11,7 +11,7 @@ DEST="$HOME/.paperclip/scripts/wake-satellite"
 mkdir -p "$DEST" "$HOME/.paperclip/logs"
 
 # Satellit-Module
-for f in wake.py capture.py playback.py earcon.py sat_config.py satellite.py; do
+for f in wake.py capture.py playback.py earcon.py anrede.py quittung.py sat_config.py satellite.py; do
   cp "$SRC_SAT/$f" "$DEST/$f"
 done
 # Geteilte voice-echo-bot-Module (ein config.py, keine Kollision)

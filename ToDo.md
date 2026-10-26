@@ -1289,6 +1289,17 @@ Umsetzung läuft in einer Booker-Session). R9 ist angehalten
       `blocked` setzte. Das Parken war damit sofort wieder aufgehoben. Ohne
       `comment` haelt es. *(2026-09-06, Chat: Kontaktrecherche-Agent Clara)*
 
+## Berichte und Mails
+
+- [ ] **Arbeitszeit-Mail: ersten automatischen Lauf prüfen** — launchd
+      `de.whitestag.claude-arbeitszeit` feuert erstmals am 27.10. um 07:00. In
+      `/tmp/claude-arbeitszeit.log` muss `mailhub 200` stehen; dabei prüfen, ob die
+      Farblegende in Walters Mailprogramm erscheint. *(2026-10-26, Chat: Claude-Code Arbeitszeit-Mail)*
+
+- [ ] **Arbeitszeit-Mail misst nur den Mac Studio** — Sitzungen auf MacBook und
+      Windows-Rechner liefern keine Stunden (nur ihre Vault-Chats zählen). Optional deren
+      `~/.claude/projects/` per `--quelle` einlesen. *(2026-10-26, Chat: Claude-Code Arbeitszeit-Mail)*
+
 ## Zeitplan und Lastverteilung
 
 - [ ] **Wirkung der Entzerrung gegenmessen — fruehestens 25.09.** — am 11.09.

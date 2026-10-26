@@ -389,17 +389,32 @@ def anteile_grafik(a: dict) -> str:
         zeilen.append(
             f'<tr><td style="width:70px;padding:6px 8px 6px 0;font-size:13px;color:{INK2};white-space:nowrap">'
             f'{w["titel"]}</td><td style="padding:6px 0">{balken_100(a, w["minuten"])}</td></tr>')
-    legende = []
-    namen = [p for p in a["projekte"] if p in a["farben"]]
-    if any(p not in a["farben"] for p in a["projekte"]):
-        namen.append(WEITERE)
-    for p in namen:
-        f = farbe(a, p) if p != WEITERE else FARBE_WEITERE
-        legende.append(f'<span style="display:inline-block;margin:0 14px 6px 0;font-size:12px;color:{INK2}">'
-                       f'<span style="display:inline-block;width:10px;height:10px;border-radius:2px;'
-                       f'background:{f};vertical-align:-1px;margin-right:5px"></span>{html.escape(p)}</span>')
     return ('<table role="presentation" width="100%" cellspacing="0" cellpadding="0">'
-            f'{"".join(zeilen)}</table><div style="margin-top:10px">{"".join(legende)}</div>')
+            f'{"".join(zeilen)}</table>{legende(a)}')
+
+
+def marke(f: str, groesse: int = 15) -> str:
+    """Farbmarke als Zeichen: leere, nur hinterlegte Elemente werfen Gmail und
+    Outlook weg, ein „■" in Schriftfarbe überlebt jedes Mailprogramm."""
+    return (f'<span style="color:{f};font-size:{groesse}px;line-height:1;'
+            f'font-family:Arial,sans-serif">&#9632;</span>')
+
+
+def legende(a: dict) -> str:
+    """Projekte mit ihren Farben, in der Reihenfolge der Jahresstunden."""
+    namen = [p for p in a["projekte"] if p in a["farben"]]
+    rest = [p for p in a["projekte"] if p not in a["farben"] and sichtbar(a["werte"]["jahr"]["minuten"][p])]
+    zelle = f'style="padding:3px 18px 3px 0;font-size:13px;color:{INK2};white-space:nowrap"'
+    zellen = "".join(
+        f'<td {zelle}>{marke(farbe(a, p))}&nbsp;{html.escape(p)}</td>'
+        + ("</tr><tr>" if i % 3 == 2 else "")
+        for i, p in enumerate(namen))
+    weitere = ""
+    if rest:
+        weitere = (f'<tr><td colspan="3" style="padding:3px 0;font-size:13px;color:{INK2}">'
+                   f'{marke(FARBE_WEITERE)}&nbsp;{WEITERE}: {html.escape(", ".join(rest))}</td></tr>')
+    return (f'<table role="presentation" cellspacing="0" cellpadding="0" style="margin-top:10px">'
+            f'<tr>{zellen}</tr>{weitere}</table>')
 
 
 def tabelle(a: dict) -> str:
@@ -422,8 +437,7 @@ def tabelle(a: dict) -> str:
     zeilen = []
     for p in reihen:
         name = (f'<td style="padding:5px 6px;font-size:13px;color:{INK};border-bottom:1px solid {LINIE}">'
-                f'<span style="display:inline-block;width:8px;height:8px;border-radius:2px;'
-                f'background:{farbe(a, p)};margin-right:6px"></span>{html.escape(p)}</td>')
+                f'{marke(farbe(a, p), 13)}&nbsp;{html.escape(p)}</td>')
         zellen = []
         for k in perioden:
             m = w[k]["minuten"].get(p, 0)
@@ -475,7 +489,8 @@ def verlauf_grafik(a: dict) -> str:
             f'text-align:center;padding-top:3px;height:12px">{beschriftung}</div></td>')
     return (f'<div style="font-size:12px;color:{MUTED};margin-bottom:4px">Höchster Tag: {h_text(maxi)}</div>'
             '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" '
-            f'style="border-collapse:collapse;table-layout:fixed"><tr>{"".join(spalten)}</tr></table>')
+            f'style="border-collapse:collapse;table-layout:fixed"><tr>{"".join(spalten)}</tr></table>'
+            f'{legende(a)}')
 
 
 def html_mail(a: dict) -> str:

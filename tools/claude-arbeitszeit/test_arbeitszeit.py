@@ -75,6 +75,20 @@ def test_zeitraeume_woche_ab_montag():
     assert p["jahr"][0] == date(2026, 1, 1)
 
 
+def test_zeitraeume_am_ersten_tag_der_vorzeitraum():
+    # Montag 26.10.: die laufende Woche wäre nur „gestern" → ganze Vorwoche.
+    p = {k: (t, von, bis) for k, t, von, bis in az.zeitraeume(date(2026, 10, 26))}
+    assert p["woche"] == ("Vorwoche", date(2026, 10, 19), date(2026, 10, 25))
+    assert p["monat"][0] == "Monat"
+    # 1.12. ist ein Dienstag: Woche läuft normal, Monat wird November.
+    p = {k: (t, von, bis) for k, t, von, bis in az.zeitraeume(date(2026, 12, 1))}
+    assert p["woche"] == ("Woche", date(2026, 11, 30), date(2026, 12, 1))
+    assert p["monat"] == ("Vormonat", date(2026, 11, 1), date(2026, 11, 30))
+    p = {k: (t, von, bis) for k, t, von, bis in az.zeitraeume(date(2027, 1, 1))}
+    assert p["jahr"] == ("Vorjahr", date(2026, 1, 1), date(2026, 12, 31))
+    assert p["monat"] == ("Vormonat", date(2026, 12, 1), date(2026, 12, 31))
+
+
 def test_tagesgrenze_berlin(tmp_path):
     # 22:30 UTC am 20.10. ist 00:30 Berliner Zeit am 21.10.
     db = az.oeffne_register(str(tmp_path / "r.sqlite"))

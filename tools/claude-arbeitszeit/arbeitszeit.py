@@ -277,20 +277,32 @@ def chats_im_vault(wurzel: str = VAULT_CC) -> list[tuple[date, str]]:
 
 
 def zeitraeume(berichtstag: date) -> list[tuple[str, str, date, date]]:
-    """(Schlüssel, Überschrift, von, bis) — alles bis einschließlich Berichtstag."""
+    """(Schlüssel, Überschrift, von, bis) — alles bis einschließlich Berichtstag.
+
+    Ist der Berichtstag der erste Tag einer Woche, eines Monats oder Jahres,
+    wäre der laufende Zeitraum nur eine Kopie von „Gestern". Dann steht dort
+    der vollständige Vorzeitraum."""
     t = berichtstag
-    return [
-        ("tag", "Gestern", t, t),
-        ("woche", "Woche", t - timedelta(days=t.weekday()), t),
-        ("monat", "Monat", t.replace(day=1), t),
-        ("jahr", "Jahr", t.replace(month=1, day=1), t),
-    ]
+    if t.weekday() == 0:
+        woche = ("woche", "Vorwoche", t - timedelta(days=7), t - timedelta(days=1))
+    else:
+        woche = ("woche", "Woche", t - timedelta(days=t.weekday()), t)
+    if t.day == 1:
+        ende = t - timedelta(days=1)
+        monat = ("monat", "Vormonat", ende.replace(day=1), ende)
+    else:
+        monat = ("monat", "Monat", t.replace(day=1), t)
+    if (t.month, t.day) == (1, 1):
+        jahr = ("jahr", "Vorjahr", date(t.year - 1, 1, 1), date(t.year - 1, 12, 31))
+    else:
+        jahr = ("jahr", "Jahr", t.replace(month=1, day=1), t)
+    return [("tag", "Gestern", t, t), woche, monat, jahr]
 
 
 def auswerten(db: sqlite3.Connection, berichtstag: date, chats: list[tuple[date, str]]) -> dict:
     perioden = zeitraeume(berichtstag)
-    jahr_von = perioden[-1][2]
-    tage = minuten_je_tag_und_projekt(db, min(jahr_von, berichtstag - timedelta(days=29)), berichtstag)
+    erster = min(min(von for _, _, von, _ in perioden), berichtstag - timedelta(days=29))
+    tage = minuten_je_tag_und_projekt(db, erster, berichtstag)
     werte = {}
     for key, titel, von, bis in perioden:
         summe: dict[str, float] = defaultdict(float)
@@ -518,7 +530,8 @@ def html_mail(a: dict) -> str:
         f'{abschnitt}Letzte 30 Tage</h2>{verlauf_grafik(a)}'
         f'{abschnitt}Stunden, Anteile und Chats</h2>{tabelle(a)}'
         f'<p style="font-size:12px;color:{MUTED};line-height:1.5;margin-top:22px">'
-        f'Woche ab Montag, Monat und Jahr jeweils bis einschließlich {t.day}.{t.month}. '
+        f'Woche ab Montag, Monat und Jahr jeweils bis einschließlich {t.day}.{t.month}.; '
+        f'fiele ein Zeitraum mit „Gestern" zusammen, steht dort der ganze Vorzeitraum. '
         f'Gezählt wird Zeit in Claude-Code-Sitzungen; Lücken über {PAUSE_MIN} Minuten gelten als Pause, '
         f'gleichzeitige Projekte teilen sich die Minute. Läufe der Paperclip-Agenten zählen nicht. '
         f'{hinweis}</p>'
@@ -543,8 +556,9 @@ def text_mail(a: dict) -> str:
 def betreff(a: dict) -> str:
     w = a["werte"]
     return (f"Claude-Code-Zeit {a['berichtstag']:%d.%m.}: gestern {h_text(w['tag']['gesamt'])} · "
-            f"Woche {h_text(w['woche']['gesamt'])} · Monat {h_text(w['monat']['gesamt'])} · "
-            f"Jahr {h_text(w['jahr']['gesamt'])}")
+            f"{w['woche']['titel']} {h_text(w['woche']['gesamt'])} · "
+            f"{w['monat']['titel']} {h_text(w['monat']['gesamt'])} · "
+            f"{w['jahr']['titel']} {h_text(w['jahr']['gesamt'])}")
 
 
 # --- Versand ------------------------------------------------------------------

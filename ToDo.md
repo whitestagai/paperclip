@@ -1547,9 +1547,6 @@ Umsetzung läuft in einer Booker-Session). R9 ist angehalten
       Jarvis-Antwort und er spricht nur in die Jump-Sitzung. Einmal im Kontrollzentrum
       → Ton den HomePod wählen, dann erscheint „AirPlay" wieder. *(2026-10-27, Chat: Jarvis Phonon-Stimme)*
 
-- [ ] **Zwei Commits auf `fix/backup-leere-ref-ordner` ungepusht** — `e5e948c7b` (seo-geo) und `569acb6af`
-      (docs(todo) Arbeitszeit-Mail), beide aus anderen Sessions. Push ist Ansage-pflichtig. *(2026-10-27, Chat: ACADEMY Kurse Vorrang)*
-
 - [ ] **RTX Pro 6000 aus LM Link abmelden** — traegt seit 21.10. keine Modelle mehr, keine
       Konfiguration zeigt auf sie. Am Filmrechner in LM Studio den Link trennen, dann ist
       die Karte frei fuer die Coding-LLM. *(2026-10-21, Chat: LLM-Farm ohne RTX)*

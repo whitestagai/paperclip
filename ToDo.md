@@ -1316,10 +1316,10 @@ Umsetzung läuft in einer Booker-Session). R9 ist angehalten
 
 ## Berichte und Mails
 
-- [ ] **Arbeitszeit-Mail: ersten automatischen Lauf prüfen** — launchd
-      `de.whitestag.claude-arbeitszeit` feuert erstmals am 27.10. um 07:00. In
-      `/tmp/claude-arbeitszeit.log` muss `mailhub 200` stehen; dabei prüfen, ob die
-      Farblegende in Walters Mailprogramm erscheint. *(2026-10-26, Chat: Claude-Code Arbeitszeit-Mail)*
+- [ ] **Arbeitszeit-Mail: Farblegende im Mailprogramm bestätigen** — der erste automatische
+      Lauf (27.10. 07:00, `mailhub 200`) ist belegt; offen ist nur, ob die Farblegende unter den
+      Balken in Walters Mailprogramm erscheint. *(2026-10-26, Chat: Claude-Code Arbeitszeit-Mail;
+      präzisiert 2026-10-27, Chat: Arbeitszeit-Mail Vorwoche)*
 
 - [ ] **Arbeitszeit-Mail misst nur den Mac Studio** — Sitzungen auf MacBook und
       Windows-Rechner liefern keine Stunden (nur ihre Vault-Chats zählen). Optional deren

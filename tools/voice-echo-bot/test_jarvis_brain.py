@@ -550,3 +550,87 @@ def test_web_answer_never_empty_if_model_repeats_token(monkeypatch):
     r = jarvis_brain.respond("wetter morgen?", TENANT, "tok", "m")
     assert r["kind"] == "web"
     assert r["answer"] == jarvis_brain.EMPTY_TOOL_ANSWER
+
+
+# --- Zahlen-Regel gilt nur fuer die gesprochene Antwort ------------------
+
+def test_voice_output_haelt_die_zahlenregel_von_steuer_token_fern(monkeypatch):
+    # Live-Befund 17.08.: die Ausschreib-Regel galt fuer ALLES, was das Modell
+    # schreibt — auch fuer den Suchbegriff. Gesucht wurde nach "Wetter Cottbus
+    # Dienstag achtzehnter August zweitausendsechsundzwanzig"; darauf lieferte
+    # SearXNG nur Instagram und Facebook ohne Text, und Walter hoerte "komme
+    # nicht ins Netz". Mit Ziffern liefert dieselbe Suche drei brauchbare
+    # Wetterquellen.
+    seen = {}
+    def fake_chat(msgs, model=None, **kw):
+        seen["system"] = msgs[0]["content"]
+        return "Es ist zwölf Uhr."
+    monkeypatch.setattr(jarvis_brain.llm, "chat", fake_chat)
+    jarvis_brain.respond("wetter?", TENANT, "tok", "m", voice_output=True)
+    # Die Ausnahme muss IM Sprachausgabe-Absatz stehen und die Steuer-Token
+    # beim Namen nennen — sonst bezieht das Modell sie nicht auf den
+    # Suchbegriff. Deshalb wird hier nur der Teil ab "Sprachausgabe" geprueft:
+    # gegen den ganzen Prompt gehalten waere die Zusicherung wertlos, denn
+    # "WEB:" und "LOOKUP" stehen ohnehin weiter oben in der Werkzeugliste.
+    sprachteil = seen["system"].split("Sprachausgabe", 1)[1]
+    assert "WEB:" in sprachteil
+    assert "LOOKUP" in sprachteil
+
+
+# --- "nichts gefunden" ist nicht "kein Netz" ------------------------------
+
+def _antwortet_web(monkeypatch, query="WEB: Wetter"):
+    monkeypatch.setattr(jarvis_brain.llm, "chat",
+                        lambda msgs, model=None, **kw: query)
+
+
+def test_ohne_brauchbare_quelle_meldet_nichts_gefunden(monkeypatch):
+    # Der Dienst lief, SearXNG antwortete — es war nur nichts Lesbares dabei.
+    # "Ich komme nicht ins Netz" waere hier schlicht falsch.
+    _antwortet_web(monkeypatch)
+    def keine_quelle(q, **kw):
+        raise jarvis_brain.websuche_client.KeineQuelleError("nichts lesbar")
+    monkeypatch.setattr(jarvis_brain.websuche_client, "suche", keine_quelle)
+    r = jarvis_brain.respond("wetter?", TENANT, "tok", "m")
+    assert r["kind"] == "web"
+    assert "nicht ins Netz" not in r["answer"]
+    assert "gefunden" in r["answer"]
+
+
+def test_dienst_tot_meldet_weiterhin_kein_netz(monkeypatch):
+    # Gegenprobe: der echte Ausfall darf nicht als "nichts gefunden" verharmlost
+    # werden — sonst sucht niemand nach der Ursache.
+    _antwortet_web(monkeypatch)
+    def tot(q, **kw):
+        raise jarvis_brain.websuche_client.WebsucheError("offline")
+    monkeypatch.setattr(jarvis_brain.websuche_client, "suche", tot)
+    r = jarvis_brain.respond("wetter?", TENANT, "tok", "m")
+    assert "nicht ins Netz" in r["answer"]
+
+
+def test_ohne_brauchbare_quelle_wird_tavily_trotzdem_versucht(monkeypatch):
+    # Tavily ist die Abdeckungs-Reserve: findet der lokale Dienst nichts, darf
+    # der zweite Weg es trotzdem versuchen.
+    _antwortet_web(monkeypatch)
+    versuche = []
+    monkeypatch.setattr(jarvis_brain.websuche_client, "suche",
+                        lambda q, **kw: (_ for _ in ()).throw(
+                            jarvis_brain.websuche_client.KeineQuelleError("leer")))
+    monkeypatch.setattr(jarvis_brain.web_search, "search",
+                        lambda q, key, **kw: versuche.append(q) or {"antwort": "24 Grad"})
+    jarvis_brain.respond("wetter?", TENANT, "tok", "m", web_key="tvly-k")
+    assert versuche == ["Wetter"]
+
+
+def test_tavily_fehler_nach_leerer_suche_meldet_nichts_gefunden(monkeypatch):
+    # Beide Wege ergebnislos, aber KEINER davon war ein Netzausfall.
+    _antwortet_web(monkeypatch)
+    monkeypatch.setattr(jarvis_brain.websuche_client, "suche",
+                        lambda q, **kw: (_ for _ in ()).throw(
+                            jarvis_brain.websuche_client.KeineQuelleError("leer")))
+    monkeypatch.setattr(jarvis_brain.web_search, "search",
+                        lambda q, key, **kw: (_ for _ in ()).throw(
+                            jarvis_brain.web_search.WebSearchError("Tavily HTTP 432")))
+    r = jarvis_brain.respond("wetter?", TENANT, "tok", "m", web_key="tvly-k")
+    assert "nicht ins Netz" not in r["answer"]
+    assert "gefunden" in r["answer"]

@@ -391,3 +391,57 @@ def test_speak_ohne_text_ruft_keine_stimme(monkeypatch):
     m = _speak_doubles(monkeypatch)
     satellite._speak("   ", _deps())
     assert m["lokal"] == [] and m["eleven"] == [] and m["gespielt"] == []
+
+
+# --- Dauerbeschallung: Musik ist keine Frage ------------------------------
+# Live-Befund 26.10.: alle sieben Aufnahmen im Log, die bis zum 12-s-Deckel
+# liefen, waren Liedtexte oder Whispers Musikzeichen („# Alles hat …",
+# „Musik") — Jarvis beantwortete drei Runden lang das Radio. Walters echte
+# Fragen dauerten 0,9-5 s: wer spricht, macht eine Pause, Musik nicht.
+
+def _bis_zum_deckel():
+    return [loud()] * satellite.capture.MAX_RECORD_FRAMES + [quiet()] * 10
+
+
+def test_aufnahme_bis_zum_deckel_geht_nicht_ans_modell(monkeypatch):
+    m = _quittungs_umgebung(monkeypatch, ["Es geht vor, die schweren Tage sind gezählt."])
+    transkribiert = []
+    monkeypatch.setattr(satellite.transcribe, "transcribe",
+                        lambda wav, model: transkribiert.append(wav) or "Liedtext")
+    frames = iter(_bis_zum_deckel() + _sustained_turn() * 3)
+    satellite.handle_interaction(frames, _deps())
+    assert transkribiert == []          # nicht mal Whisper bemühen
+    assert m["gefragt"] == [] and m["gesprochen"] == [] and m["quittiert"] == []
+
+
+def test_dauerbeschallung_in_der_nachfrage_beendet_die_kette(monkeypatch):
+    m = _quittungs_umgebung(monkeypatch, ["Wie spät ist es?", "Liedtext", "noch mehr"])
+    frames = iter(_turn() + [loud()] * 3 + _bis_zum_deckel() + _sustained_turn())
+    satellite.handle_interaction(frames, _deps())
+    assert m["gefragt"] == ["Wie spät ist es?"]
+    assert m["gesprochen"] == ["Kurz nach drei."]
+
+
+def test_musikzeichen_im_transkript_geht_nicht_ans_modell(monkeypatch):
+    m = _quittungs_umgebung(monkeypatch,
+                            ["Wie spät ist es?", "# Auch wenn wir nie wissen wann genau. #"])
+    frames = iter(_turn() + _sustained_turn() + _sustained_turn())
+    satellite.handle_interaction(frames, _deps())
+    assert m["gefragt"] == ["Wie spät ist es?"]
+
+
+def test_whisper_musik_wird_weder_quittiert_noch_beantwortet(monkeypatch):
+    # „Musik" ist ein Wort — ohne Musik-Regel hielte die Anrede-Regel es für
+    # ein bloßes „Hey Jarvis" und quittierte mit „Ja?".
+    for text in ["Musik", "[Musik]", "(Musik)", "*Musik*", "♪"]:
+        m = _quittungs_umgebung(monkeypatch, [text])
+        frames = iter(_turn() + _stille(sat_config.ANREDE_START_FENSTER_FRAMES + 5))
+        satellite.handle_interaction(frames, _deps())
+        assert m["quittiert"] == [] and m["gefragt"] == [], text
+
+
+def test_frage_ueber_musik_bleibt_eine_frage(monkeypatch):
+    m = _quittungs_umgebung(monkeypatch, ["Hey Jarvis, spiel Musik von Bach."])
+    frames = iter(_turn() + _stille(sat_config.FOLLOWUP_START_FENSTER_FRAMES))
+    satellite.handle_interaction(frames, _deps())
+    assert m["gefragt"] == ["Hey Jarvis, spiel Musik von Bach."]

@@ -6,6 +6,7 @@ testbare Interaktion nach einem Wake-Treffer: aufnehmen -> transkribieren ->
 Jarvis-Gehirn -> sprechen -> 6-s-Nachfrage-Fenster. Ein Gehirn (jarvis_brain),
 geteilt mit dem Telegram-Bot."""
 import os
+import re
 import shutil
 import tempfile
 import time
@@ -66,6 +67,18 @@ def _synthesize(text, deps, workdir):
         return None
 
 
+# Whisper schreibt Gesungenes als „# … #" oder „♪", reine Musik als „Musik",
+# „[Musik]" o. ä. Nur das GANZE Transkript zählt — „spiel Musik von Bach" ist
+# eine Frage.
+_MUSIKZEICHEN = re.compile(r"[#♪♫]")
+_NUR_MUSIK = re.compile(r"\W*(musik|music)\W*", re.IGNORECASE)
+
+
+def _ist_musik(text):
+    text = (text or "").strip()
+    return bool(text) and bool(_MUSIKZEICHEN.search(text) or _NUR_MUSIK.fullmatch(text))
+
+
 def _speak(text, deps):
     if not (text or "").strip():
         return
@@ -108,9 +121,20 @@ def handle_interaction(frames, deps, tenant=None, history=None):
                                                 min_start_run=anlauf)
         if not recorded:
             break
+        # Bis zum Deckel ohne eine einzige Pause: das ist Musik oder Radio,
+        # keine Frage (Live-Befund 26.10.: alle sieben solchen Aufnahmen waren
+        # Liedtexte, Walters Fragen dauerten 0,9-5 s). Kette still beenden.
+        if len(recorded) >= capture.MAX_RECORD_FRAMES:
+            print("[dauerton] Aufnahme bis zum Deckel -> keine Frage, Kette endet",
+                  flush=True)
+            break
         t0 = time.monotonic()
         text = _transcribe(recorded, deps)
         t1 = time.monotonic()
+        if _ist_musik(text):
+            print("[dauerton] Musik im Transkript ('{}') -> Kette endet".format(
+                text.strip()[:40]), flush=True)
+            break
         if runden == 0 and not quittiert and anrede.ist_nur_wakeword(text):
             # „Hey Jarvis", absetzen, dann erst die Frage: die Aufnahme endet in
             # der Pause, beim Modell kommt nur die Anrede an und es antwortet

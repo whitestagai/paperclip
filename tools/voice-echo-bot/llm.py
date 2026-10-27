@@ -52,7 +52,8 @@ _FALLBACK_UNGESETZT = object()
 
 
 def chat(messages, model=DEFAULT_MODEL, temperature=DEFAULT_TEMPERATURE,
-         url=LMSTUDIO_URL, timeout=90, fallback_model=_FALLBACK_UNGESETZT):
+         url=LMSTUDIO_URL, timeout=90, fallback_model=_FALLBACK_UNGESETZT,
+         reasoning_effort=None):
     """Wie `_call`, aber mit Wiederholung und Ausweichmodell.
 
     Reihenfolge: `model`, nach `RETRY_DELAY_SEC` nochmal `model`, dann
@@ -69,6 +70,10 @@ def chat(messages, model=DEFAULT_MODEL, temperature=DEFAULT_TEMPERATURE,
 
     Ein ausdruecklich uebergebener `fallback_model` bleibt unangetastet —
     auch `None` (= gar kein Fallback) und auch ein bewusst identischer.
+
+    `reasoning_effort` (z. B. "none") geht nur in den Request, wenn er gesetzt
+    ist. Die Studio-gemma denkt sonst vor jeder Antwort — gemessen 26.10.:
+    259 von 302 Tokens Reasoning, 31 s statt 3 s.
     """
     if fallback_model is _FALLBACK_UNGESETZT:
         fallback_model = FALLBACK_MODEL
@@ -82,19 +87,23 @@ def chat(messages, model=DEFAULT_MODEL, temperature=DEFAULT_TEMPERATURE,
         if index:
             time.sleep(RETRY_DELAY_SEC)
         try:
-            return _call(messages, attempt_model, temperature, url, timeout)
+            return _call(messages, attempt_model, temperature, url, timeout,
+                         reasoning_effort)
         except LlmError as exc:
             last = exc
     raise last
 
 
-def _call(messages, model, temperature, url, timeout):
+def _call(messages, model, temperature, url, timeout, reasoning_effort=None):
     """Schickt `messages` (OpenAI-Format) an LM Studio, liefert content-String."""
-    body = json.dumps({
+    payload = {
         "model": model,
         "messages": messages,
         "temperature": temperature,
-    }).encode("utf-8")
+    }
+    if reasoning_effort is not None:
+        payload["reasoning_effort"] = reasoning_effort
+    body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url, data=body, headers={"Content-Type": "application/json"})
     try:

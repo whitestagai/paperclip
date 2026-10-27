@@ -111,6 +111,15 @@ LOKAL_TTS_TIMEOUT_SEC = 20
 # zweites 31B. Wer das aendern will, aendert llm.py, nicht diesen Kommentar.
 CHAT_MODEL = "google/gemma-4-31b"
 
+# 26.10.2026: Die Studio-gemma DENKT vor jeder Antwort (Reasoning), das war
+# der Großteil der 22-201 s Antwortzeit. Gemessen an derselben Frage:
+#   ohne Schalter            31,1 s  (259 von 302 Tokens Reasoning)
+#   reasoning_effort="none"   2,9-4,4 s  (0 Reasoning-Tokens)
+# `chat_template_kwargs.enable_thinking=False` wirkt bei LM Studio NICHT
+# (21,8 s, 199 Reasoning-Tokens). Für gesprochene Kurzantworten bringt das
+# Nachdenken nichts; None schaltet zurück auf das Modellverhalten.
+CHAT_REASONING_EFFORT = "none"
+
 # Mandant fest verdrahtet.
 TENANT = {
     "name": "Walter / WHITESTAG",

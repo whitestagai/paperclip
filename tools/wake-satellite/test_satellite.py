@@ -52,7 +52,7 @@ def test_single_turn_speaks_answer(monkeypatch):
     spoken = []
     monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "Wie spät ist es?")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
-                        lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True: {"kind": "chat", "answer": "Kurz nach drei."})
+                        lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True, reasoning_effort=None: {"kind": "chat", "answer": "Kurz nach drei."})
     monkeypatch.setattr(satellite, "_speak", lambda text, deps: spoken.append(text))
     # 1 Runde Sprache, dann Nachfrage-Fenster leer -> Ende
     frames = iter([loud(), loud(), quiet(), quiet(), quiet(), quiet(), quiet(),
@@ -148,7 +148,7 @@ def test_token_callable_is_resolved(monkeypatch):
     seen = {}
     monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "wie geht es dir")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
-                        lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True: seen.update(token=token) or {"kind": "chat", "answer": "ok"})
+                        lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True, reasoning_effort=None: seen.update(token=token) or {"kind": "chat", "answer": "ok"})
     monkeypatch.setattr(satellite, "_speak", lambda text, deps: None)
     deps = _deps()
     deps["token"] = lambda: "AUFGELÖST"
@@ -445,3 +445,15 @@ def test_frage_ueber_musik_bleibt_eine_frage(monkeypatch):
     frames = iter(_turn() + _stille(sat_config.FOLLOWUP_START_FENSTER_FRAMES))
     satellite.handle_interaction(frames, _deps())
     assert m["gefragt"] == ["Hey Jarvis, spiel Musik von Bach."]
+
+
+def test_satellit_schaltet_das_nachdenken_des_modells_ab(monkeypatch):
+    # Gesprochen wird kurz; Reasoning kostete auf der Studio-gemma 31 s.
+    seen = []
+    m = _quittungs_umgebung(monkeypatch, ["Wie spät ist es?"])
+    monkeypatch.setattr(satellite.jarvis_brain, "respond",
+                        lambda text, *a, **k: seen.append(k.get("reasoning_effort"))
+                        or {"kind": "chat", "answer": "Kurz nach drei."})
+    frames = iter(_turn() + _stille(sat_config.FOLLOWUP_START_FENSTER_FRAMES))
+    satellite.handle_interaction(frames, _deps())
+    assert seen == [sat_config.CHAT_REASONING_EFFORT] and seen[0] == "none"

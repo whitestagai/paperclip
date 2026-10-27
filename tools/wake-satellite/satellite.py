@@ -162,7 +162,8 @@ def handle_interaction(frames, deps, tenant=None, history=None):
                                       deps["chat_model"], history=history,
                                       source="per Sprache", voice_output=True,
                                       web_key=deps.get("web_key"),
-                                      web_erlaubt=not web_locked_after_lookup)
+                                      web_erlaubt=not web_locked_after_lookup,
+                                      reasoning_effort=sat_config.CHAT_REASONING_EFFORT)
         t2 = time.monotonic()
         if result["kind"] == "lookup":
             web_locked_after_lookup = True

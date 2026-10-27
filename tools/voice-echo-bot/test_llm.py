@@ -29,6 +29,28 @@ class _NoSleep(unittest.TestCase):
 
 
 class TestChat(_NoSleep):
+    def test_reasoning_effort_goes_into_the_request_when_set(self):
+        # Die Studio-gemma denkt sonst vor jeder Antwort: 259 von 302 Tokens
+        # Reasoning, 31 s statt 3 s für zwei gesprochene Sätze (26.10.).
+        captured = {}
+        def fake_urlopen(req, timeout=None):
+            captured["body"] = json.loads(req.data.decode("utf-8"))
+            return _Resp({"choices": [{"message": {"content": "ok"}}]})
+        with mock.patch.object(llm.urllib.request, "urlopen", side_effect=fake_urlopen):
+            llm.chat([{"role": "user", "content": "hi"}], model="gemma-x",
+                     reasoning_effort="none")
+        self.assertEqual(captured["body"]["reasoning_effort"], "none")
+
+    def test_reasoning_effort_absent_by_default(self):
+        # Der Telegram-Jarvis schickt weiter genau den Request wie bisher.
+        captured = {}
+        def fake_urlopen(req, timeout=None):
+            captured["body"] = json.loads(req.data.decode("utf-8"))
+            return _Resp({"choices": [{"message": {"content": "ok"}}]})
+        with mock.patch.object(llm.urllib.request, "urlopen", side_effect=fake_urlopen):
+            llm.chat([{"role": "user", "content": "hi"}], model="gemma-x")
+        self.assertNotIn("reasoning_effort", captured["body"])
+
     def test_returns_stripped_content(self):
         payload = {"choices": [{"message": {"content": "  Hallo Walter  "}}]}
         with mock.patch.object(llm.urllib.request, "urlopen", return_value=_Resp(payload)):
@@ -144,16 +166,22 @@ class TestRetryAndFallback(_NoSleep):
         Wake-Satelliten, sobald `sat_config.CHAT_MODEL` auf FALLBACK_MODEL
         steht: dessen Modell liegt auf einem ANDEREN Geraet (LM Link), und
         genau dann braucht es ein lokales Netz darunter.
+
+        Mit eigenen Modellnamen: seit FALLBACK_MODEL und DEFAULT_MODEL in
+        llm.py beide `google/gemma-4-12b` sind, gibt es mit den echten Werten
+        gar nichts auszuweichen, und der Test war rot, ohne dass die Regel
+        kaputt war.
         """
         calls = []
         def fake_urlopen(req, timeout=None):
             calls.append(json.loads(req.data.decode("utf-8"))["model"])
             raise TimeoutError("timed out")
-        with mock.patch.object(llm.urllib.request, "urlopen", side_effect=fake_urlopen):
+        with mock.patch.object(llm, "FALLBACK_MODEL", "fern-gross"), \
+                mock.patch.object(llm, "DEFAULT_MODEL", "lokal-klein"), \
+                mock.patch.object(llm.urllib.request, "urlopen", side_effect=fake_urlopen):
             with self.assertRaises(llm.LlmError):
-                llm.chat([{"role": "user", "content": "hi"}], model=llm.FALLBACK_MODEL)
-        self.assertEqual(calls, [llm.FALLBACK_MODEL, llm.FALLBACK_MODEL,
-                                 llm.DEFAULT_MODEL])
+                llm.chat([{"role": "user", "content": "hi"}], model="fern-gross")
+        self.assertEqual(calls, ["fern-gross", "fern-gross", "lokal-klein"])
 
     def test_explicit_identical_fallback_is_still_honoured(self):
         """Ein ausdruecklich uebergebener Fallback bleibt das Wort des Aufrufers.

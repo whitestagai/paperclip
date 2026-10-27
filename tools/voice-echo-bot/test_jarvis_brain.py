@@ -634,3 +634,37 @@ def test_tavily_fehler_nach_leerer_suche_meldet_nichts_gefunden(monkeypatch):
     r = jarvis_brain.respond("wetter?", TENANT, "tok", "m", web_key="tvly-k")
     assert "nicht ins Netz" not in r["answer"]
     assert "gefunden" in r["answer"]
+
+
+# --- reasoning_effort: nur wer ihn setzt, bekommt ihn ----------------------
+
+def test_reasoning_effort_reaches_every_llm_call(monkeypatch):
+    # Hauptaufruf UND Folgeaufruf nach dem Vault-Lookup — sonst denkt das
+    # Modell ausgerechnet in der längeren zweiten Runde wieder.
+    seen = []
+    def fake_chat(msgs, model=None, **kw):
+        seen.append(kw.get("reasoning_effort"))
+        return "LOOKUP kontakt: Jana" if len(seen) == 1 else "Janas Nummer ist 123."
+    monkeypatch.setattr(jarvis_brain.llm, "chat", fake_chat)
+    monkeypatch.setattr(jarvis_brain.vault_client, "lookup",
+                        lambda mode, query, vault=None: {"mode": mode, "treffer": [{"tel": "123"}]})
+    jarvis_brain.respond("Nummer von Jana?", TENANT, "tok", "m", reasoning_effort="none")
+    assert seen == ["none", "none"]
+
+
+def test_reasoning_effort_reaches_the_web_followup(monkeypatch):
+    seen = []
+    def fake_chat(msgs, model=None, **kw):
+        seen.append(kw.get("reasoning_effort"))
+        return "WEB: Wetter Cottbus" if len(seen) == 1 else "Morgen 24 Grad."
+    monkeypatch.setattr(jarvis_brain.llm, "chat", fake_chat)
+    monkeypatch.setattr(jarvis_brain.websuche_client, "suche", _lokale_quelle)
+    jarvis_brain.respond("wetter morgen?", TENANT, "tok", "m", reasoning_effort="none")
+    assert seen == ["none", "none"]
+
+
+def test_without_reasoning_effort_llm_chat_gets_no_such_argument(monkeypatch):
+    # Bestehende Aufrufer (Telegram) und ihre Doubles mit (msgs, model=None)
+    # dürfen kein neues Argument zu sehen bekommen.
+    monkeypatch.setattr(jarvis_brain.llm, "chat", lambda msgs, model=None: "Hallo Walter.")
+    assert jarvis_brain.respond("hi", TENANT, "tok", "m")["answer"] == "Hallo Walter."

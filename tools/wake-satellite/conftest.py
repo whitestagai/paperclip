@@ -33,3 +33,10 @@ def keine_echte_hardware(monkeypatch):
     monkeypatch.setattr(subprocess, "Popen", verboten)
     monkeypatch.setattr(tts, "synthesize", verboten)
     monkeypatch.setattr(lokal_tts, "synthesize", verboten)
+
+
+@pytest.fixture(autouse=True)
+def diag_im_tmp(monkeypatch, tmp_path):
+    """Diagnose-WAVs der Stille nach der Quittung nie ins Live-Verzeichnis."""
+    import sat_config
+    monkeypatch.setattr(sat_config, "DIAG_DIR", str(tmp_path / "diag"))

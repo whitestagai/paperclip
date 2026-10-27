@@ -3,6 +3,171 @@ import { readFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+// seed/grafik.ts
+var GRAFIK_ZAUN = /^\s*```\s*grafik\s*$/;
+var TYPEN = ["stufen", "ablauf", "entscheidung", "ampel", "vorher-nachher", "zeitleiste"];
+var MAX = { eintrag: 40, zusatz: 80, titel: 70, unterschrift: 110, langtext: 200, datum: 16, sonst: 80 };
+var ANZAHL = {
+  stufen: [3, 5],
+  ablauf: [3, 6],
+  entscheidung: [2, 5],
+  zeitleiste: [3, 7],
+  ampel: [1, 4]
+};
+var SCHLUESSEL = {
+  stufen: [],
+  ablauf: [],
+  zeitleiste: [],
+  entscheidung: ["sonst"],
+  ampel: ["gruen", "gelb", "rot"],
+  "vorher-nachher": ["vorher", "nachher", "warum"]
+};
+var MIT_EINTRAEGEN = ["stufen", "ablauf", "entscheidung", "zeitleiste"];
+function parseGrafik(body) {
+  const zeilen = body.replace(/\r\n/g, "\n").split("\n").map((z) => z.trim()).filter((z) => z !== "");
+  const erste = /^typ:\s*(.*)$/.exec(zeilen[0] ?? "");
+  if (!erste) {
+    const irgendwo = zeilen.some((z) => /^typ:/.test(z));
+    return { ok: false, problems: [irgendwo ? "`typ:` muss in der ersten Zeile stehen." : "`typ:` fehlt."] };
+  }
+  const typRoh = erste[1].trim();
+  if (!TYPEN.includes(typRoh)) {
+    return {
+      ok: false,
+      problems: [`Unbekannter Typ \u201E${typRoh}\u201C. Erlaubt sind: ${TYPEN.join(", ")}.`]
+    };
+  }
+  const typ = typRoh;
+  const problems = [];
+  const erlaubt = ["titel", "unterschrift", ...SCHLUESSEL[typ]];
+  const werte = /* @__PURE__ */ new Map();
+  const roheEintraege = [];
+  for (const zeile of zeilen.slice(1)) {
+    const eintrag = /^-\s+(.*)$/.exec(zeile);
+    if (eintrag) {
+      if (MIT_EINTRAEGEN.includes(typ)) roheEintraege.push(eintrag[1].trim());
+      else problems.push(`Unbekannte Zeile: \u201E${zeile}\u201C.`);
+      continue;
+    }
+    const kv = /^([a-z-]+):\s*(.*)$/.exec(zeile);
+    if (!kv) {
+      problems.push(`Unbekannte Zeile: \u201E${zeile}\u201C.`);
+      continue;
+    }
+    const [, schluessel, wert] = kv;
+    if (!erlaubt.includes(schluessel)) problems.push(`Unbekannter Schl\xFCssel \`${schluessel}\` f\xFCr \`${typ}\`.`);
+    else if (werte.has(schluessel)) problems.push(`Schl\xFCssel \`${schluessel}\` steht mehrfach.`);
+    else werte.set(schluessel, wert.trim());
+  }
+  const pflicht = (schluessel, max) => {
+    const w = werte.get(schluessel) ?? "";
+    if (w === "") problems.push(`\`${schluessel}\` fehlt.`);
+    else if (w.length > max) problems.push(`\`${schluessel}\` ist ${w.length} Zeichen lang, erlaubt sind ${max}.`);
+    return w;
+  };
+  const titel = pflicht("titel", MAX.titel);
+  let unterschrift;
+  if (werte.has("unterschrift") && werte.get("unterschrift") !== "") {
+    unterschrift = werte.get("unterschrift");
+    if (unterschrift.length > MAX.unterschrift) {
+      problems.push(`\`unterschrift\` ist ${unterschrift.length} Zeichen lang, erlaubt sind ${MAX.unterschrift}.`);
+    }
+  }
+  const kopf = unterschrift === void 0 ? { titel } : { titel, unterschrift };
+  let grafik;
+  if (typ === "stufen" || typ === "ablauf" || typ === "entscheidung" || typ === "zeitleiste") {
+    const eintraege = [];
+    roheEintraege.forEach((roh, i) => {
+      const n = i + 1;
+      const trenner = roh.indexOf(" | ");
+      const text = (trenner < 0 ? roh : roh.slice(0, trenner)).trim();
+      const zusatz = trenner < 0 ? void 0 : roh.slice(trenner + 3).trim();
+      const hatZusatz = zusatz !== void 0 && zusatz !== "";
+      if (typ === "entscheidung" || typ === "zeitleiste") {
+        if (text === "" || !hatZusatz) {
+          problems.push(
+            `Eintrag ${n} braucht das Format \`${typ === "entscheidung" ? "Frage? | Ergebnis bei Ja" : "Datum | Ereignis"}\`.`
+          );
+          return;
+        }
+      } else if (text === "") {
+        problems.push(`Eintrag ${n} ist leer.`);
+        return;
+      }
+      const textName = typ === "zeitleiste" ? "Datum von Eintrag" : "Eintrag";
+      const zusatzName = typ === "zeitleiste" ? "Ereignis von Eintrag" : "Zusatz von Eintrag";
+      const maxText = typ === "zeitleiste" ? MAX.datum : MAX.eintrag;
+      if (text.length > maxText) problems.push(`${textName} ${n} ist ${text.length} Zeichen lang, erlaubt sind ${maxText}.`);
+      if (hatZusatz && zusatz.length > MAX.zusatz) {
+        problems.push(`${zusatzName} ${n} ist ${zusatz.length} Zeichen lang, erlaubt sind ${MAX.zusatz}.`);
+      }
+      eintraege.push(hatZusatz ? { text, zusatz } : { text });
+    });
+    const [min, max] = ANZAHL[typ];
+    if (roheEintraege.length < min || roheEintraege.length > max) {
+      problems.push(`\`${typ}\` braucht ${min}\u2013${max} Eintr\xE4ge, gefunden ${roheEintraege.length}.`);
+    }
+    if (typ === "entscheidung") {
+      const sonst = pflicht("sonst", MAX.sonst);
+      grafik = { ...kopf, typ, eintraege, sonst };
+    } else {
+      grafik = { ...kopf, typ, eintraege };
+    }
+  } else if (typ === "ampel") {
+    const [min, max] = ANZAHL.ampel;
+    const farbe = (name) => {
+      const w = werte.get(name) ?? "";
+      if (w === "") {
+        problems.push(`\`${name}\` fehlt.`);
+        return [];
+      }
+      const teile = w.split(";").map((t) => t.trim()).filter((t) => t !== "");
+      if (teile.length < min || teile.length > max) {
+        problems.push(`\`${name}\` braucht ${min}\u2013${max} Eintr\xE4ge, gefunden ${teile.length}.`);
+      }
+      teile.forEach((t, i) => {
+        if (t.length > MAX.eintrag) {
+          problems.push(`Eintrag ${i + 1} in \`${name}\` ist ${t.length} Zeichen lang, erlaubt sind ${MAX.eintrag}.`);
+        }
+      });
+      return teile;
+    };
+    grafik = { ...kopf, typ, gruen: farbe("gruen"), gelb: farbe("gelb"), rot: farbe("rot") };
+  } else {
+    const vorher = pflicht("vorher", MAX.langtext);
+    const nachher = pflicht("nachher", MAX.langtext);
+    const warum = pflicht("warum", MAX.langtext);
+    grafik = { ...kopf, typ, vorher, nachher, warum };
+  }
+  return problems.length > 0 || !grafik ? { ok: false, problems } : { ok: true, grafik };
+}
+function findGrafikBlocks(markdown) {
+  const zeilen = markdown.replace(/\r\n/g, "\n").split("\n");
+  const funde = [];
+  let i = 0;
+  while (i < zeilen.length) {
+    if (GRAFIK_ZAUN.test(zeilen[i])) {
+      let ende = i + 1;
+      while (ende < zeilen.length && zeilen[ende].trim() !== "```") ende++;
+      const geschlossen = ende < zeilen.length;
+      funde.push({
+        body: zeilen.slice(i + 1, ende).join("\n"),
+        startLine: i,
+        endLine: geschlossen ? ende : zeilen.length - 1,
+        geschlossen
+      });
+      i = ende + 1;
+    } else if (zeilen[i].trim().startsWith("```")) {
+      let ende = i + 1;
+      while (ende < zeilen.length && zeilen[ende].trim() !== "```") ende++;
+      i = ende + 1;
+    } else {
+      i++;
+    }
+  }
+  return funde;
+}
+
 // seed/parse-content.ts
 var LABELS = [
   "Lernziel",
@@ -113,6 +278,57 @@ ${privacy}` : privacy;
   return out;
 }
 
+// src/import/grafik-regeln.ts
+var MAX_GRAFIKEN_PRO_KURS = 6;
+var ANDERE_FELDER = [
+  ["practice_task", "Praxisaufgabe"],
+  ["prompt_exercise", "Prompt-\xDCbung"],
+  ["prompt_feedback_focus", "Feedback-Fokus"],
+  ["check_question", "Wissens-Check"],
+  ["check_answer", "Wissens-Check"]
+];
+function checkGrafiken(lessons) {
+  const problems = [];
+  const letzte = lessons.reduce((m, l) => Math.max(m, l.day_index), -Infinity);
+  let ohneAmpelImKurs = 0;
+  let ampeln = 0;
+  for (const l of lessons) {
+    const n = l.day_index;
+    const gefunden = /* @__PURE__ */ new Set();
+    for (const [feld, name] of ANDERE_FELDER) {
+      const text = l[feld];
+      if (typeof text === "string" && text.trim() && findGrafikBlocks(text).length > 0) gefunden.add(name);
+    }
+    for (const name of gefunden) {
+      problems.push(`Lektion ${n}: Grafiken sind nur im Inhalt erlaubt, gefunden in ${name}.`);
+    }
+    const gueltig = [];
+    findGrafikBlocks(l.content ?? "").forEach((fund, i) => {
+      const k = i + 1;
+      if (!fund.geschlossen) {
+        problems.push(`Lektion ${n}: Grafik ${k}: Der Grafik-Block ist nicht geschlossen.`);
+        return;
+      }
+      const r = parseGrafik(fund.body);
+      if (r.ok) gueltig.push(r.grafik);
+      else for (const p of r.problems) problems.push(`Lektion ${n}: Grafik ${k}: ${p}`);
+    });
+    const ohneAmpel = gueltig.filter((g) => g.typ !== "ampel").length;
+    if (ohneAmpel > 1) problems.push(`Lektion ${n}: h\xF6chstens eine Grafik pro Lektion, gefunden ${ohneAmpel}.`);
+    ohneAmpelImKurs += ohneAmpel;
+    const ampelnHier = gueltig.length - ohneAmpel;
+    ampeln += ampelnHier;
+    if (ampelnHier > 0 && n !== letzte) {
+      problems.push(`Lektion ${n}: Die Ampel-Grafik darf nur in der letzten Lektion stehen.`);
+    }
+  }
+  if (ohneAmpelImKurs > MAX_GRAFIKEN_PRO_KURS) {
+    problems.push(`H\xF6chstens ${MAX_GRAFIKEN_PRO_KURS} Grafiken pro Kurs, gefunden ${ohneAmpelImKurs}.`);
+  }
+  if (ampeln > 1) problems.push(`Die Ampel-Grafik darf h\xF6chstens einmal pro Kurs vorkommen, gefunden ${ampeln}.`);
+  return problems;
+}
+
 // src/import/validate-course.ts
 var LONG_DESCRIPTION_MIN = 1200;
 var LONG_DESCRIPTION_MAX = 3e3;
@@ -215,6 +431,7 @@ function validateCourse(slug, md) {
         problems.push(`Lektion ${l.day_index}: Der Wissens-Check braucht eine Frage und eine Antwort (in <details>).`);
       }
     }
+    problems.push(...checkGrafiken(lessons));
   }
   if (problems.length > 0) return { ok: false, problems };
   return {
@@ -235,6 +452,7 @@ function validateCourse(slug, md) {
 }
 
 // scripts/kurs-check.ts
+var GRAFIKEN_FREIGESCHALTET = true;
 var SPEC_FIELDS = [
   "title",
   "datum",
@@ -267,6 +485,9 @@ function checkCourse(slug, rawMd, opts = {}) {
   const warnungen = [];
   const v = validateCourse(slug, md);
   if (!v.ok) fehler.push(...v.problems.map((p) => `[Import] ${p}`));
+  if (!(opts.grafikenFreigeschaltet ?? GRAFIKEN_FREIGESCHALTET) && findGrafikBlocks(md).length > 0) {
+    fehler.push("[Spec \xA7 7] Grafik-Bl\xF6cke sind noch nicht freigeschaltet \u2014 die App zeigt sie erst nach dem n\xE4chsten Deploy.");
+  }
   const lines = frontmatterLines(md);
   if (!lines) {
     fehler.push("[Spec \xA7 8] Kein Frontmatter-Block (--- \u2026 ---) am Dateianfang.");
@@ -417,5 +638,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   process.exitCode = main(process.argv.slice(2));
 }
 export {
+  GRAFIKEN_FREIGESCHALTET,
   checkCourse
 };

@@ -240,3 +240,82 @@ def test_fehlender_logordner_ist_kein_fehler(tmp_path):
     """Auf einem anderen Rechner oder nach dem Aufraeumen gibt es die Logs
     nicht — dann steht in der Spalte '?', der Report laeuft weiter."""
     assert steckbrief.denk_zaehler("2026-08-22", log_dir=str(tmp_path)) == {}
+
+
+# --------------------------------------------------------------------------- #
+# Strata (qwen3.8 auf dem Film-Rechner) — kein LM Studio
+# --------------------------------------------------------------------------- #
+# Echte Antwort von GET 192.168.2.181:1235/v1/models (27.10.2026)
+STRATA = {"object": "list", "data": [
+    {"id": "qwen3.8-flash-next-unsloth-ud-q4_k_xl", "object": "model",
+     "status": {"value": "loaded"}, "meta": {"n_ctx": 131072},
+     "architecture": {"input_modalities": ["text", "image"],
+                      "output_modalities": ["text"]}}]}
+
+
+def test_strata_liefert_fenster_und_quant_aus_dem_dateinamen():
+    """Strata kennt kein Feld `quantization` — die Stufe steht nur im
+    GGUF-Namen, den die Engine als Modell-ID durchreicht."""
+    assert steckbrief.parse_strata(STRATA) == {
+        "qwen3.8-flash-next-unsloth-ud-q4_k_xl": {"quant": "UD-Q4_K_XL",
+                                                  "ctx": 131072}}
+
+
+def test_quant_aus_dem_namen_nur_mit_erkennbarer_stufe():
+    assert steckbrief.quant_aus_name("qwen3.8-flash-next-iq3_s") == "IQ3_S"
+    assert steckbrief.quant_aus_name("modell-q8_0") == "Q8_0"
+    assert steckbrief.quant_aus_name("qwen3.8-flash-next") is None
+
+
+def test_kaputte_strata_antwort_liefert_nichts():
+    assert steckbrief.parse_strata({}) == {}
+    assert steckbrief.parse_strata({"data": [{"id": ""}]}) == {}
+
+
+def test_strata_modell_ist_nicht_mehr_unvollstaendig():
+    sb = {"katalog": steckbrief.parse_strata(STRATA), "denken": {}}
+    m = "qwen3.8-flash-next-unsloth-ud-q4_k_xl"
+    assert steckbrief.ctx(m, sb) == "128K"
+    assert steckbrief.unvollstaendig([m], sb) == []
+
+
+def _runlog(*nachrichten):
+    """Paperclip-Run-Log (ndjson) mit Claude-CLI-stream-json in `chunk`.
+
+    Die CLI schickt je Inhaltsblock ein eigenes `assistant`-Ereignis mit
+    derselben message.id — gezaehlt wird je Nachricht, nicht je Ereignis.
+    Der Chunk-Schnitt faellt absichtlich mitten in eine JSON-Zeile.
+    """
+    zeilen = []
+    for mid, modell, typen in nachrichten:
+        for t in typen:
+            zeilen.append(json.dumps({"type": "assistant", "message": {
+                "id": mid, "model": modell, "content": [{"type": t}]}}))
+    roh = "\n".join(zeilen) + "\n"
+    mitte = len(roh) // 2
+    return "".join(json.dumps({"ts": "x", "stream": "stdout", "chunk": c}) + "\n"
+                   for c in (roh[:mitte], roh[mitte:]))
+
+
+def test_runlog_zaehlt_nachrichten_mit_denkblock():
+    q = "qwen3.8-flash-next-unsloth-ud-q4_k_xl"
+    text = _runlog(("m1", q, ["thinking", "tool_use"]),
+                   ("m2", q, ["thinking", "text"]),
+                   ("m3", q, ["text"]))
+    assert steckbrief.parse_runlog(text) == {q: [3, 2]}
+
+
+def test_runlog_ignoriert_synthetische_nachrichten_und_stderr():
+    """`<synthetic>` erzeugt die CLI selbst (z.B. bei Abbruch) — kein Modell."""
+    text = (_runlog(("m1", "<synthetic>", ["text"]), ("m2", "q", ["thinking"]))
+            + json.dumps({"stream": "stderr", "chunk": "⚠ irgendwas\n"}) + "\n")
+    assert steckbrief.parse_runlog(text) == {"q": [1, 1]}
+
+
+def test_runlog_zaehler_landen_bei_den_lm_studio_zaehlern(tmp_path):
+    p = tmp_path / "lauf.ndjson"
+    p.write_text(_runlog(("m1", "q", ["thinking"]), ("m2", "q", ["text"])),
+                 encoding="utf-8")
+    assert steckbrief.runlog_zaehler([(str(p), False)]) == {"q": [2, 1]}
+    # fehlende Datei kippt nichts
+    assert steckbrief.runlog_zaehler([(str(tmp_path / "weg.ndjson"), False)]) == {}

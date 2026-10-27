@@ -230,6 +230,28 @@ def agent_model_on_day(day: str):
         return cur.fetchall()
 
 
+def fremdmodell_runlogs(tage):
+    """Run-Logs der Laeufe, die ein Nicht-Claude-Modell ueber die Anthropic-API
+    gefahren haben (Strata hinter der Claude-CLI) -> [(log_ref, komprimiert)].
+
+    Daran haengt der Steckbrief die Denkquote: diese Modelle schreiben nichts
+    in die LM-Studio-Logs, die Run-Logs sind die einzige Stelle mit Denkbloecken.
+    """
+    if not tage:
+        return []
+    sql = """
+    SELECT DISTINCT hr.log_ref, hr.log_compressed
+    FROM cost_events ce
+    JOIN heartbeat_runs hr ON hr.id = ce.heartbeat_run_id
+    WHERE ce.provider = 'anthropic' AND ce.model NOT LIKE 'claude-%%'
+      AND hr.log_store = 'local_file' AND hr.log_ref IS NOT NULL
+      AND (ce.occurred_at AT TIME ZONE %s)::date = ANY(%s::date[]);
+    """
+    with _conn() as c, c.cursor() as cur:
+        cur.execute(sql, (TZ, list(tage)))
+        return cur.fetchall()
+
+
 def yesterday_berlin():
     with _conn() as c, c.cursor() as cur:
         cur.execute(

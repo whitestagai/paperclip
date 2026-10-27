@@ -20,6 +20,13 @@ Report die zuletzt gesehenen Katalogwerte in `state/steckbrief-cache.json`.
 Das pflegt sich selbst — im Gegensatz zur Ortstabelle braucht hier niemand
 etwas nachzutragen.
 
+**Strata** (qwen3.8 auf dem Film-Rechner, seit 23.10.2026) ist kein LM Studio:
+kein `/api/v0`, keine LM-Studio-Logs auf dem Mac. Fenster kommt aus
+`GET :1235/v1/models` (`meta.n_ctx`), die Quantisierung nur aus dem GGUF-Namen,
+den Strata als Modell-ID durchreicht. Thinking wird aus den Paperclip-Run-Logs
+gezaehlt: VP Engineering spricht Strata ueber die Claude-CLI an, deren
+stream-json jeden Denkblock als `thinking` ausweist.
+
 **Anthropic:** keine Quantisierung (Cloud, `–`), Fenster bekannt (200K, bei der
 `[1m]`-Variante 1M), Thinking **nicht ermittelbar** — `cost_events` fuehrt keine
 Reasoning-Token und die `claude_local`-Agenten haben kein Thinking-Feld in der
@@ -33,7 +40,9 @@ from datetime import date
 from typing import Optional
 
 KATALOG_URL = "http://localhost:1234/api/v0/models"
+STRATA_URL = "http://192.168.2.181:1235/v1/models"
 LOG_DIR = os.path.expanduser("~/.lmstudio/server-logs")
+RUNLOG_DIR = os.path.expanduser("~/.paperclip/instances/default/data/run-logs")
 DIR = os.path.dirname(os.path.abspath(__file__))
 CACHE_DATEI = os.path.join(DIR, "state", "steckbrief-cache.json")
 
@@ -54,9 +63,13 @@ ERSATZ = {
     # unsloth/Qwen3.6-35B-A3B-MLX-8bit auf dem MacBook; MLX "context auto-fit"
     # zieht das Fenster auf das Modellmaximum hoch (262144), unabhaengig von -c.
     "qwen3.6-35b-a3b-mlx": {"quant": "8bit", "ctx": 262144},
+    # Strata-Probebetrieb 22.10.2026, am Nachmittag durch Q4_K_XL ersetzt.
+    "qwen3.8-flash-next-iq3_s": {"quant": "IQ3_S", "ctx": 131072},
 }
 
 _PRED = re.compile(r"\[INFO\]\[([^\]]+)\] Generated prediction: \{")
+# GGUF-Stufe am Namensende: q4_k_m, q8_0, iq3_s, unsloth-Dynamic ud-q4_k_xl
+_QUANT_NAME = re.compile(r"(?:^|[-_.])((?:ud-)?i?q\d+(?:_[a-z0-9]+)*)$", re.I)
 
 
 # --------------------------------------------------------------------------- #
@@ -87,6 +100,37 @@ def lade_katalog(timeout: int = 15) -> dict:
         with urllib.request.urlopen(KATALOG_URL, timeout=timeout) as r:
             return parse_katalog(json.load(r))
     except Exception:  # noqa: BLE001 — Netz, JSON, alles gleich unkritisch
+        return {}
+
+
+def quant_aus_name(model_id) -> Optional[str]:
+    """'…-unsloth-ud-q4_k_xl' -> 'UD-Q4_K_XL' — None ohne erkennbare Stufe."""
+    m = _QUANT_NAME.search(model_id or "")
+    return m.group(1).upper() if m else None
+
+
+def parse_strata(payload) -> dict:
+    """Antwort von Strata /v1/models -> {modell_id: {'quant':…, 'ctx':…}}."""
+    eintraege = (payload or {}).get("data")
+    if not isinstance(eintraege, list):
+        return {}
+    raus = {}
+    for e in eintraege:
+        if not isinstance(e, dict) or not e.get("id"):
+            continue
+        raus[e["id"]] = {
+            "quant": quant_aus_name(e["id"]),
+            "ctx": (e.get("meta") or {}).get("n_ctx") or None,
+        }
+    return raus
+
+
+def lade_strata(timeout: int = 8) -> dict:
+    """Strata-Katalog — leer, wenn der Film-Rechner aus ist (dann traegt der Cache)."""
+    try:
+        with urllib.request.urlopen(STRATA_URL, timeout=timeout) as r:
+            return parse_strata(json.load(r))
+    except Exception:  # noqa: BLE001 — wie lade_katalog: Beiwerk, nie fatal
         return {}
 
 
@@ -165,6 +209,84 @@ def denk_zaehler(tage, log_dir: str = LOG_DIR) -> dict:
                 e[0] += n
                 e[1] += r
     return raus
+
+
+# --------------------------------------------------------------------------- #
+# Thinking aus den Paperclip-Run-Logs (Strata ueber die Claude-CLI)
+# --------------------------------------------------------------------------- #
+def parse_runlog(text: str) -> dict:
+    """Ein Run-Log (ndjson) -> {modell: [nachrichten, davon_mit_denkblock]}.
+
+    Der stream-json der CLI steckt zerstueckelt in den `chunk`-Feldern der
+    stdout-Zeilen und wird erst zusammengesetzt, dann zeilenweise gelesen.
+    Die CLI schickt je Inhaltsblock ein eigenes Ereignis mit derselben
+    message.id, gezaehlt wird deshalb je Nachricht.
+    """
+    teile = []
+    for zeile in text.splitlines():
+        try:
+            e = json.loads(zeile)
+        except ValueError:
+            continue
+        if isinstance(e, dict) and e.get("stream") == "stdout":
+            teile.append(e.get("chunk") or "")
+    nachrichten = {}
+    for zeile in "".join(teile).split("\n"):
+        zeile = zeile.strip()
+        if not zeile.startswith("{"):
+            continue
+        try:
+            d = json.loads(zeile)
+        except ValueError:
+            continue
+        if d.get("type") != "assistant":
+            continue
+        msg = d.get("message") or {}
+        modell = msg.get("model")
+        if not modell or modell == "<synthetic>":
+            continue
+        typen = nachrichten.setdefault((modell, msg.get("id")), set())
+        typen.update(c.get("type") for c in msg.get("content") or []
+                     if isinstance(c, dict))
+    raus = {}
+    for (modell, _mid), typen in nachrichten.items():
+        e = raus.setdefault(modell, [0, 0])
+        e[0] += 1
+        if "thinking" in typen:
+            e[1] += 1
+    return raus
+
+
+def runlog_zaehler(laeufe) -> dict:
+    """[(pfad, komprimiert)] -> {modell: [nachrichten, mit_denkblock]}."""
+    import gzip
+    raus = {}
+    for pfad, komprimiert in laeufe:
+        try:
+            oeffne = gzip.open if komprimiert else open
+            with oeffne(pfad, "rt", encoding="utf-8", errors="replace") as fh:
+                teil = parse_runlog(fh.read())
+        except OSError:
+            continue
+        for modell, (n, r) in teil.items():
+            e = raus.setdefault(modell, [0, 0])
+            e[0] += n
+            e[1] += r
+    return raus
+
+
+def _fremdmodell_laeufe(tage) -> list:
+    """Run-Logs der Tage, an denen ein Nicht-Claude-Modell per Anthropic-API lief.
+
+    Die DB-Abfrage steckt hier statt oben im Modul, damit die Tests ohne
+    psycopg2 und ohne Paperclip-DB auskommen.
+    """
+    try:
+        import query
+        return [(os.path.join(RUNLOG_DIR, ref), bool(gz))
+                for ref, gz in query.fremdmodell_runlogs(_tagesliste(tage))]
+    except Exception:  # noqa: BLE001 — DB weg = Thinking '?', kein Abbruch
+        return []
 
 
 # --------------------------------------------------------------------------- #
@@ -301,10 +423,16 @@ def erhebe(tage=None, cache_pfad=CACHE_DATEI) -> dict:
     Ergebnis zurueckschreiben — so ueberlebt ein nachts abgeschaltetes Geraet
     den naechsten Lauf.
     """
-    katalog = verschmelze(lies_cache(cache_pfad), lade_katalog())
+    katalog = verschmelze(verschmelze(lies_cache(cache_pfad), lade_katalog()),
+                          lade_strata())
     if katalog:
         schreibe_cache(katalog, cache_pfad)
-    return {"katalog": katalog, "denken": denk_zaehler(tage)}
+    denken = denk_zaehler(tage)
+    for modell, (n, r) in runlog_zaehler(_fremdmodell_laeufe(tage)).items():
+        e = denken.setdefault(modell, [0, 0])
+        e[0] += n
+        e[1] += r
+    return {"katalog": katalog, "denken": denken}
 
 
 def letzte_tage(n: int, bis=None) -> list:

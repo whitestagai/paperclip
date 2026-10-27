@@ -188,6 +188,9 @@ Nicht erreichbare Modelle (RTX nachts aus) kommen aus dem zuletzt gesehenen Stan
 <b>Thinking</b> ist gemessen, nicht konfiguriert: Anteil der Vorhersagen mit <code>reasoning_tokens &gt; 0</code> in den LM-Studio-Logs des Tages.
 <code>on</code> ab 5 %. Die Quote steht dabei, weil eine gepatchte Vorlage eine Restquote übrig lässt. Für Anthropic-Modelle nicht ermittelbar (<code>?</code>) —
 <code>cost_events</code> führt keine Reasoning-Token.<br>
+<b>Strata</b> (<code>qwen3.8-flash-next-…</code> auf dem Film-Rechner, RTX Pro 6000) ist kein LM-Studio-Modell: Quant und CTX kommen aus Strata selbst
+(<code>:1235/v1/models</code>, die Stufe aus dem GGUF-Namen), Thinking aus den Paperclip-Run-Logs — Anteil der Antworten mit Denkblock.
+Aufrufe laufen über die Claude-CLI und stehen in <code>cost_events</code> als Anbieter <code>anthropic</code>; Kosten 0 €, weil lokal.<br>
 <b>Kosten</b> sind aus den Token gerechnet (Preistabelle in <code>pricing.py</code>), nicht aus <code>cost_events.cost_cents</code> — Paperclip füllt die Spalte für Anthropic-Modelle nicht.
 Lokale Modelle kosten 0 €. Cache-Reads zu 0,1× Input-Preis; Cache-<i>Writes</i> erfasst <code>cost_events</code> offenbar nicht getrennt, die echten Kosten liegen daher eher etwas höher.</p>
 </body></html>"""

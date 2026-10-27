@@ -80,13 +80,17 @@ def _ist_musik(text):
 
 
 def _speak(text, deps):
+    """Spricht `text`. Gibt die Synthesezeit in Sekunden zurück (fürs Log)."""
     if not (text or "").strip():
-        return
+        return 0.0
     workdir = tempfile.mkdtemp()
     try:
+        t0 = time.monotonic()
         dest = _synthesize(text, deps, workdir)
+        synth = time.monotonic() - t0
         if dest:
             playback.play(dest, device=sat_config.HOMEPOD_DEVICE)
+        return synth
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
 
@@ -202,16 +206,19 @@ def handle_interaction(frames, deps, tenant=None, history=None):
         answer = result["answer"]
         if result["kind"] in ("chat", "lookup", "issue", "web"):
             history = _remember(history, text, answer)
-        _speak(answer, deps)
+        synth = _speak(answer, deps) or 0.0
         if flush_mic:
             flush_mic()      # eigene Wiedergabe nicht als Nachfrage hören
         t3 = time.monotonic()
         runden += 1
+        # erster_ton: vom Ende der Aufnahme bis zum Start der Wiedergabe — die
+        # Wartezeit, die Walter spürt (ohne die AirPlay-Pufferung des HomePods).
         print("[timing] runde={}/{} aufnahme={:.1f}s stt={:.1f}s llm({})={:.1f}s "
-              "tts+play={:.1f}s | text='{}'".format(
+              "tts={:.1f}s play={:.1f}s erster_ton={:.1f}s | text='{}'".format(
                   runden, sat_config.MAX_TURNS_PER_WAKE,
                   len(recorded) * sat_config.FRAME_SAMPLES / sat_config.SAMPLE_RATE,
-                  t1 - t0, result["kind"], t2 - t1, t3 - t2, (text or "")[:50]),
+                  t1 - t0, result["kind"], t2 - t1, synth, t3 - t2 - synth,
+                  t2 - t0 + synth, (text or "")[:50]),
               flush=True)
         # Die Nachfrage wird direkt aufgenommen, statt sie erst zu „erkennen"
         # und dann aufzunehmen: das getrennte Horchen verbrauchte genau die

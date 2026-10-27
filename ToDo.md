@@ -681,6 +681,8 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       **Stand 22.10.:** WHI-10365 baute `ki-automatisierung-n8n` (8 Lektionen, Lektorat GELB, importiert),
       also ein eigenes Werkzeug-Thema. Formprüfung lief vor beiden Runden mit OK. Noch offen aus diesem Eintrag:
       F3-Sicherheitsrahmen in den Übungen, Prüfpunkte 15–17 beim Lektor und die Kurskarte mit zwei Balken. *(2026-10-22, Chat: ACADEMY Kurs-Formprüfung)*
+      **Stand 27.10.:** Im Eingang stehen jetzt Fortgeschrittenen-Ideen (V01–V03 mit Vorrang, dazu Agentic AI) — die
+      offenen Prüfpunkte gleich an den Vorrang-Kursen mitprüfen (Eintrag unten). *(2026-10-27, Chat: ACADEMY Kurse Vorrang)*
 
 - [ ] **Ersten Kurs mit 8–10 Lektionen beobachten** — seit 19.10. verlangt Spec § 5
       8 bis 10 statt 7 Lektionen (Prüfprofil Punkt 9a, ROT). Längere Kurse heißen
@@ -714,6 +716,16 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       veraltet das schnell. Möglicher Weg: Überarbeitung als zweiter Entwurf neben dem
       veröffentlichten Kurs, Freigabe im Admin ersetzt die Lektionen, Fortschritt der
       Teilnehmer bleibt erhalten. *(2026-10-19, Chat: Kursmix und Niveau)*
+
+- [ ] **Vorrang-Kurse n8n, Paperclip, Claude Code gegenlesen (Mi 28.–Fr 30.10.)** — `K-20261027-V01…V03`,
+      fortgeschritten, **12–15 Lektionen** (Walters Vorgabe, Spec § 5 Ausnahme, Prüfprofil 9a). Prüfen: Nimmt der CEO
+      die VORRANG-Zeile vor L08, setzt er `Umfang: …` unter die Kurstyp-Zeile, wertet der Lektor 12–15 nicht als ROT,
+      baut der n8n-Kurs erkennbar auf `ki-automatisierung-n8n` auf? Laufzahl und `max_iterations` des Autors bei den
+      langen Kursen beobachten; `skip_if_active` kann Donnerstag ausfallen lassen. *(2026-10-27, Chat: ACADEMY Kurse Vorrang)*
+
+- [ ] **Agentic-AI-Kurs aus dem LHIND-Whitepaper gegenlesen** — Idee `K-20261026-141307` (fortgeschritten,
+      Material `Workshops/_ideen/K-20261026-141307.md`), läuft nach den drei Vorrang-Kursen, voraussichtlich Mi 04.11.
+      Prüfen: Material genutzt ohne Abschreiben, keine LHIND-Marken- oder Firmendarstellung, Abgrenzung zum n8n-Kurs. *(2026-10-27, Chat: ACADEMY Kurse Vorrang)*
 
 ## SEO/GEO
 
@@ -1511,6 +1523,9 @@ Umsetzung läuft in einer Booker-Session). R9 ist angehalten
       *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
 
 ## Fuer Walter (nur von Hand)
+
+- [ ] **Zwei Commits auf `fix/backup-leere-ref-ordner` ungepusht** — `e5e948c7b` (seo-geo) und `569acb6af`
+      (docs(todo) Arbeitszeit-Mail), beide aus anderen Sessions. Push ist Ansage-pflichtig. *(2026-10-27, Chat: ACADEMY Kurse Vorrang)*
 
 - [ ] **RTX Pro 6000 aus LM Link abmelden** — traegt seit 21.10. keine Modelle mehr, keine
       Konfiguration zeigt auf sie. Am Filmrechner in LM Studio den Link trennen, dann ist

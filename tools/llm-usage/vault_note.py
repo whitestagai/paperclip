@@ -36,7 +36,8 @@ TZ_HINWEIS = (
     "Anthropic hat keine Quantisierung, das Fenster ist 200K bzw. 1M. "
     "`Thinking` ist **gemessen**, nicht konfiguriert: Anteil der Vorhersagen "
     "mit `reasoning_tokens > 0` in den LM-Studio-Logs des Tages, `on` ab 5 %. "
-    "Fuer Anthropic nicht ermittelbar."
+    "Fuer Anthropic-Modelle (Cloud und Strata) aus den Paperclip-Run-Logs: "
+    "Anteil der Antworten mit Denkblock."
 )
 
 

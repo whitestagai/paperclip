@@ -28,9 +28,10 @@ gezaehlt: VP Engineering spricht Strata ueber die Claude-CLI an, deren
 stream-json jeden Denkblock als `thinking` ausweist.
 
 **Anthropic:** keine Quantisierung (Cloud, `–`), Fenster bekannt (200K, bei der
-`[1m]`-Variante 1M), Thinking **nicht ermittelbar** — `cost_events` fuehrt keine
-Reasoning-Token und die `claude_local`-Agenten haben kein Thinking-Feld in der
-`adapter_config`. Dort steht `?`, nicht `off`.
+`[1m]`-Variante 1M). Thinking seit 27.10.2026 ebenfalls aus den Run-Logs der
+`claude_local`-Laeufe — `cost_events` fuehrt keine Reasoning-Token, die Run-Logs
+zeigen aber jeden `thinking`/`redacted_thinking`-Block. Ohne Lauf an dem Tag
+steht `?`, nicht `off`.
 """
 import json
 import os
@@ -252,7 +253,7 @@ def parse_runlog(text: str) -> dict:
     for (modell, _mid), typen in nachrichten.items():
         e = raus.setdefault(modell, [0, 0])
         e[0] += 1
-        if "thinking" in typen:
+        if typen & {"thinking", "redacted_thinking"}:
             e[1] += 1
     return raus
 
@@ -275,8 +276,9 @@ def runlog_zaehler(laeufe) -> dict:
     return raus
 
 
-def _fremdmodell_laeufe(tage) -> list:
-    """Run-Logs der Tage, an denen ein Nicht-Claude-Modell per Anthropic-API lief.
+def _cli_laeufe(tage) -> list:
+    """Run-Logs der Tage, an denen ein Agent ueber die Anthropic-API lief —
+    Claude in der Cloud ebenso wie Strata hinter der Claude-CLI.
 
     Die DB-Abfrage steckt hier statt oben im Modul, damit die Tests ohne
     psycopg2 und ohne Paperclip-DB auskommen.
@@ -284,7 +286,7 @@ def _fremdmodell_laeufe(tage) -> list:
     try:
         import query
         return [(os.path.join(RUNLOG_DIR, ref), bool(gz))
-                for ref, gz in query.fremdmodell_runlogs(_tagesliste(tage))]
+                for ref, gz in query.cli_runlogs(_tagesliste(tage))]
     except Exception:  # noqa: BLE001 — DB weg = Thinking '?', kein Abbruch
         return []
 
@@ -387,9 +389,7 @@ def ctx(model, sb: dict) -> str:
 
 def denk_quote(model, sb: dict) -> Optional[float]:
     """Anteil der Vorhersagen mit Reasoning — None, wenn nichts gemessen wurde."""
-    if _ist_cloud(model):
-        return None
-    z = (sb or {}).get("denken", {}).get(_normalisiere(model))
+    z =(sb or {}).get("denken", {}).get(_normalisiere(model))
     if not z or not z[0]:
         return None
     return z[1] / z[0]
@@ -428,8 +428,8 @@ def erhebe(tage=None, cache_pfad=CACHE_DATEI) -> dict:
     if katalog:
         schreibe_cache(katalog, cache_pfad)
     denken = denk_zaehler(tage)
-    for modell, (n, r) in runlog_zaehler(_fremdmodell_laeufe(tage)).items():
-        e = denken.setdefault(modell, [0, 0])
+    for modell, (n, r) in runlog_zaehler(_cli_laeufe(tage)).items():
+        e = denken.setdefault(_normalisiere(modell), [0, 0])
         e[0] += n
         e[1] += r
     return {"katalog": katalog, "denken": denken}

@@ -142,7 +142,7 @@ def test_csv_ctx_und_denkquote_sind_zahlen_oder_leer():
         TAG, [("X", "claude-sonnet-4-6", 1, 10, 0, 5)], sb=SB)
     _t, _a, _m, ort, quant, ctx, quote, *_ = zeilen[0]
     assert (ort, quant, ctx) == ("Cloud", "–", 200_000)
-    assert quote == ""      # bei Anthropic nicht ermittelbar
+    assert quote == ""      # ohne Run-Log an dem Tag nicht gemessen
 
 
 def test_csv_ohne_steckbrief_bleibt_befuellbar():
@@ -215,7 +215,7 @@ def test_frontmatter_je_modell_traegt_die_technischen_felder():
 
 
 def test_frontmatter_denkquote_ist_null_wenn_nicht_messbar():
-    """Bei Anthropic gibt es keine Reasoning-Token — `null`, nicht 0."""
+    """Ohne Messung (kein Run-Log im Steckbrief) — `null`, nicht 0."""
     text = vault_note.build(TAG, MODELL_ROWS, AGENT_MODELL_ROWS, sb=SB)
     block = text.split("je_modell:", 1)[1].split("tags:", 1)[0]
     claude = block.split('modell: "claude-sonnet-4-6"', 1)[1]

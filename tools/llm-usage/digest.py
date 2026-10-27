@@ -186,8 +186,8 @@ Zieht ein Modell um, stimmt die Angabe für zurückliegende Tage erst wieder, we
 <b>Quant</b> und <b>CTX</b> kommen aus dem LM-Studio-Katalog (<code>:1234/api/v0/models</code>), CTX ist das <i>geladene</i> Fenster.
 Nicht erreichbare Modelle (RTX nachts aus) kommen aus dem zuletzt gesehenen Stand. Bei Anthropic gibt es keine Quantisierung; das Fenster ist 200K, bei der <code>[1m]</code>-Variante 1M.<br>
 <b>Thinking</b> ist gemessen, nicht konfiguriert: Anteil der Vorhersagen mit <code>reasoning_tokens &gt; 0</code> in den LM-Studio-Logs des Tages.
-<code>on</code> ab 5 %. Die Quote steht dabei, weil eine gepatchte Vorlage eine Restquote übrig lässt. Für Anthropic-Modelle nicht ermittelbar (<code>?</code>) —
-<code>cost_events</code> führt keine Reasoning-Token.<br>
+<code>on</code> ab 5 %. Die Quote steht dabei, weil eine gepatchte Vorlage eine Restquote übrig lässt. Für Anthropic-Modelle (Cloud und Strata) kommt sie
+aus den Paperclip-Run-Logs: Anteil der Antworten mit Denkblock — <code>cost_events</code> führt keine Reasoning-Token.<br>
 <b>Strata</b> (<code>qwen3.8-flash-next-…</code> auf dem Film-Rechner, RTX Pro 6000) ist kein LM-Studio-Modell: Quant und CTX kommen aus Strata selbst
 (<code>:1235/v1/models</code>, die Stufe aus dem GGUF-Namen), Thinking aus den Paperclip-Run-Logs — Anteil der Antworten mit Denkblock.
 Aufrufe laufen über die Claude-CLI und stehen in <code>cost_events</code> als Anbieter <code>anthropic</code>; Kosten 0 €, weil lokal.<br>

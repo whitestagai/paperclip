@@ -144,11 +144,24 @@ def test_die_1m_variante_bekommt_ihr_grosses_fenster():
     assert steckbrief.ctx("claude-opus-4-7", SB) == "200K"
 
 
-def test_thinking_bei_anthropic_wird_nicht_behauptet():
-    """cost_events fuehrt keine Reasoning-Token, und die claude_local-Agenten
-    haben kein Thinking-Feld in der adapter_config. '?' ist die einzige
-    ehrliche Antwort — 'off' waere geraten."""
+def test_thinking_bei_anthropic_ohne_runlog_wird_nicht_behauptet():
+    """Ohne Run-Log an dem Tag gibt es keine Messung — 'off' waere geraten."""
     assert steckbrief.thinking("claude-sonnet-4-6", SB) == "?"
+
+
+def test_thinking_bei_anthropic_kommt_aus_dem_runlog():
+    """Seit 27.10. gemessen: Denkbloecke im stream-json der claude_local-Laeufe.
+    Die [1m]-Variante teilt sich den Zaehler mit dem Basismodell."""
+    sb = {"katalog": {}, "denken": {"claude-opus-4-7": [31, 15]}}
+    assert steckbrief.thinking("claude-opus-4-7[1m]", sb) == "on (48 %)"
+
+
+def test_runlog_zaehlt_redacted_thinking_mit():
+    """Die API liefert verschluesseltes Denken als `redacted_thinking` —
+    gedacht wurde trotzdem."""
+    text = _runlog(("m1", "claude-sonnet-4-6", ["redacted_thinking", "text"]),
+                   ("m2", "claude-sonnet-4-6", ["text"]))
+    assert steckbrief.parse_runlog(text) == {"claude-sonnet-4-6": [2, 1]}
 
 
 def test_unbekanntes_lokales_modell_bleibt_fragezeichen():

@@ -716,12 +716,25 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       veraltet das schnell. Möglicher Weg: Überarbeitung als zweiter Entwurf neben dem
       veröffentlichten Kurs, Freigabe im Admin ersetzt die Lektionen, Fortschritt der
       Teilnehmer bleibt erhalten. *(2026-10-19, Chat: Kursmix und Niveau)*
+      **Stand 27.10.: dringlicher, weil die Fassungen schon auseinanderlaufen.** Bei **23 der 29
+      Seed-Kurse** (App-Repo `content/*.md`) weicht die gleichnamige Vault-Datei vom Live-Stand ab.
+      Die überarbeiteten Vault-Fassungen sind nie angekommen. Zu entscheiden: welche Fassung gilt, und
+      wer sie wie in die App bringt. Für Grafiken gibt es jetzt einen eigenen Weg (Einfügen per
+      `UPDATE`, Lektionen bleiben erhalten), aber nicht für Textänderungen. Ein Weg für ganze
+      Überarbeitungen darf Lektionen ebenfalls nie löschen (`progress` hängt per Cascade daran).
+      *(2026-10-27, Chat: ACADEMY Kursgrafiken)*
 
 - [ ] **Vorrang-Kurse n8n, Paperclip, Claude Code gegenlesen (Mi 28.–Fr 30.10.)** — `K-20261027-V01…V03`,
       fortgeschritten, **12–15 Lektionen** (Walters Vorgabe, Spec § 5 Ausnahme, Prüfprofil 9a). Prüfen: Nimmt der CEO
       die VORRANG-Zeile vor L08, setzt er `Umfang: …` unter die Kurstyp-Zeile, wertet der Lektor 12–15 nicht als ROT,
       baut der n8n-Kurs erkennbar auf `ki-automatisierung-n8n` auf? Laufzahl und `max_iterations` des Autors bei den
       langen Kursen beobachten; `skip_if_active` kann Donnerstag ausfallen lassen. *(2026-10-27, Chat: ACADEMY Kurse Vorrang)*
+
+- [ ] **Ersten Kurs mit Grafik-Regeln gegenlesen (ab Mi 28.10.)** — seit 27.10. erlaubt Spec v8 § 7
+      Lerngrafiken (```` ```grafik ````-Blöcke), Prüfprofil Punkte 18–20, Hinweis im Autoren-Auftrag aller drei
+      Routinen. Prüfen: Setzt der Autor überhaupt Grafiken, und nur an Stellen mit Struktur? Bestehen sie
+      `kurs-check`? Bewertet der Lektor eine Grafik mit neuem Inhalt als ROT? Wie sehen sie in der App aus?
+      Die Nachrüstung alter Kurse ist **nicht** hier, sondern in der App-Sitzung. *(2026-10-27, Chat: ACADEMY Kursgrafiken)*
 
 - [ ] **Agentic-AI-Kurs aus dem LHIND-Whitepaper gegenlesen** — Idee `K-20261026-141307` (fortgeschritten,
       Material `Workshops/_ideen/K-20261026-141307.md`), läuft nach den drei Vorrang-Kursen, voraussichtlich Mi 04.11.

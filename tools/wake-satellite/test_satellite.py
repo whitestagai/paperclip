@@ -277,6 +277,30 @@ def test_stille_nach_der_quittung_beendet_die_kette_stumm(monkeypatch):
     assert m["gesprochen"] == []
 
 
+def test_stille_nach_der_quittung_wird_mit_pegel_protokolliert(monkeypatch, tmp_path, capsys):
+    # Live-Befund 27.10.: nach dem „Ja?" endete die Kette meist still, das Log
+    # zeigte nichts. Jetzt steht der Fall mit Pegel im Log und das gehörte
+    # Fenster liegt als WAV zum Nachhören bereit.
+    monkeypatch.setattr(sat_config, "DIAG_DIR", str(tmp_path))
+    _quittungs_umgebung(monkeypatch, ["Hey Jarvis."])
+    leise = np.ones(1280, dtype=np.int16) * 300     # unter der Schwelle
+    frames = iter(_turn() + [leise] * (sat_config.ANREDE_START_FENSTER_FRAMES + 5))
+    satellite.handle_interaction(frames, _deps())
+    log = capsys.readouterr().out
+    assert "[stille] nach Quittung" in log
+    assert "max_rms=300" in log
+    wavs = list(tmp_path.glob("*.wav"))
+    assert len(wavs) == 1
+
+
+def test_stille_ohne_diag_ordner_schreibt_keine_datei(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(sat_config, "DIAG_DIR", None)
+    _quittungs_umgebung(monkeypatch, ["Hey Jarvis."])
+    frames = iter(_turn() + _stille(sat_config.ANREDE_START_FENSTER_FRAMES + 5))
+    satellite.handle_interaction(frames, _deps())
+    assert "[stille] nach Quittung" in capsys.readouterr().out
+
+
 def test_zweite_bloße_anrede_geht_ans_sprachmodell(monkeypatch):
     # Die Quittung verbraucht keine Runde — ohne diese Sperre könnte ein
     # wiederholtes „Jarvis" die Kette endlos offen halten.

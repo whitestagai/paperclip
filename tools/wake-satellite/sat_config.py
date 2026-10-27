@@ -37,6 +37,10 @@ FOLLOWUP_START_FENSTER_FRAMES = int(FOLLOWUP_START_FENSTER_SEC * SAMPLE_RATE / F
 # Wake-Wort bewusst allein gesagt und formuliert seine Frage erst noch.
 ANREDE_START_FENSTER_SEC = 8.0
 ANREDE_START_FENSTER_FRAMES = int(ANREDE_START_FENSTER_SEC * SAMPLE_RATE / FRAME_SAMPLES)  # ~100
+# Bleibt die Aufnahme nach der Quittung leer, landet das gehörte Fenster hier
+# als WAV (Live-Befund 27.10.: die Kette endete meist still, ohne Spur im Log).
+# None schaltet die Ablage ab; die Log-Zeile kommt trotzdem.
+DIAG_DIR = os.path.expanduser("~/.paperclip/wake-satellite/diag")
 
 # So viele zusammenhängende laute Frames müssen es sein, damit eine Aufnahme
 # OHNE Wake-Wort startet (~0,24 s) — sonst startet ein Türklappen die Aufnahme.

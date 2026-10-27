@@ -96,6 +96,34 @@ def _quittiere(deps):
     quittung.spiele(deps.get("eleven_key"), device=sat_config.HOMEPOD_DEVICE)
 
 
+def _mitschneiden(frames, ablage):
+    """Reicht die Frames durch und legt jeden zusätzlich in `ablage` ab."""
+    for frame in frames:
+        ablage.append(frame)
+        yield frame
+
+
+def _melde_stille(gehoert):
+    """Protokolliert ein leer gebliebenes Fenster nach der Quittung: höchster
+    Pegel und längster lauter Lauf gegen die Startbedingung — zeigt, ob die
+    Frage zu leise war, zu kurz oder gar nicht ankam."""
+    pegel = [capture._rms(f) for f in gehoert]
+    lauf = laengster = 0
+    for p in pegel:
+        lauf = lauf + 1 if p >= capture.SILENCE_RMS else 0
+        laengster = max(laengster, lauf)
+    datei = ""
+    if sat_config.DIAG_DIR and gehoert:
+        os.makedirs(sat_config.DIAG_DIR, exist_ok=True)
+        datei = capture.frames_to_wav(gehoert, os.path.join(
+            sat_config.DIAG_DIR, time.strftime("stille-%Y%m%d-%H%M%S.wav")))
+    print("[stille] nach Quittung: {} Frames, max_rms={:.0f} laengster_lauf={} "
+          "(Start braucht {} Frames >= {}) {}".format(
+              len(gehoert), max(pegel, default=0), laengster,
+              sat_config.MIN_START_RUN_FRAMES, capture.SILENCE_RMS, datei),
+          flush=True)
+
+
 
 
 def handle_interaction(frames, deps, tenant=None, history=None):
@@ -117,9 +145,13 @@ def handle_interaction(frames, deps, tenant=None, history=None):
     quittiert = False
     runden = 0
     while runden < sat_config.MAX_TURNS_PER_WAKE:
-        recorded = capture.record_until_silence(frames, max_start_frames=start_fenster,
+        gehoert = []
+        quelle = _mitschneiden(frames, gehoert) if quittiert and runden == 0 else frames
+        recorded = capture.record_until_silence(quelle, max_start_frames=start_fenster,
                                                 min_start_run=anlauf)
         if not recorded:
+            if quittiert and runden == 0:
+                _melde_stille(gehoert)
             break
         # Bis zum Deckel ohne eine einzige Pause: das ist Musik oder Radio,
         # keine Frage (Live-Befund 26.10.: alle sieben solchen Aufnahmen waren

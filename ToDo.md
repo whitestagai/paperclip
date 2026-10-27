@@ -1312,6 +1312,11 @@ Umsetzung läuft in einer Booker-Session). R9 ist angehalten
       Windows-Rechner liefern keine Stunden (nur ihre Vault-Chats zählen). Optional deren
       `~/.claude/projects/` per `--quelle` einlesen. *(2026-10-26, Chat: Claude-Code Arbeitszeit-Mail)*
 
+- [ ] **LLM-Nutzungs-Mail vom 28.10. gegenlesen** — erste automatische Mail (08:00, Vortag 27.10.)
+      mit Strata-Steckbrief und gemessener Claude-Denkquote (`f01d8784c`, `63e729bee`). Erwartet:
+      qwen3.8 mit `UD-Q4_K_XL · 128K · on (…)`, `claude-sonnet-4-6` mit Quote statt `?`, keine rote
+      Zeile „Steckbrief unvollständig". Log: `/tmp/llm-usage-digest.log`. *(2026-10-27, Chat: LLM-Nutzung Strata)*
+
 ## Zeitplan und Lastverteilung
 
 - [ ] **Wirkung der Entzerrung gegenmessen — fruehestens 25.09.** — am 11.09.

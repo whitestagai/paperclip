@@ -1424,18 +1424,18 @@ Umsetzung läuft in einer Booker-Session). R9 ist angehalten
       (`4d5510afa`, Telegram-Freigabe) auf `fix/backup-leere-ref-ordner` übernommen, Commit
       `a4fd769c9`, 136 Tests grün. Auf **master** fehlt er weiterhin. Offen in diesem Eintrag
       bleiben `wake-satellite/` und `websuche/`. *(2026-10-19, Chat: SEO-GEO neue Sites)*
+      **Stand 27.10.: `wake-satellite/` und die geteilten `voice-echo-bot/`-Module sind
+      deckungsgleich — aber nur auf `feat/jarvis-phonon-stimme`** (gepusht nach `fork`,
+      von `master` abgezweigt). Satellit-live, Bot-live und dieser Branch stimmen Datei
+      für Datei überein. Auf `master` und `fix/backup-leere-ref-ordner` steht weiter der
+      alte Stand — von dort `deploy.sh` NICHT laufen lassen. Offen bleibt `websuche/`.
+      *(2026-10-27, Chat: Jarvis Phonon-Stimme)*
 
 - [ ] **★★Vor jedem lmstudio-Adapter-Build gegen `origin/main` abgleichen** — der Cloud-Ordner
       `opensource/paperclip-adapter-lmstudio` hatte den Header-Fix `e8b772a` nur als `dist/`, nie als Quellcode.
       Ein Build am 23.10. überschrieb ihn live (15 Minuten, ohne Folgen). Pflicht vor `npm run build`:
       `git fetch && git log HEAD..origin/main` muss leer sein. Dauerhaft wäre ein Hinweis in der README des
       Adapters oder ein `prebuild`-Check, der bei Rückstand abbricht. *(2026-10-23, Chat: Kurs-Import und CEO-Mail)*
-
-- [ ] **`test_llm` im Jarvis-Bot ist veraltet** —
-      `test_module_default_fallback_avoids_the_primary_model` erwartet ein vom
-      Primärmodell verschiedenes Fallback. Seit 04.09. ist beides absichtlich
-      `google/gemma-4-12b` (Kommentar in `llm.py`). Den Test an die Absicht anpassen,
-      dann ist die Suite wieder komplett grün (heute 260 grün, 1 rot). *(2026-10-19, Chat: Kursideen per Jarvis)*
 
 - [ ] **7 uncommittete Dateien im Worktree `agent-learning-tree`** — liegt unter
       `~/.paperclip/scripts/agent-learning-tree`, Branch
@@ -1522,7 +1522,30 @@ Umsetzung läuft in einer Booker-Session). R9 ist angehalten
       der Umgebung bzw. `~/.whitestag.env`.
       *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
 
+## Jarvis (Sprachsatellit)
+
+- [ ] **`feat/jarvis-phonon-stimme` nach master bringen** — fünf Commits `1eff3cf75`…`f9fd2e732`
+      (Repo-Angleich, Phonon-Stimme Anton, Live-Stand der geteilten Module, Musik-Regel, Reasoning aus),
+      gepusht nach `fork`, Worktree `.worktrees/jarvis-phonon`. Bis zum Merge ist dieser
+      Branch die einzige Quelle, von der aus `tools/wake-satellite/deploy.sh` sicher ist.
+      PR nach master oder Merge — Walters Entscheidung. *(2026-10-27, Chat: Jarvis Phonon-Stimme)*
+
+- [ ] **Musik-Regel im Feld beobachten** — seit 27.10. beendet eine Aufnahme bis zum
+      12-s-Deckel oder ein reines Musik-Transkript (`#`, `♪`, „Musik") die Kette still.
+      Gegen 101 Log-Interaktionen geprüft (8 gesperrt, alle Musik). Im Log nach
+      `[dauerton]` sehen: trifft es je eine echte, lange Frage von Walter? *(2026-10-27, Chat: Jarvis Phonon-Stimme)*
+
+- [ ] **Antwortqualität ohne Reasoning beobachten** — `CHAT_REASONING_EFFORT = "none"`
+      in `sat_config.py` senkte die Antwortzeit von ~25–33 s auf 3–8 s. In einer von vier
+      Proben stand „zwanzig fünf Prozent". Häufen sich solche Patzer, ist `None` die
+      Rückkehr (eine Zeile). *(2026-10-27, Chat: Jarvis Phonon-Stimme)*
+
 ## Fuer Walter (nur von Hand)
+
+- [ ] **HomePod als Ausgabe wählen (vor Ort)** — die Mac-Studio-Ausgabe steht auf
+      „Jump Desktop Audio", dadurch scheitert `SwitchAudioSource -s AirPlay` bei jeder
+      Jarvis-Antwort und er spricht nur in die Jump-Sitzung. Einmal im Kontrollzentrum
+      → Ton den HomePod wählen, dann erscheint „AirPlay" wieder. *(2026-10-27, Chat: Jarvis Phonon-Stimme)*
 
 - [ ] **Zwei Commits auf `fix/backup-leere-ref-ordner` ungepusht** — `e5e948c7b` (seo-geo) und `569acb6af`
       (docs(todo) Arbeitszeit-Mail), beide aus anderen Sessions. Push ist Ansage-pflichtig. *(2026-10-27, Chat: ACADEMY Kurse Vorrang)*

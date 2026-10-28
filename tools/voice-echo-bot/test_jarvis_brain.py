@@ -686,3 +686,107 @@ def test_without_reasoning_effort_llm_chat_gets_no_such_argument(monkeypatch):
     # dürfen kein neues Argument zu sehen bekommen.
     monkeypatch.setattr(jarvis_brain.llm, "chat", lambda msgs, model=None: "Hallo Walter.")
     assert jarvis_brain.respond("hi", TENANT, "tok", "m")["answer"] == "Hallo Walter."
+
+
+# --- Claude: Netzfragen automatisch, „frag Claude" auf Zuruf -----------------
+
+def _claude_double(monkeypatch, antwort="Laut kicker.de hat Cottbus gewonnen.", fehler=False):
+    gefragt = []
+    def frage(text, history=None, waehrenddessen=None, **kw):
+        gefragt.append({"text": text, "history": history, "waehrenddessen": waehrenddessen})
+        if fehler:
+            raise jarvis_brain.claude_client.ClaudeError("weg")
+        return antwort
+    monkeypatch.setattr(jarvis_brain.claude_client, "frage", frage)
+    return gefragt
+
+
+def _kein_llm(monkeypatch):
+    def chat(*a, **k):
+        raise AssertionError("lokales Modell darf hier nicht gefragt werden")
+    monkeypatch.setattr(jarvis_brain.llm, "chat", chat)
+
+
+def test_frag_claude_geht_direkt_an_claude(monkeypatch):
+    gefragt = _claude_double(monkeypatch)
+    _kein_llm(monkeypatch)
+    r = jarvis_brain.respond("Hey Jarvis, frag Claude, wer hat gestern gewonnen?",
+                             TENANT, "tok", "m", claude_aktiv=True)
+    assert r == {"kind": "claude", "answer": "Laut kicker.de hat Cottbus gewonnen."}
+    assert gefragt[0]["text"] == "wer hat gestern gewonnen?"
+
+
+def test_frag_claude_versteht_whisper_varianten(monkeypatch):
+    gefragt = _claude_double(monkeypatch)
+    _kein_llm(monkeypatch)
+    for satz in ["Frag mal Cloud: Was kostet Gold?", "frage Claud was kostet Gold",
+                 "Javis, frag Klaut, was kostet Gold?"]:
+        assert jarvis_brain.respond(satz, TENANT, "tok", "m", claude_aktiv=True)["kind"] == "claude"
+    assert all("kostet Gold" in g["text"] for g in gefragt)
+
+
+def test_ohne_schalter_bleibt_frag_claude_lokal(monkeypatch):
+    # Telegram-Jarvis ruft ohne claude_aktiv: nichts ändert sich.
+    gefragt = _claude_double(monkeypatch)
+    monkeypatch.setattr(jarvis_brain.llm, "chat", lambda msgs, model=None: "Lokal.")
+    r = jarvis_brain.respond("frag Claude, wie spät ist es?", TENANT, "tok", "m")
+    assert r["answer"] == "Lokal." and gefragt == []
+
+
+def test_netzfrage_geht_an_claude_statt_an_die_lokale_suche(monkeypatch):
+    gefragt = _claude_double(monkeypatch, antwort="Laut wetter.com morgen zwölf Grad.")
+    monkeypatch.setattr(jarvis_brain.llm, "chat", lambda msgs, model=None, **kw: "WEB: Wetter Cottbus")
+    def keine_suche(*a, **k):
+        raise AssertionError("lokale Suche darf nicht laufen, wenn Claude antwortet")
+    monkeypatch.setattr(jarvis_brain.websuche_client, "suche", keine_suche)
+    r = jarvis_brain.respond("Wie wird morgen das Wetter?", TENANT, "tok", "m", claude_aktiv=True)
+    assert r == {"kind": "web", "answer": "Laut wetter.com morgen zwölf Grad."}
+    assert gefragt[0]["text"] == "Wie wird morgen das Wetter?"   # die Frage, nicht der Suchbegriff
+
+
+def test_faellt_claude_aus_sucht_jarvis_lokal(monkeypatch):
+    _claude_double(monkeypatch, fehler=True)
+    antworten = iter(["WEB: Wetter Cottbus", "Morgen 24 Grad."])
+    monkeypatch.setattr(jarvis_brain.llm, "chat", lambda msgs, model=None, **kw: next(antworten))
+    monkeypatch.setattr(jarvis_brain.websuche_client, "suche", _lokale_quelle)
+    r = jarvis_brain.respond("Wetter morgen?", TENANT, "tok", "m", claude_aktiv=True)
+    assert r == {"kind": "web", "answer": "Morgen 24 Grad."}
+
+
+def test_faellt_claude_bei_frag_claude_aus_antwortet_das_lokale_modell(monkeypatch):
+    _claude_double(monkeypatch, fehler=True)
+    seen = []
+    monkeypatch.setattr(jarvis_brain.llm, "chat",
+                        lambda msgs, model=None, **kw: seen.append(msgs[-1]["content"]) or "Lokal.")
+    r = jarvis_brain.respond("frag Claude, was ist ein Transformer?", TENANT, "tok", "m",
+                             claude_aktiv=True)
+    assert r["answer"] == "Lokal."
+    assert seen == ["was ist ein Transformer?"]
+
+
+def test_nach_vault_treffer_bleibt_claude_gesperrt(monkeypatch):
+    # Datenschutz: nach einem Vault-Zugriff darf nichts mehr nach draußen.
+    gefragt = _claude_double(monkeypatch)
+    _kein_llm(monkeypatch)
+    r = jarvis_brain.respond("frag Claude, wie erreiche ich Jana?", TENANT, "tok", "m",
+                             claude_aktiv=True, web_erlaubt=False)
+    assert gefragt == []
+    assert r["kind"] == "chat" and "nicht nach draußen" in r["answer"]
+
+
+def test_frag_claude_ohne_frage_fragt_nach(monkeypatch):
+    gefragt = _claude_double(monkeypatch)
+    _kein_llm(monkeypatch)
+    r = jarvis_brain.respond("Hey Jarvis, frag Claude.", TENANT, "tok", "m", claude_aktiv=True)
+    assert gefragt == [] and "Claude" in r["answer"]
+
+
+def test_ansage_und_verlauf_gehen_an_claude(monkeypatch):
+    gefragt = _claude_double(monkeypatch)
+    _kein_llm(monkeypatch)
+    ansage = lambda: None
+    verlauf = [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b"}]
+    jarvis_brain.respond("frag Claude, und morgen?", TENANT, "tok", "m", history=verlauf,
+                         claude_aktiv=True, waehrenddessen=ansage)
+    assert gefragt[0]["waehrenddessen"] is ansage
+    assert gefragt[0]["history"] == verlauf

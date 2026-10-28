@@ -134,6 +134,14 @@ CHAT_MODEL = "google/gemma-4-12b"
 # Analyst genauso geteilt und hat nur 2 Plätze.
 CHAT_FALLBACK_MODEL = "google/gemma-4-31b"
 
+# Claude hinter Jarvis (28.10.2026, Walters Wahl „beides"): Netzfragen gehen
+# automatisch an Claude statt an die lokale Suche, und „frag Claude …" schickt
+# jede Frage dorthin. Läuft über `claude -p` und Walters Abo (claude_client.py),
+# gemessen 10 s mit Websuche, 4 s ohne. Nach einem Vault-Treffer gesperrt.
+# Während Claude arbeitet, kommt die Ansage — sonst wären es 10 s Stille.
+CLAUDE_AKTIV = True
+CLAUDE_ANSAGE = "Moment, ich schau nach."
+
 # 26.10.2026: Die Studio-gemma DENKT vor jeder Antwort (Reasoning), das war
 # der Großteil der 22-201 s Antwortzeit. Gemessen an derselben Frage:
 #   ohne Schalter            31,1 s  (259 von 302 Tokens Reasoning)

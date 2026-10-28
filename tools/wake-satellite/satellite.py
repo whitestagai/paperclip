@@ -200,12 +200,14 @@ def handle_interaction(frames, deps, tenant=None, history=None):
                                       web_key=deps.get("web_key"),
                                       web_erlaubt=not web_locked_after_lookup,
                                       reasoning_effort=sat_config.CHAT_REASONING_EFFORT,
-                                      fallback_model=sat_config.CHAT_FALLBACK_MODEL)
+                                      fallback_model=sat_config.CHAT_FALLBACK_MODEL,
+                                      claude_aktiv=sat_config.CLAUDE_AKTIV,
+                                      waehrenddessen=lambda: _speak(sat_config.CLAUDE_ANSAGE, deps))
         t2 = time.monotonic()
         if result["kind"] == "lookup":
             web_locked_after_lookup = True
         answer = result["answer"]
-        if result["kind"] in ("chat", "lookup", "issue", "web"):
+        if result["kind"] in ("chat", "lookup", "issue", "web", "claude"):
             history = _remember(history, text, answer)
         synth = _speak(answer, deps) or 0.0
         if flush_mic:

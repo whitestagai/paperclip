@@ -12,6 +12,7 @@ import json
 import re
 import traceback
 
+import claude_client
 import llm
 import vault_client
 import web_search
@@ -172,7 +173,8 @@ def _strip_or_fallback(text):
 
 def respond(text, tenant, token, chat_model, history=None, source="per Telegram",
             voice_output=False, now=None, web_key=None, web_erlaubt=True,
-            reasoning_effort=None, fallback_model=None):
+            reasoning_effort=None, fallback_model=None, claude_aktiv=False,
+            waehrenddessen=None):
     """`web_erlaubt` ist der Sperrschalter der Websuche, `web_key` nur der
     Zugang zum Tavily-Fallback.
 
@@ -188,6 +190,23 @@ def respond(text, tenant, token, chat_model, history=None, source="per Telegram"
     if not text:
         return {"kind": "empty", "answer": "Nichts erkannt, bitte erneut."}
     hist = history or []
+    # „frag Claude …" geht ohne Umweg über das lokale Modell an Claude; nur mit
+    # `claude_aktiv` (Satellit), der Telegram-Jarvis bleibt unberührt. Claude
+    # ist außer Haus — nach einem Vault-Treffer (`web_erlaubt=False`) gesperrt
+    # wie die Websuche. Fällt Claude aus, antwortet das lokale Modell.
+    claude_frage = _frag_claude(text) if claude_aktiv else None
+    if claude_frage is not None:
+        if not web_erlaubt:
+            return {"kind": "chat",
+                    "answer": "Dafür kann ich gerade nicht nach draußen."}
+        if not claude_frage:
+            return {"kind": "chat", "answer": "Was soll ich Claude fragen?"}
+        try:
+            return {"kind": "claude",
+                    "answer": _frage_claude(claude_frage, hist, waehrenddessen)}
+        except claude_client.ClaudeError:
+            traceback.print_exc()
+            text = claude_frage
     # Reihenfolge ist bewusst: WEB_TOOL_HINT (Werkzeug 3) bzw. NO_WEB_HINT
     # muss VOR dem "Brauchst du KEIN Werkzeug"-Absatz stehen, sonst liest ein
     # kleines Modell es nicht mehr als Teil der Werkzeugliste (Review-Befund).
@@ -231,10 +250,42 @@ def respond(text, tenant, token, chat_model, history=None, source="per Telegram"
             # Sprachausgabe).
             return {"kind": "chat",
                     "answer": "Dafür kann ich gerade nicht ins Netz."}
+        if claude_aktiv:
+            # Claude beantwortet die FRAGE (nicht den Suchbegriff des lokalen
+            # Modells) — bessere Quellen als SearXNG/Tavily, gemessen ~10 s.
+            # Fällt Claude aus, bleibt die lokale Suche als Netz.
+            try:
+                return {"kind": "web",
+                        "answer": _frage_claude(text, hist, waehrenddessen)}
+            except claude_client.ClaudeError:
+                traceback.print_exc()
         return {"kind": "web",
                 "answer": _do_web(messages, action["query"], chat_model, web_key,
                                   extra)}
     return {"kind": "chat", "answer": _strip_control_lines(action["text"])}
+
+
+# „frag Claude …" in den ersten Wörtern. Whisper schreibt den Namen gern
+# als „Cloud", „Claud" oder „Klaut"; davor darf die Anrede stehen
+# („Hey Jarvis, frag mal Claude: …").
+_FRAG_CLAUDE = re.compile(
+    r"^\W*(?:[^\W\d_]+\W+){0,2}?frag(?:e)?\W+(?:(?:mal|doch|bitte)\W+)*"
+    r"(?:claude|claud|clode|clod|cloud|klaud|klaut|klod)\b\W*(.*)$",
+    re.IGNORECASE | re.DOTALL)
+
+
+def _frag_claude(text):
+    """Die eigentliche Frage nach „frag Claude", "" ohne Frage, None ohne Zuruf."""
+    m = _FRAG_CLAUDE.match(text)
+    if not m:
+        return None
+    rest = m.group(1).strip()
+    return rest if re.search(r"\w", rest) else ""
+
+
+def _frage_claude(frage, hist, waehrenddessen):
+    print("[claude] '{}'".format(frage.replace("\n", " ")[:120]), flush=True)
+    return claude_client.frage(frage, history=list(hist), waehrenddessen=waehrenddessen)
 
 
 def _llm_kwargs(reasoning_effort, fallback_model):

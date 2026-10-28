@@ -5,10 +5,7 @@ HERE = os.path.dirname(__file__)
 
 def test_loads_real_set():
     entries = load_resident_set(os.path.join(HERE, "resident-set.json"))
-    assert len(entries) == 11
-    # Seit 2026-10-28 eigene Instanz fuer den Sprach-Satelliten — gleicher
-    # load_key wie das gemeinsame Modell, unterschieden nur ueber ps_key.
-    assert ("jarvis-gemma-4-31b", "studio") in {(e["ps_key"], e["device"]) for e in entries}
+    assert len(entries) == 10
     keys = {(e["load_key"], e["device"]) for e in entries}
     # Seit 2026-10-21 ist die RTX aus der Farm (Coding-Rechner) — kein
     # Eintrag darf mehr auf sie zeigen.

@@ -15,7 +15,8 @@
     "",
     "Stand 19.09.2026: macbook- und rtx-Eintraege sind unveraendert aus dem",
     "Stand 21.10.2026: rtx-Eintraege entfernt (Karte geht aus der Farm),",
-    "macbook-Eintraege geprueft und belegt."
+    "macbook-Eintraege geprueft und belegt.",
+    "Stand 28.10.2026: jarvis-gemma-4-31b (Sprach-Satellit) ergaenzt."
   ],
   "devices": [
     "studio",
@@ -41,6 +42,15 @@
       "parallel": 4,
       "when": "always",
       "begruendung": "Seit 21.10.2026 Primaermodell der 18 WHITESTAG/Health-gemma-Agenten (Clara-Sound-gemma liegt auf dem MacBook) und Modell der cheap-Profile; Fallback gemma-4-31b-it-mlx. Hauptmodell von 27 Agenten (adapterConfig.model) und des cheap-Profils von 11 weiteren. Ergaenzt 03.10.2026: die Konfigurationen zeigten auf die nicht existierende ID 'gemma-4-31b-it' und fielen deshalb ALLE still auf google/gemma-4-12b zurueck — das war die Ursache von 204 max_iterations-Fehlern in 14 Tagen. 98304 ist die belegte Untergrenze fuer Agentenmodelle (siehe modell-wacht/soll-laufzeit.json): der Versuch mit 65536 am 25.08.2026 trieb die Ueberlaeufe auf 67 % und die Erfolgsquote auf 0, weil der Adapter unterhalb BUDGET_LOOKUP_THRESHOLD_TOKENS=32000 gar nicht kuerzt. Hinweis: dieses Modell ist MLX (safetensors) — LM Studios context auto-fit ignoriert -c und laedt es tatsaechlich mit 262144. Das ist oberhalb der Untergrenze und damit unkritisch, nur speicherhungrig; ein Schalter dagegen existiert in MLX nicht."
+    },
+    {
+      "device": "studio",
+      "ps_key": "jarvis-gemma-4-31b",
+      "load_key": "google/gemma-4-31b",
+      "ctx": 16384,
+      "parallel": 2,
+      "when": "always",
+      "begruendung": "Seit 28.10.2026 eigene Instanz NUR fuer den Wake-Satelliten (sat_config.CHAT_MODEL), geladen mit 'lms load google/gemma-4-31b --identifier jarvis-gemma-4-31b'. Grund: im gemeinsamen google/gemma-4-31b stand Jarvis hinter Agenten-Prompts in der Schlange (85/105/201 s statt 1-5 s); LM Studio kennt keine Prioritaet je Anfrage. Kostet 31,5 GiB. Ausweichmodell gemma-4-31b-it (whitestag-ai)."
     },
     {
       "device": "studio",

@@ -117,16 +117,21 @@ LOKAL_TTS_TIMEOUT_SEC = 20
 # 28.10.2026: EIGENE INSTANZ nur für Jarvis. Das gemeinsame google/gemma-4-31b
 # bedient 4 Anfragen gleichzeitig; sind alle mit Agenten-Prompts belegt, stand
 # Jarvis in der Schlange (Log: 85 / 105 / 201 s statt 1-5 s). LM Studio kennt
-# keine Priorität je Anfrage — eine eigene Instanz desselben Modells ist der
-# einzige Vorrang. Geladen mit --identifier jarvis-gemma-4-31b, steht im
-# resident-set des Entlade-Wärters und im Vorladen von ~/Desktop/n8n.sh.
-CHAT_MODEL = "jarvis-gemma-4-31b"
-# Ausweichmodell, falls die eigene Instanz fehlt (z. B. nach einem LM-Studio-
-# Neustart ohne n8n.sh): das gemeinsame Modell, gleiche Qualität statt des 12b
-# aus llm.FALLBACK_MODEL. Greift nur bei Fehler/Timeout.
-# NICHT die WHITESTAG-AI (gemma-4-31b-it): zuerst so geplant, aber gemessen
-# 28.10. unter Agentenlast 27 s für ein bloßes „ok" und einmal > 90 s Timeout —
-# sie ist mit CMO/LLM-Analyst genauso geteilt und hat nur 2 Plätze.
+# keine Priorität je Anfrage. Eine eigene Instanz desselben Modells
+# (jarvis-gemma-4-31b, 31,5 GiB) war live, trieb aber den Studio-Swap auf
+# 21 von 22,5 GB — nach jeder Pause lagerte macOS das Modell aus, die erste
+# Frage brauchte wieder 8-11 s. Deshalb noch am selben Tag wieder entladen.
+#
+# Jetzt das kleinere google/gemma-4-12b: ohnehin resident (PII-Proxy,
+# Link-Detektor), 8 Plätze, kostet keinen Zusatzspeicher. Gemessen 28.10. an
+# vier Jarvis-Fragen etwa gleich schnell wie die eigene 31b-Instanz
+# (1,5-4 s, kalt 12 s), Antworten brauchbar, etwas ausführlicher.
+CHAT_MODEL = "google/gemma-4-12b"
+# Ausweichmodell bei Fehler/Timeout: das gemeinsame 31b — sonst wiche llm.chat
+# auf DEFAULT_MODEL aus, also wieder auf das 12b selbst.
+# NICHT die WHITESTAG-AI (gemma-4-31b-it): gemessen 28.10. unter Agentenlast
+# 27 s für ein bloßes „ok" und einmal > 90 s Timeout — sie ist mit CMO/LLM-
+# Analyst genauso geteilt und hat nur 2 Plätze.
 CHAT_FALLBACK_MODEL = "google/gemma-4-31b"
 
 # 26.10.2026: Die Studio-gemma DENKT vor jeder Antwort (Reasoning), das war

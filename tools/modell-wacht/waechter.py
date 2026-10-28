@@ -42,6 +42,13 @@ REPO = os.environ.get(
     os.path.expanduser("~/Library/CloudStorage/SynologyDrive-Mac/Claude Code MAC/Paperclip"),
 )
 N8N_DB = os.path.expanduser("~/.n8n/database.sqlite")
+# Die Datei, die der launchd-Job de.whitestag.wake-satellite tatsächlich lädt.
+# Bis 28.10.2026 stand hier der Repo-Spiegel im Haupt-Checkout — der hinkte
+# dem Live-Stand hinterher (Repo google/gemma-4-31b, live google/gemma-4-12b).
+SATELLIT_CONFIG = os.environ.get(
+    "MODELL_WACHT_SATELLIT",
+    os.path.expanduser("~/.paperclip/scripts/wake-satellite/sat_config.py"),
+)
 PII_PLIST = os.path.expanduser("~/Library/LaunchAgents/io.piiproxy.server.plist")
 DETEKTOR = os.path.join(VAULT, "projekte/obsidian/link-detektor-v11")
 LMS_BIN = os.path.expanduser("~/.lmstudio/bin/lms")
@@ -169,8 +176,12 @@ def referenzen_aus_template(text: str, quelle: str) -> List[Referenz]:
 
 
 def referenzen_aus_satellit(text: str) -> List[Referenz]:
-    m = re.search(r'^\s*CHAT_MODEL\s*=\s*"([^"]+)"', text, re.M)
-    return [Referenz("Wake-Satellit", "sat_config.CHAT_MODEL", m.group(1))] if m else []
+    refs = []
+    for feld in ("CHAT_MODEL", "CHAT_FALLBACK_MODEL"):
+        m = re.search(r'^\s*' + feld + r'\s*=\s*"([^"]+)"', text, re.M)
+        if m:
+            refs.append(Referenz("Wake-Satellit", "sat_config." + feld, m.group(1)))
+    return refs
 
 
 def referenzen_aus_launchd_env(text: str, quelle: str) -> List[Referenz]:
@@ -355,8 +366,7 @@ def hole_tagger() -> List[Referenz]:
 
 
 def hole_satellit() -> List[Referenz]:
-    pfad = os.path.join(REPO, "tools", "wake-satellite", "sat_config.py")
-    with open(pfad, "r", encoding="utf-8") as fh:
+    with open(SATELLIT_CONFIG, "r", encoding="utf-8") as fh:
         return referenzen_aus_satellit(fh.read())
 
 

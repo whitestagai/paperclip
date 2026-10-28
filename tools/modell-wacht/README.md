@@ -154,7 +154,7 @@ Befund sichtbar geworden statt still:
 | Link-Detektor | `ld.config.llm_model` + `.embedding_model` in `link_detektor` **und** `link_detektor_clara` |
 | n8n | literale Modell-Zuweisungen in `set`-Knoten aktiver Workflows |
 | Obsidian-Tagger | `llm.modell` in beiden Templates |
-| Wake-Satellit | `sat_config.CHAT_MODEL` |
+| Wake-Satellit (live `~/.paperclip/scripts/wake-satellite/sat_config.py`) | `sat_config.CHAT_MODEL`, `CHAT_FALLBACK_MODEL` |
 | PII-Proxy (Datei) | `PII_PROXY_CLASSIFIER_MODEL` + `..._FALLBACK_MODEL` aus der Plist |
 | PII-Proxy (laufender Dienst) | dieselben Felder aus `launchctl print` — **das ist der wirksame Wert** |
 | LM-Studio-Laufzeit | `contextLength` + `parallel` je geladenem Modell gegen `soll-laufzeit.json` |

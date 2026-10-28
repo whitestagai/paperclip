@@ -7,8 +7,10 @@ from waechter import (
     referenzen_aus_agenten,
     referenzen_aus_launchd_env,
     referenzen_aus_n8n,
+    referenzen_aus_satellit,
     referenzen_aus_template,
 )
+import waechter
 
 
 # ------------------------------------------------------- laufender Dienst
@@ -301,3 +303,20 @@ def test_geraete_aus_lms_ordnet_namen_zu_und_kennt_nur_verbundene():
         "fremd": "9999",
     }
     assert verbunden == {"RTX Pro 6000"}
+
+
+# ------------------------------------------------------- Wake-Satellit
+
+def test_satellit_liefert_antwort_und_ausweichmodell():
+    text = 'CHAT_MODEL = "google/gemma-4-12b"\nCHAT_FALLBACK_MODEL = "google/gemma-4-31b"\n'
+    assert referenzen_aus_satellit(text) == [
+        Referenz("Wake-Satellit", "sat_config.CHAT_MODEL", "google/gemma-4-12b"),
+        Referenz("Wake-Satellit", "sat_config.CHAT_FALLBACK_MODEL", "google/gemma-4-31b"),
+    ]
+
+
+def test_satellit_wird_aus_der_live_datei_gelesen():
+    """28.10.: Die Aufsicht las tools/wake-satellite/sat_config.py aus dem
+    Haupt-Checkout — dort stand noch google/gemma-4-31b, live lief seit dem
+    Mittag google/gemma-4-12b. Maßgeblich ist, was der launchd-Job lädt."""
+    assert waechter.SATELLIT_CONFIG.endswith(".paperclip/scripts/wake-satellite/sat_config.py")

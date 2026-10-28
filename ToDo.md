@@ -149,6 +149,20 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Workflow und Tag), **die Ursache am Mailserver ist damit nur zugedeckt,
       nicht behoben**. Verdacht: Verbindungslimit bei 11 gleichzeitigen
       Postfaechern auf demselben Server. *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
+      **Stand 28.10.: (1) ist erledigt, die Folgen sind eingedämmt, die Ursache nicht.**
+      Mailhub ist jetzt aufgeteilt (11 × `Mailhub V12 — Eingang <Konto>` + `Mailhub V13 —
+      Verarbeitung`), ein gestörtes Konto legt nicht mehr alle elf lahm. End-to-End belegt
+      (Testmail cto@ → webdesign@ → WHI-10643). Weiter offen: warum Hetzner einzelne Konten
+      mehrmals pro Woche kappt (21./22./26.10.) und am 27.10. Port 993 ganz ablehnte. Seit dem
+      Token-Fix vom 27.10. meldet der Error-Handler das wieder, bis zu 11 Issues/Tag statt 1.
+      *(2026-10-28, Chat: Mailhub Postfach-Ausfall)*
+
+- [ ] **Sekretärin-Mail-Watcher: Rückfall auf Port 143 einbauen** — `office_inbox.py`
+      (`~/.paperclip/scripts/sekretaerin-mail-watcher/`) liest office@ an drei Stellen nur per
+      `IMAP4_SSL(host, 993)`; beim Hetzner-Ausfall am 27.10. war er blind. Muster aus dem
+      Maxim-Job übernehmen (`postfach.verbinden()`, Commit `5dae7fa` in `maxim-autoreply`: erst
+      993, bei `OSError` 143 + STARTTLS, nie Klartext-Login), danach `tools/`-Spiegel nachziehen.
+      *(2026-10-28, Chat: Mailhub Postfach-Ausfall)*
 
 - [ ] **★★VP Engineering laeuft leer — 2.143 Runs, 99 % Fehlerquote** — mit
       Abstand der groesste Einzelverbraucher der Flotte (23 % aller Runs der

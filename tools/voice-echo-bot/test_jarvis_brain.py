@@ -663,6 +663,24 @@ def test_reasoning_effort_reaches_the_web_followup(monkeypatch):
     assert seen == ["none", "none"]
 
 
+def test_fallback_model_reaches_every_llm_call(monkeypatch):
+    # Der Satellit setzt sein eigenes Ausweichmodell — auch für die Folge-
+    # runden nach Vault-Lookup und Websuche.
+    seen = []
+    antworten = iter(["LOOKUP kontakt: Jana", "Janas Nummer ist 123.",
+                      "WEB: Wetter Cottbus", "Morgen 24 Grad."])
+    def fake_chat(msgs, model=None, **kw):
+        seen.append(kw.get("fallback_model"))
+        return next(antworten)
+    monkeypatch.setattr(jarvis_brain.llm, "chat", fake_chat)
+    monkeypatch.setattr(jarvis_brain.vault_client, "lookup",
+                        lambda mode, query, vault=None: {"mode": mode, "treffer": [{"tel": "123"}]})
+    monkeypatch.setattr(jarvis_brain.websuche_client, "suche", _lokale_quelle)
+    jarvis_brain.respond("Nummer von Jana?", TENANT, "tok", "m", fallback_model="fb")
+    jarvis_brain.respond("wetter morgen?", TENANT, "tok", "m", fallback_model="fb")
+    assert seen == ["fb"] * 4
+
+
 def test_without_reasoning_effort_llm_chat_gets_no_such_argument(monkeypatch):
     # Bestehende Aufrufer (Telegram) und ihre Doubles mit (msgs, model=None)
     # dürfen kein neues Argument zu sehen bekommen.

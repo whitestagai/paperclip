@@ -172,7 +172,7 @@ def _strip_or_fallback(text):
 
 def respond(text, tenant, token, chat_model, history=None, source="per Telegram",
             voice_output=False, now=None, web_key=None, web_erlaubt=True,
-            reasoning_effort=None):
+            reasoning_effort=None, fallback_model=None):
     """`web_erlaubt` ist der Sperrschalter der Websuche, `web_key` nur der
     Zugang zum Tavily-Fallback.
 
@@ -204,10 +204,11 @@ def respond(text, tenant, token, chat_model, history=None, source="per Telegram"
     system_content += TIME_HINT.format(format_now(now or datetime.datetime.now()))
     if voice_output:
         system_content += VOICE_OUTPUT_HINT
+    extra = _llm_kwargs(reasoning_effort, fallback_model)
     messages = ([{"role": "system", "content": system_content}]
                 + list(hist) + [{"role": "user", "content": text}])
     try:
-        raw = llm.chat(messages, model=chat_model, **_reasoning(reasoning_effort))
+        raw = llm.chat(messages, model=chat_model, **extra)
     except llm.LlmError:
         traceback.print_exc()
         return _unparsed(text, tenant, token, source)
@@ -215,7 +216,7 @@ def respond(text, tenant, token, chat_model, history=None, source="per Telegram"
     if action["kind"] == "lookup":
         return {"kind": "lookup",
                 "answer": _do_lookup(messages, action["mode"], action["query"], tenant, chat_model,
-                                     reasoning_effort)}
+                                     extra)}
     if action["kind"] == "issue":
         return {"kind": "issue",
                 "answer": _do_issue(action["title"], action["description"], tenant, token)}
@@ -232,17 +233,24 @@ def respond(text, tenant, token, chat_model, history=None, source="per Telegram"
                     "answer": "Dafür kann ich gerade nicht ins Netz."}
         return {"kind": "web",
                 "answer": _do_web(messages, action["query"], chat_model, web_key,
-                                  reasoning_effort)}
+                                  extra)}
     return {"kind": "chat", "answer": _strip_control_lines(action["text"])}
 
 
-def _reasoning(reasoning_effort):
-    """Zusatzargument für llm.chat — nur wenn gesetzt, damit Aufrufer ohne
-    den Schalter (Telegram) exakt den bisherigen Aufruf behalten."""
-    return {"reasoning_effort": reasoning_effort} if reasoning_effort is not None else {}
+def _llm_kwargs(reasoning_effort, fallback_model):
+    """Zusatzargumente für llm.chat — nur die gesetzten, damit Aufrufer ohne
+    die Schalter (Telegram) exakt den bisherigen Aufruf behalten.
+    `fallback_model` ersetzt das Ausweichmodell aus llm.py (Satellit: eigene
+    Jarvis-Instanz, Ausweichen auf ein anderes Gerät)."""
+    extra = {}
+    if reasoning_effort is not None:
+        extra["reasoning_effort"] = reasoning_effort
+    if fallback_model is not None:
+        extra["fallback_model"] = fallback_model
+    return extra
 
 
-def _do_lookup(messages, mode, query, tenant, chat_model, reasoning_effort=None):
+def _do_lookup(messages, mode, query, tenant, chat_model, extra=None):
     try:
         result = vault_client.lookup(mode, query, vault=tenant.get("vault"))
     except vault_client.VaultError:
@@ -262,7 +270,7 @@ def _do_lookup(messages, mode, query, tenant, chat_model, reasoning_effort=None)
              "Gib KEIN Steuer-Token mehr aus.").format(context)},
     ]
     try:
-        answer = llm.chat(followup, model=chat_model, **_reasoning(reasoning_effort))
+        answer = llm.chat(followup, model=chat_model, **(extra or {}))
     except llm.LlmError:
         traceback.print_exc()
         return "⚠️ Konnte die Vault-Daten nicht auswerten, bitte gleich nochmal."
@@ -330,7 +338,7 @@ def _ergebnislos(ohne_quelle):
     return KEIN_TREFFER if ohne_quelle else KEIN_NETZ
 
 
-def _do_web(messages, query, chat_model, api_key, reasoning_effort=None):
+def _do_web(messages, query, chat_model, api_key, extra=None):
     print("[web] query='{}'".format((query or "").replace("\n", " ")[:120]),
           flush=True)
     # Kürzere Timeouts als beim Vault-Lookup: der Nutzer wartet im Sprachpfad
@@ -393,7 +401,7 @@ def _do_web(messages, query, chat_model, api_key, reasoning_effort=None):
     ]
     try:
         answer = llm.chat(followup, model=chat_model, timeout=WEB_CHAT_TIMEOUT,
-                          **_reasoning(reasoning_effort))
+                          **(extra or {}))
     except llm.LlmError:
         traceback.print_exc()
         return "⚠️ Konnte das Suchergebnis nicht auswerten, bitte gleich nochmal."

@@ -113,7 +113,21 @@ LOKAL_TTS_TIMEOUT_SEC = 20
 # dem MacBook. Das stimmt nicht — `llm.py` setzt FALLBACK_MODEL und DEFAULT_MODEL
 # beide auf `google/gemma-4-12b`. Der Fallback ist also die 12B, nicht ein
 # zweites 31B. Wer das aendern will, aendert llm.py, nicht diesen Kommentar.
-CHAT_MODEL = "google/gemma-4-31b"
+#
+# 28.10.2026: EIGENE INSTANZ nur für Jarvis. Das gemeinsame google/gemma-4-31b
+# bedient 4 Anfragen gleichzeitig; sind alle mit Agenten-Prompts belegt, stand
+# Jarvis in der Schlange (Log: 85 / 105 / 201 s statt 1-5 s). LM Studio kennt
+# keine Priorität je Anfrage — eine eigene Instanz desselben Modells ist der
+# einzige Vorrang. Geladen mit --identifier jarvis-gemma-4-31b, steht im
+# resident-set des Entlade-Wärters und im Vorladen von ~/Desktop/n8n.sh.
+CHAT_MODEL = "jarvis-gemma-4-31b"
+# Ausweichmodell, falls die eigene Instanz fehlt (z. B. nach einem LM-Studio-
+# Neustart ohne n8n.sh): das gemeinsame Modell, gleiche Qualität statt des 12b
+# aus llm.FALLBACK_MODEL. Greift nur bei Fehler/Timeout.
+# NICHT die WHITESTAG-AI (gemma-4-31b-it): zuerst so geplant, aber gemessen
+# 28.10. unter Agentenlast 27 s für ein bloßes „ok" und einmal > 90 s Timeout —
+# sie ist mit CMO/LLM-Analyst genauso geteilt und hat nur 2 Plätze.
+CHAT_FALLBACK_MODEL = "google/gemma-4-31b"
 
 # 26.10.2026: Die Studio-gemma DENKT vor jeder Antwort (Reasoning), das war
 # der Großteil der 22-201 s Antwortzeit. Gemessen an derselben Frage:

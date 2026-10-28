@@ -52,7 +52,7 @@ def test_single_turn_speaks_answer(monkeypatch):
     spoken = []
     monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "Wie spät ist es?")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
-                        lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True, reasoning_effort=None: {"kind": "chat", "answer": "Kurz nach drei."})
+                        lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True, reasoning_effort=None, fallback_model=None: {"kind": "chat", "answer": "Kurz nach drei."})
     monkeypatch.setattr(satellite, "_speak", lambda text, deps: spoken.append(text))
     # 1 Runde Sprache, dann Nachfrage-Fenster leer -> Ende
     frames = iter([loud(), loud(), quiet(), quiet(), quiet(), quiet(), quiet(),
@@ -148,7 +148,7 @@ def test_token_callable_is_resolved(monkeypatch):
     seen = {}
     monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "wie geht es dir")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
-                        lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True, reasoning_effort=None: seen.update(token=token) or {"kind": "chat", "answer": "ok"})
+                        lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True, reasoning_effort=None, fallback_model=None: seen.update(token=token) or {"kind": "chat", "answer": "ok"})
     monkeypatch.setattr(satellite, "_speak", lambda text, deps: None)
     deps = _deps()
     deps["token"] = lambda: "AUFGELÖST"
@@ -179,6 +179,19 @@ def test_web_key_is_passed_to_brain(monkeypatch):
     frames = iter(_turn() + [quiet()] * sat_config.FOLLOWUP_START_FENSTER_FRAMES)
     satellite.handle_interaction(frames, deps)
     assert seen["web_key"] == "tvly-k"
+
+
+def test_eigenes_ausweichmodell_geht_ans_gehirn(monkeypatch):
+    # Die eigene Jarvis-Instanz weicht auf ein ANDERES Gerät aus, nicht auf
+    # das Ausweichmodell, das llm.py für den Telegram-Jarvis vorsieht.
+    seen = {}
+    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "wie spät ist es")
+    monkeypatch.setattr(satellite.jarvis_brain, "respond",
+                        lambda *a, **k: seen.update(k) or {"kind": "chat", "answer": "ok"})
+    monkeypatch.setattr(satellite, "_speak", lambda text, deps: None)
+    frames = iter(_turn() + [quiet()] * sat_config.FOLLOWUP_START_FENSTER_FRAMES)
+    satellite.handle_interaction(frames, _deps())
+    assert seen["fallback_model"] == sat_config.CHAT_FALLBACK_MODEL
 
 
 def test_web_is_locked_after_vault_lookup_for_rest_of_chain(monkeypatch):

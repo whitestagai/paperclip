@@ -52,7 +52,7 @@ def test_single_turn_speaks_answer(monkeypatch):
     spoken = []
     monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "Wie spät ist es?")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
-                        lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True, reasoning_effort=None, fallback_model=None, claude_aktiv=False, waehrenddessen=None: {"kind": "chat", "answer": "Kurz nach drei."})
+                        lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True, reasoning_effort=None, fallback_model=None, claude_aktiv=False, waehrenddessen=None, aufgaben_aktiv=False: {"kind": "chat", "answer": "Kurz nach drei."})
     monkeypatch.setattr(satellite, "_speak", lambda text, deps: spoken.append(text))
     # 1 Runde Sprache, dann Nachfrage-Fenster leer -> Ende
     frames = iter([loud(), loud(), quiet(), quiet(), quiet(), quiet(), quiet(),
@@ -148,7 +148,7 @@ def test_token_callable_is_resolved(monkeypatch):
     seen = {}
     monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "wie geht es dir")
     monkeypatch.setattr(satellite.jarvis_brain, "respond",
-                        lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True, reasoning_effort=None, fallback_model=None, claude_aktiv=False, waehrenddessen=None: seen.update(token=token) or {"kind": "chat", "answer": "ok"})
+                        lambda text, tenant, token, model, history=None, source=None, voice_output=None, web_key=None, web_erlaubt=True, reasoning_effort=None, fallback_model=None, claude_aktiv=False, waehrenddessen=None, aufgaben_aktiv=False: seen.update(token=token) or {"kind": "chat", "answer": "ok"})
     monkeypatch.setattr(satellite, "_speak", lambda text, deps: None)
     deps = _deps()
     deps["token"] = lambda: "AUFGELÖST"
@@ -522,3 +522,33 @@ def test_claude_antwort_landet_im_verlauf(monkeypatch):
     frames = iter(_turn() + [quiet()] * sat_config.FOLLOWUP_START_FENSTER_FRAMES)
     history = satellite.handle_interaction(frames, _deps())
     assert history[-1] == {"role": "assistant", "content": "Cottbus."}
+
+
+# --- Paperclip-Aufgaben -----------------------------------------------------
+
+def test_aufgaben_sind_im_satelliten_eingeschaltet(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "was ist offen")
+    monkeypatch.setattr(satellite.jarvis_brain, "respond",
+                        lambda *a, **k: seen.update(k) or {"kind": "aufgaben", "answer": "Sieben offen."})
+    monkeypatch.setattr(satellite, "_speak", lambda text, deps: None)
+    frames = iter(_turn() + [quiet()] * sat_config.FOLLOWUP_START_FENSTER_FRAMES)
+    history = satellite.handle_interaction(frames, _deps())
+    assert seen["aufgaben_aktiv"] is sat_config.AUFGABEN_AKTIV is True
+    assert history[-1] == {"role": "assistant", "content": "Sieben offen."}
+
+
+def test_nach_aufgaben_abfrage_sind_web_und_claude_gesperrt(monkeypatch):
+    # Paperclip-Titel sind intern — sie dürfen nicht als Suchbegriff oder
+    # Claude-Kontext nach draußen wandern.
+    calls = []
+    answers = iter([{"kind": "aufgaben", "answer": "Angebot Stadtmuseum ist offen."},
+                    {"kind": "chat", "answer": "ok"}])
+    monkeypatch.setattr(satellite.transcribe, "transcribe", lambda wav, model: "und was ist sonst noch offen")
+    monkeypatch.setattr(satellite.jarvis_brain, "respond",
+                        lambda *a, **k: calls.append(k) or next(answers))
+    monkeypatch.setattr(satellite, "_speak", lambda text, deps: None)
+    frames = iter(_turn() + _sustained_followup() + _turn()
+                  + [quiet()] * sat_config.FOLLOWUP_START_FENSTER_FRAMES)
+    satellite.handle_interaction(frames, _deps())
+    assert [c["web_erlaubt"] for c in calls] == [True, False]

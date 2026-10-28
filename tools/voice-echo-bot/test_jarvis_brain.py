@@ -790,3 +790,55 @@ def test_ansage_und_verlauf_gehen_an_claude(monkeypatch):
                          claude_aktiv=True, waehrenddessen=ansage)
     assert gefragt[0]["waehrenddessen"] is ansage
     assert gefragt[0]["history"] == verlauf
+
+
+# --- Paperclip-Aufgaben nachsehen (AUFGABEN:) --------------------------------
+
+def test_aufgaben_werkzeug_steht_nur_mit_schalter_im_prompt(monkeypatch):
+    seen = []
+    monkeypatch.setattr(jarvis_brain.llm, "chat",
+                        lambda msgs, model=None, **kw: seen.append(msgs[0]["content"]) or "ok")
+    jarvis_brain.respond("hi", TENANT, "tok", "m")
+    jarvis_brain.respond("hi", TENANT, "tok", "m", aufgaben_aktiv=True)
+    assert "AUFGABEN:" not in seen[0]
+    assert "AUFGABEN:" in seen[1]
+
+
+def test_aufgaben_token_fragt_paperclip_und_formuliert_antwort(monkeypatch):
+    abgefragt = []
+    def abfragen(was, tenant, token=None, **kw):
+        abgefragt.append((was, tenant["company_id"], token))
+        return {"art": "offen", "anzahl": {"offen": 7, "blockiert": 62}}
+    monkeypatch.setattr(jarvis_brain.paperclip_status, "abfragen", abfragen)
+    calls = []
+    def chat(msgs, model=None, **kw):
+        calls.append(msgs)
+        return "AUFGABEN: offen" if len(calls) == 1 else "Sieben offen, zweiundsechzig blockiert."
+    monkeypatch.setattr(jarvis_brain.llm, "chat", chat)
+    r = jarvis_brain.respond("Was ist in Paperclip offen?", TENANT, "tok", "m", aufgaben_aktiv=True)
+    assert r == {"kind": "aufgaben", "answer": "Sieben offen, zweiundsechzig blockiert."}
+    assert abgefragt == [("offen", "c-1", "tok")]
+    assert '"blockiert": 62' in calls[1][-1]["content"]
+
+
+def test_aufgaben_ohne_schalter_wird_nicht_ausgefuehrt(monkeypatch):
+    def abfragen(*a, **k):
+        raise AssertionError("ohne Schalter keine Paperclip-Abfrage")
+    monkeypatch.setattr(jarvis_brain.paperclip_status, "abfragen", abfragen)
+    monkeypatch.setattr(jarvis_brain.llm, "chat", lambda msgs, model=None, **kw: "AUFGABEN: offen")
+    r = jarvis_brain.respond("was ist offen", TENANT, "tok", "m")
+    assert r["kind"] == "chat" and "AUFGABEN" not in r["answer"]
+
+
+def test_paperclip_nicht_erreichbar_wird_ehrlich_gemeldet(monkeypatch):
+    def abfragen(*a, **k):
+        raise jarvis_brain.paperclip_status.PaperclipStatusError("weg")
+    monkeypatch.setattr(jarvis_brain.paperclip_status, "abfragen", abfragen)
+    calls = []
+    def chat(msgs, model=None, **kw):
+        calls.append(msgs)
+        return "AUFGABEN: 10652" if len(calls) == 1 else "Paperclip antwortet gerade nicht."
+    monkeypatch.setattr(jarvis_brain.llm, "chat", chat)
+    r = jarvis_brain.respond("wie steht 10652", TENANT, "tok", "m", aufgaben_aktiv=True)
+    assert r["kind"] == "aufgaben"
+    assert "nicht erreichbar" in calls[1][-1]["content"]

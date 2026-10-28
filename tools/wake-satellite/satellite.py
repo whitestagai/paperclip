@@ -202,12 +202,15 @@ def handle_interaction(frames, deps, tenant=None, history=None):
                                       reasoning_effort=sat_config.CHAT_REASONING_EFFORT,
                                       fallback_model=sat_config.CHAT_FALLBACK_MODEL,
                                       claude_aktiv=sat_config.CLAUDE_AKTIV,
-                                      waehrenddessen=lambda: _speak(sat_config.CLAUDE_ANSAGE, deps))
+                                      waehrenddessen=lambda: _speak(sat_config.CLAUDE_ANSAGE, deps),
+                                      aufgaben_aktiv=sat_config.AUFGABEN_AKTIV)
         t2 = time.monotonic()
-        if result["kind"] == "lookup":
+        # Paperclip-Daten sind so intern wie Vault-Daten: danach nichts mehr
+        # nach draußen (Websuche, Claude).
+        if result["kind"] in ("lookup", "aufgaben"):
             web_locked_after_lookup = True
         answer = result["answer"]
-        if result["kind"] in ("chat", "lookup", "issue", "web", "claude"):
+        if result["kind"] in ("chat", "lookup", "issue", "web", "claude", "aufgaben"):
             history = _remember(history, text, answer)
         synth = _speak(answer, deps) or 0.0
         if flush_mic:

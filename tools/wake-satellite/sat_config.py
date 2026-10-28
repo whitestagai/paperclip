@@ -142,6 +142,12 @@ CHAT_FALLBACK_MODEL = "google/gemma-4-31b"
 CLAUDE_AKTIV = True
 CLAUDE_ANSAGE = "Moment, ich schau nach."
 
+# Stand von Paperclip-Aufgaben vorlesen (28.10.2026): „wie steht 10652",
+# „was ist offen", „was wurde heute erledigt", „gibt es was zum Stadtmuseum".
+# Nur lesen, über das Board-Token (paperclip_status.py). Danach ist der Weg
+# nach draußen gesperrt wie nach einem Vault-Treffer.
+AUFGABEN_AKTIV = True
+
 # 26.10.2026: Die Studio-gemma DENKT vor jeder Antwort (Reasoning), das war
 # der Großteil der 22-201 s Antwortzeit. Gemessen an derselben Frage:
 #   ohne Schalter            31,1 s  (259 von 302 Tokens Reasoning)
@@ -157,4 +163,5 @@ TENANT = {
     "company_id": "9cebf3cf-efe8-4597-a400-f06488900a87",
     "ceo_agent_id": "506c873e-3a40-4483-9a45-0eb0fa1554bb",
     "vault": "whitestag",
+    "issue_prefix": "WHI",
 }

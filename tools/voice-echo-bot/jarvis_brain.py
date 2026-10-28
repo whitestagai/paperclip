@@ -14,6 +14,7 @@ import traceback
 
 import claude_client
 import llm
+import paperclip_status
 import vault_client
 import web_search
 import websuche_client
@@ -69,6 +70,7 @@ LOOKUP_RE = re.compile(r"^\s*LOOKUP\s+(kontakt|termin|mail|wissen|dokument)\s*:\
                        re.IGNORECASE)
 ISSUE_RE = re.compile(r"^\s*ISSUE\s*:\s*(.+)$", re.IGNORECASE)
 WEB_RE = re.compile(r"^\s*WEB\s*:\s*(.+)$", re.IGNORECASE)
+AUFGABEN_RE = re.compile(r"^\s*AUFGABEN\s*:\s*(.+)$", re.IGNORECASE)
 
 
 def first_name(tenant):
@@ -94,6 +96,9 @@ def parse_control(raw):
     m = WEB_RE.match(first)
     if m:
         return {"kind": "web", "query": m.group(1).strip()}
+    m = AUFGABEN_RE.match(first)
+    if m:
+        return {"kind": "aufgaben", "was": m.group(1).strip()}
     return {"kind": "chat", "text": text}
 
 
@@ -146,13 +151,26 @@ NO_WEB_HINT = (
 )
 
 
+# Nur mit `aufgaben_aktiv` (Satellit). Ohne Nummer, weil davor je nach Lage
+# Werkzeug 3 (Web) steht oder nicht. Die Abgrenzung zu ISSUE (anlegen) muss
+# drinstehen, sonst legt das Modell auf „wie steht die Aufgabe …" eine neue an.
+AUFGABEN_TOOL_HINT = (
+    "\n\nPaperclip-Aufgaben NACHSEHEN — Stand einer Aufgabe, was offen ist, was "
+    "heute erledigt wurde, Aufgaben zu einem Thema (nur lesen; zum ANLEGEN "
+    "bleibt ISSUE):\n"
+    "   AUFGABEN: <nummer | offen | erledigt | suchbegriff>\n"
+    "   Beispiele: AUFGABEN: 10652 · AUFGABEN: offen · AUFGABEN: erledigt · "
+    "AUFGABEN: Stadtmuseum"
+)
+
+
 def _strip_control_lines(text):
     """Entfernt versehentlich eingestreute Steuer-Token-Zeilen (LOOKUP/ISSUE/
-    WEB) aus einer Chat-Antwort. Manche Modelle hängen so ein Token ans Ende,
+    WEB/AUFGABEN) aus einer Chat-Antwort. Manche Modelle hängen so ein Token ans Ende,
     obwohl sie direkt geantwortet haben — ungefiltert würde es laut vorgelesen."""
     kept = [ln for ln in (text or "").splitlines()
             if not LOOKUP_RE.match(ln) and not ISSUE_RE.match(ln)
-            and not WEB_RE.match(ln)]
+            and not WEB_RE.match(ln) and not AUFGABEN_RE.match(ln)]
     return "\n".join(kept).strip()
 
 
@@ -174,7 +192,7 @@ def _strip_or_fallback(text):
 def respond(text, tenant, token, chat_model, history=None, source="per Telegram",
             voice_output=False, now=None, web_key=None, web_erlaubt=True,
             reasoning_effort=None, fallback_model=None, claude_aktiv=False,
-            waehrenddessen=None):
+            waehrenddessen=None, aufgaben_aktiv=False):
     """`web_erlaubt` ist der Sperrschalter der Websuche, `web_key` nur der
     Zugang zum Tavily-Fallback.
 
@@ -219,6 +237,8 @@ def respond(text, tenant, token, chat_model, history=None, source="per Telegram"
         system_content += WEB_TOOL_HINT
     else:
         system_content += NO_WEB_HINT
+    if aufgaben_aktiv:
+        system_content += AUFGABEN_TOOL_HINT
     system_content += SYSTEM_PROMPT_TAIL
     system_content += TIME_HINT.format(format_now(now or datetime.datetime.now()))
     if voice_output:
@@ -236,6 +256,13 @@ def respond(text, tenant, token, chat_model, history=None, source="per Telegram"
         return {"kind": "lookup",
                 "answer": _do_lookup(messages, action["mode"], action["query"], tenant, chat_model,
                                      extra)}
+    if action["kind"] == "aufgaben":
+        if not aufgaben_aktiv:
+            return {"kind": "chat",
+                    "answer": "Auf Paperclip-Aufgaben habe ich hier keinen Zugriff."}
+        return {"kind": "aufgaben",
+                "answer": _do_aufgaben(messages, action["was"], tenant, token,
+                                       chat_model, extra)}
     if action["kind"] == "issue":
         return {"kind": "issue",
                 "answer": _do_issue(action["title"], action["description"], tenant, token)}
@@ -328,6 +355,34 @@ def _do_lookup(messages, mode, query, tenant, chat_model, extra=None):
     # Nach einem Vault-Zugriff wird KEIN weiteres Werkzeug mehr ausgeführt:
     # in dieser Anfrage gewonnene Vault-Daten dürfen nicht nach draussen
     # (z.B. in einen Suchbegriff) wandern. Token werden nur entfernt.
+    return _strip_or_fallback(answer)
+
+
+def _do_aufgaben(messages, was, tenant, token, chat_model, extra=None):
+    print("[aufgaben] '{}'".format(was[:80]), flush=True)
+    try:
+        result = paperclip_status.abfragen(was, tenant, token=token)
+    except paperclip_status.PaperclipStatusError:
+        traceback.print_exc()
+        result = {"fehler": "Paperclip nicht erreichbar"}
+    context = json.dumps(result, ensure_ascii=False)[:4000]
+    followup = messages + [
+        {"role": "assistant", "content": "AUFGABEN: {}".format(was)},
+        {"role": "user", "content":
+            ("Paperclip-Daten (JSON):\n{}\n\nBeantworte meine letzte Frage knapp auf "
+             "Deutsch mit diesen Daten. Nenne Aufgaben mit ihrem Titel und lies KEINE "
+             "Aufgabennummern vor. Übernimm Anzahlen "
+             "WÖRTLICH aus den Daten (sie stehen dort schon als Wörter) und nenne "
+             "bei einer Übersicht jeden Status mit seiner Anzahl. zustaendiger_agent ist "
+             "ein KI-Agent, nicht ich — erfinde nicht, wer etwas erledigt hat. Fehlt etwas oder gibt es "
+             "einen Fehler, sag das ehrlich. Gib KEIN Steuer-Token mehr aus."
+             ).format(context)},
+    ]
+    try:
+        answer = llm.chat(followup, model=chat_model, **(extra or {}))
+    except llm.LlmError:
+        traceback.print_exc()
+        return "⚠️ Konnte die Paperclip-Daten nicht auswerten, bitte gleich nochmal."
     return _strip_or_fallback(answer)
 
 

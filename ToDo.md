@@ -17,6 +17,11 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       4 × 27k). Nach dem naechsten Neustart von hier messen (`nvidia-smi` am PC:
       5090 ~24 GB, 3090 ~20 GB; Decode qwen > 150 tok/s). *(2026-10-21, Chat: LLM-Farm ohne RTX)*
 
+- [ ] **Swap auf dem Studio fast voll** — am 28.10. 20,6 von 21,5 GB belegt, Kompressor
+      rund 60 GB. Eine zusätzliche 31b-Instanz für Jarvis (31,5 GiB) wurde deshalb am selben
+      Tag wieder entladen: macOS lagerte sie in jeder Pause aus. Vor jedem weiteren dauerhaft
+      geladenen Modell klären, wer den Speicher hält (Dienste-Stack, MLX-Autofit-Fenster). *(2026-10-28, Chat: Jarvis Claude Aufgaben)*
+
 - [ ] **Ursache der Geraeteausfaelle unbekannt** — RTX Pro 6000 am 10.10. ~10:30
       bis 12.10. morgens, WHITESTAG-AI am 14.10. ~09:30–15:20 (danach mit
       Standard-Kennungen, also vermutlich Neustart). Beide von Walter von Hand
@@ -1011,7 +1016,8 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       existiert auf keiner Maschine mehr**. *(Der Wake-Satellit ist am 04.10.
       erledigt: `CHAT_MODEL` stand auf der toten `gemma-4-31b-it` bei laufendem
       launchd-Job, jetzt `google/gemma-4-31b` — live UND im Repo-Spiegel, weil
-      `waechter.py -> hole_satellit()` die REPO-Datei liest.)*;
+      `waechter.py -> hole_satellit()` die REPO-Datei liest. **Seit 28.10. liest sie
+      die Live-Datei** `~/.paperclip/scripts/wake-satellite/sat_config.py`.)*;
       (2) **teilweise erledigt (04.10.2026):** `google/gemma-4-12b-qat` ist
       nicht mehr gelöscht, sondern der Primaer-Klassifikator des PII-Proxys —
       Eintrag in `resident-set.json` auf `when: always` gehoben, begruendet und
@@ -1561,6 +1567,9 @@ Umsetzung läuft in einer Booker-Session). R9 ist angehalten
       gepusht nach `fork`, Worktree `.worktrees/jarvis-phonon`. Bis zum Merge ist dieser
       Branch die einzige Quelle, von der aus `tools/wake-satellite/deploy.sh` sicher ist.
       PR nach master oder Merge — Walters Entscheidung. *(2026-10-27, Chat: Jarvis Phonon-Stimme)*
+      **Stand 28.10.: zwölf Commits** bis `c7c891499` (dazu Stille-Diagnose, Zeitmessung,
+      gemma-4-12b, Claude hinter Jarvis, Paperclip-Aufgaben), gepusht. Neue Module
+      `claude_client.py` und `paperclip_status.py` liegen auch im Telegram-Bot-Ordner. *(2026-10-28, Chat: Jarvis Claude Aufgaben)*
 
 - [ ] **Musik-Regel im Feld beobachten** — seit 27.10. beendet eine Aufnahme bis zum
       12-s-Deckel oder ein reines Musik-Transkript (`#`, `♪`, „Musik") die Kette still.
@@ -1571,13 +1580,24 @@ Umsetzung läuft in einer Booker-Session). R9 ist angehalten
       in `sat_config.py` senkte die Antwortzeit von ~25–33 s auf 3–8 s. In einer von vier
       Proben stand „zwanzig fünf Prozent". Häufen sich solche Patzer, ist `None` die
       Rückkehr (eine Zeile). *(2026-10-27, Chat: Jarvis Phonon-Stimme)*
+      **Stand 28.10.: Antwortmodell ist jetzt `google/gemma-4-12b`** (Rückfall
+      `google/gemma-4-31b`). Das 12b redet ausführlicher und verrechnet sich beim
+      Ausschreiben von Zahlen (25 → „fünfzigen"); bei Paperclip-Zahlen abgefangen, im
+      freien Chat nicht. *(2026-10-28, Chat: Jarvis Claude Aufgaben)*
+
+- [ ] **AirPlay-Traceback bei jeder Jarvis-Antwort** — Walter bleibt vorerst bei den
+      Mac-Studio-Lautsprechern; der Satellit versucht trotzdem jedes Mal
+      `SwitchAudioSource -s AirPlay` (Exit 1) und schreibt einen Traceback ins Log, bevor
+      er auf die aktuelle Ausgabe ausweicht. Funktioniert, verrauscht aber das Log. Bei
+      Bedarf `HOMEPOD_DEVICE` in `sat_config.py` auf „Mac Studio-Lautsprecher". *(2026-10-28, Chat: Jarvis Claude Aufgaben)*
+
+- [ ] **Claude-Weg und Aufgaben-Abfrage im Alltag beobachten** — Walter hat beides mit
+      Stimme getestet (klappt). Beobachten: erkennt Whisper „frag Claude" zuverlässig
+      (zugelassen sind Cloud/Claud/Klaut), wie stark belastet es das Claude-Abo, und
+      formuliert das 12b die Paperclip-Daten korrekt. Log-Marken `[claude]` und
+      `[aufgaben]` in `~/.paperclip/logs/wake-satellite.log`. *(2026-10-28, Chat: Jarvis Claude Aufgaben)*
 
 ## Fuer Walter (nur von Hand)
-
-- [ ] **HomePod als Ausgabe wählen (vor Ort)** — die Mac-Studio-Ausgabe steht auf
-      „Jump Desktop Audio", dadurch scheitert `SwitchAudioSource -s AirPlay` bei jeder
-      Jarvis-Antwort und er spricht nur in die Jump-Sitzung. Einmal im Kontrollzentrum
-      → Ton den HomePod wählen, dann erscheint „AirPlay" wieder. *(2026-10-27, Chat: Jarvis Phonon-Stimme)*
 
 - [ ] **RTX Pro 6000 aus LM Link abmelden** — traegt seit 21.10. keine Modelle mehr, keine
       Konfiguration zeigt auf sie. Am Filmrechner in LM Studio den Link trennen, dann ist

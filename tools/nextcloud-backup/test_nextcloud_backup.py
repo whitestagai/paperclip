@@ -216,3 +216,59 @@ def test_backups_ordner_mit_academy_dumps_wird_gesichert(tmp_path):
     assert "academy-2026-10-25.sql.gz" in ls, ls
     s = status(tmp_path)
     assert s and s["stand"] == "ok", s
+
+
+def baue_instanz(tmp_path, mit_schluessel=True):
+    """Die Paperclip-Instanz, wie sie unter ~/.paperclip/instances/default liegt."""
+    instanz = tmp_path / ".paperclip" / "instances" / "default"
+    (instanz / "secrets").mkdir(parents=True)
+    if mit_schluessel:
+        (instanz / "secrets" / "master.key").write_bytes(b"k" * 32)
+    (instanz / "secrets" / "mailhub.env").write_text("MAILHUB_SECRET=x")
+    agent = instanz / "companies" / "c1" / "agents" / "a1" / "instructions"
+    agent.mkdir(parents=True)
+    (agent / "AGENTS.md").write_text("# Agent")
+    (instanz / "skills" / "s1").mkdir(parents=True)
+    (instanz / "skills" / "s1" / "SKILL.md").write_text("# Skill")
+    (instanz / "agent-learning.config.yaml").write_text("a: 1")
+    (instanz / "agent-learning.secret").write_text("geheim")
+    (instanz / "data" / "run-logs").mkdir(parents=True)
+    (instanz / "data" / "run-logs" / "lauf.ndjson").write_text("{}")
+    return instanz
+
+
+def test_paperclip_instanz_mit_master_key_wird_gesichert(tmp_path):
+    """Seit 29.10.2026. Die Firmen-Secrets liegen in der Datenbank, aber mit
+    secrets/master.key verschluesselt (AES-256-GCM). Gesichert war nur der
+    Dump — ohne den Schluessel sind die Secrets darin nach einer
+    Wiederherstellung unlesbar. Ebenso fehlten die AGENTS.md der Agenten.
+
+    data/ (31 GB, Run-Logs und alte Instanz-Backups) bleibt bewusst draussen."""
+    repo, passwort, umgebung = baue_repo(tmp_path)
+    baue_instanz(tmp_path)
+
+    r = lauf(repo, passwort, tmp_path, ["--nur-instanz"])
+
+    assert "paperclip-instanz" in schlagworte(umgebung), \
+        f"Instanz wurde nicht gesichert. stdout:\n{r.stdout}\n{r.stderr}"
+    ls = subprocess.run([RESTIC, "ls", "latest", "--tag", "paperclip-instanz"],
+                        env=umgebung, capture_output=True, text=True).stdout
+    for name in ("master.key", "mailhub.env", "AGENTS.md", "SKILL.md",
+                 "agent-learning.config.yaml", "agent-learning.secret"):
+        assert name in ls, f"{name} fehlt:\n{ls}"
+    assert "run-logs" not in ls, ls
+    s = status(tmp_path)
+    assert s and s["stand"] == "ok", s
+
+
+def test_fehlender_master_key_wird_gemeldet(tmp_path):
+    """Ein Instanz-Snapshot ohne Schluessel saehe gruen aus und waere im
+    Ernstfall wertlos — das muss als Fehler auffallen."""
+    repo, passwort, umgebung = baue_repo(tmp_path)
+    baue_instanz(tmp_path, mit_schluessel=False)
+
+    lauf(repo, passwort, tmp_path, ["--nur-instanz"])
+
+    s = status(tmp_path)
+    assert s and s["stand"] == "fehler", s
+    assert "master.key" in s["grund"], s

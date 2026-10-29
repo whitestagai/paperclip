@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Auswaerts-Sicherung nach Hetzner/Nextcloud: Paperclip-Datenbank + Claude-Code-Ordner.
 #
-# Usage: nextcloud-backup.sh [--nur-db] [--nur-code] [--nur-vault] [--nur-developer] [--nur-backups] [--kein-versand]
+# Usage: nextcloud-backup.sh [--nur-db] [--nur-code] [--nur-vault] [--nur-developer] [--nur-backups] [--nur-instanz] [--kein-versand]
 #
 # WICHTIG: Nicht direkt per launchd starten. macOS verweigert einem launchd-Job
 # aus zsh/bash den Zugriff auf CloudStorage (SynologyDrive) UND auf
@@ -32,6 +32,7 @@ CODE_DIR="$HOME/Library/CloudStorage/SynologyDrive-Mac/Claude Code MAC"
 VAULT_DIR="$HOME/Obsidian/WHITESTAG-Vault"
 DEV_DIR="$HOME/Developer"
 BACKUPS_DIR="$HOME/Library/CloudStorage/SynologyDrive-Mac/Backups"
+INSTANZ_DIR="$HOME/.paperclip/instances/default"
 AUSSCHLUSS="$DIR/ausschluss-claude-code.txt"
 ARBEIT="$HOME/.paperclip/backups/nextcloud"
 LOG="$HOME/.paperclip/logs/nextcloud-backup.log"
@@ -43,6 +44,7 @@ TAG_CODE="claude-code"
 TAG_VAULT="obsidian-vault"
 TAG_DEV="developer"
 TAG_BACKUPS="synology-backups"
+TAG_INSTANZ="paperclip-instanz"
 HOST="MacStudio"
 
 # Restic wartet auf eine fremde Repo-Sperre, statt abzubrechen: das
@@ -57,14 +59,15 @@ MAILHUB_URL="http://127.0.0.1:5678/webhook/mailhub/send"
 MAILHUB_ENV="$HOME/.paperclip/instances/default/secrets/mailhub.env"
 VON="cto@whitestag.ai"; AN="ws@whitestag.ai"
 
-MACH_DB=1; MACH_CODE=1; MACH_VAULT=1; MACH_DEV=1; MACH_BACKUPS=1; VERSAND=1
+MACH_DB=1; MACH_CODE=1; MACH_VAULT=1; MACH_DEV=1; MACH_BACKUPS=1; MACH_INSTANZ=1; VERSAND=1
 # Mehrere --nur-* lassen sich kombinieren: das erste schaltet alles ab und
 # waehlt seinen Datensatz, jedes weitere legt einen dazu. Einzeln benutzt
 # verhaelt es sich unveraendert.
 AUSWAHL=0
 waehle() {
   if [ "$AUSWAHL" -eq 0 ]; then
-    MACH_DB=0; MACH_CODE=0; MACH_VAULT=0; MACH_DEV=0; MACH_BACKUPS=0; AUSWAHL=1
+    MACH_DB=0; MACH_CODE=0; MACH_VAULT=0; MACH_DEV=0; MACH_BACKUPS=0; MACH_INSTANZ=0
+    AUSWAHL=1
   fi
 }
 while [ $# -gt 0 ]; do
@@ -74,6 +77,7 @@ while [ $# -gt 0 ]; do
     --nur-vault)    waehle; MACH_VAULT=1; shift ;;
     --nur-developer) waehle; MACH_DEV=1; shift ;;
     --nur-backups)  waehle; MACH_BACKUPS=1; shift ;;
+    --nur-instanz)  waehle; MACH_INSTANZ=1; shift ;;
     --kein-versand) VERSAND=0; shift ;;
     # Nur fuer die Tests: ein Wegwerf-Repo in tmp_path statt Hetzner.
     --repo)         export RESTIC_REPOSITORY="$2"; shift 2 ;;
@@ -284,6 +288,31 @@ sichere_backups() {
 }
 [ "$MACH_BACKUPS" -eq 1 ] && sichere_backups
 
+# --- 3d. Paperclip-Instanz -------------------------------------------------
+# Seit 29.10.2026. Die Firmen-Secrets stehen in der Datenbank, aber mit
+# secrets/master.key verschluesselt (AES-256-GCM). Gesichert war bis dahin nur
+# der Dump — nach einer Wiederherstellung waeren die Secrets darin unlesbar
+# gewesen. Ebenso fehlten die AGENTS.md der Agenten (companies/) und die
+# Firmen-Skills. Zusammen wenige MB.
+#
+# data/ (31 GB: Run-Logs, alte Instanz-Backups) bleibt bewusst draussen. Die
+# Secrets liegen hier im Klartext; das Repo verschluesselt restic selbst.
+sichere_instanz() {
+  [ -f "$INSTANZ_DIR/secrets/master.key" ] || {
+    merke_fehler "secrets/master.key fehlt in $INSTANZ_DIR"; return 1; }
+  local pfade=() p
+  for p in secrets companies skills agent-learning.config.yaml agent-learning.secret; do
+    [ -e "$INSTANZ_DIR/$p" ] && pfade+=("$INSTANZ_DIR/$p")
+  done
+  log "Sichere Paperclip-Instanz (${#pfade[@]} Teile) ..."
+  if ! "$RESTIC" backup "${pfade[@]}" --tag "$TAG_INSTANZ" --host "$HOST" \
+        --exclude ".DS_Store" $WARTEN >>"$LOG" 2>&1; then
+    merke_fehler "restic-Sicherung der Paperclip-Instanz fehlgeschlagen"; return 1
+  fi
+  log "Paperclip-Instanz gesichert (Schlagwort $TAG_INSTANZ)."
+}
+[ "$MACH_INSTANZ" -eq 1 ] && sichere_instanz
+
 # --- 4. Aufbewahrung -------------------------------------------------------
 # Verwaiste Sperren zuerst wegraeumen. Am 16.09.2026 lagen vier davon im
 # Repo, die aelteste seit 27 Stunden von einem laengst toten Prozess. Jedes
@@ -299,7 +328,7 @@ if ! "$RESTIC" unlock >>"$LOG" 2>&1; then
 fi
 
 # Je Schlagwort getrennt. NIEMALS ohne --tag: im selben Repo liegt der Vault.
-for T in "$TAG_DB" "$TAG_CODE" "$TAG_VAULT" "$TAG_DEV" "$TAG_BACKUPS"; do
+for T in "$TAG_DB" "$TAG_CODE" "$TAG_VAULT" "$TAG_DEV" "$TAG_BACKUPS" "$TAG_INSTANZ"; do
   if ! "$RESTIC" forget --tag "$T" --keep-daily 14 --keep-weekly 8 \
         --keep-monthly 12 $WARTEN >>"$LOG" 2>&1; then
     # Frueher nur eine Logzeile. Genau deshalb fiel zwei Tage lang nicht auf,
@@ -319,6 +348,7 @@ fi
 N_DB="$("$RESTIC" snapshots --tag "$TAG_DB" --json 2>/dev/null | /usr/bin/python3 -c 'import json,sys;print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
 N_CODE="$("$RESTIC" snapshots --tag "$TAG_CODE" --json 2>/dev/null | /usr/bin/python3 -c 'import json,sys;print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
 N_DEV="$("$RESTIC" snapshots --tag "$TAG_DEV" --json 2>/dev/null | /usr/bin/python3 -c 'import json,sys;print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
+N_INSTANZ="$("$RESTIC" snapshots --tag "$TAG_INSTANZ" --json 2>/dev/null | /usr/bin/python3 -c 'import json,sys;print(len(json.load(sys.stdin)))' 2>/dev/null || echo 0)"
 # Erst jetzt urteilen — nachdem JEDER Datensatz seine Chance hatte. Gab es
 # unterwegs Fehler, werden sie hier gesammelt gemeldet: eine Mail mit allen
 # Punkten statt einer, die beim ersten stehenbleibt und den Rest verschweigt.
@@ -326,6 +356,6 @@ if [ "$FEHLER_ANZAHL" -gt 0 ]; then
   melde_fehler "$FEHLER_TEXT"
 fi
 
-printf '{"stand":"ok","zeit":"%s","snapshots_db":%s,"snapshots_code":%s,"snapshots_developer":%s}\n' \
-  "$(ts)" "$N_DB" "$N_CODE" "$N_DEV" > "$STATUS"
-log "===== Fertig. Snapshots: DB $N_DB, Code $N_CODE, Developer $N_DEV."
+printf '{"stand":"ok","zeit":"%s","snapshots_db":%s,"snapshots_code":%s,"snapshots_developer":%s,"snapshots_instanz":%s}\n' \
+  "$(ts)" "$N_DB" "$N_CODE" "$N_DEV" "$N_INSTANZ" > "$STATUS"
+log "===== Fertig. Snapshots: DB $N_DB, Code $N_CODE, Developer $N_DEV, Instanz $N_INSTANZ."

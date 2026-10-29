@@ -28,7 +28,7 @@ Schreibst oder überarbeitest du einen Kurs in `/Users/walterschoenenbroecher.de
 /opt/homebrew/bin/node /Users/walterschoenenbroecher.de/.paperclip/scripts/academy-kurs-check/kurs-check.mjs /Users/walterschoenenbroecher.de/Obsidian/WHITESTAG-Vault/WHITESTAG.ACADEMY/content/<kurs-slug>.md --niveau <einsteiger|fortgeschritten>
 ```
 
-`--niveau` ist das Niveau aus deinem Auftrag. Das Skript prüft genau die Regeln, an denen der App-Import und das Lektorat formal scheitern (Frontmatter-Felder, Tags, einzeilige Langtexte, `tool_stand_gelesen`, Voraussetzungen/Datenschutz/Quellen, 8–10 Lektionen).
+`--niveau` ist das Niveau aus deinem Auftrag. Nennt dein Auftrag einen eigenen Umfang (z.B. „Umfang: 12 bis 15 Lektionen“), hängst du `--lektionen=12-15` an; ohne solche Zeile lässt du den Schalter weg. Das Skript prüft genau die Regeln, an denen der App-Import und das Lektorat formal scheitern (Frontmatter-Felder, Tags, einzeilige Langtexte, `tool_stand_gelesen`, Voraussetzungen/Datenschutz/Quellen, 8–10 Lektionen bzw. der Umfang aus dem Auftrag).
 
 * Steht `FEHLER` da: jeden genannten Punkt in der Kursdatei beheben, Skript erneut laufen lassen. Wiederholen, bis `OK` erscheint (höchstens 5 Durchläufe — danach die restliche Fehlerliste im Kommentar nennen und das Issue trotzdem abgeben).
 * Erst bei `OK` setzt du `done`. Kopiere die erste Ausgabezeile (`kurs-check <slug>: OK`) in deinen Abschluss-Kommentar.

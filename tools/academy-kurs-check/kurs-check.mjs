@@ -79,9 +79,10 @@ function parseGrafik(body) {
     const eintraege = [];
     roheEintraege.forEach((roh, i) => {
       const n = i + 1;
-      const trenner = roh.indexOf(" | ");
-      const text = (trenner < 0 ? roh : roh.slice(0, trenner)).trim();
-      const zusatz = trenner < 0 ? void 0 : roh.slice(trenner + 3).trim();
+      const mitte = roh.indexOf(" | ");
+      const amEnde = mitte < 0 && roh.endsWith(" |");
+      const text = (mitte >= 0 ? roh.slice(0, mitte) : amEnde ? roh.slice(0, -2) : roh).trim();
+      const zusatz = mitte >= 0 ? roh.slice(mitte + 3).trim() : amEnde ? "" : void 0;
       const hatZusatz = zusatz !== void 0 && zusatz !== "";
       if (typ === "entscheidung" || typ === "zeitleiste") {
         if (text === "" || !hatZusatz) {
@@ -453,6 +454,13 @@ function validateCourse(slug, md) {
 
 // scripts/kurs-check.ts
 var GRAFIKEN_FREIGESCHALTET = true;
+function parseLektionen(s) {
+  const m = s.trim().match(/^(\d+)(?:\s*[-–]\s*(\d+))?$/);
+  if (!m) return null;
+  const min = Number(m[1]);
+  const max = m[2] === void 0 ? min : Number(m[2]);
+  return min >= 1 && max >= min ? { min, max } : null;
+}
 var SPEC_FIELDS = [
   "title",
   "datum",
@@ -569,8 +577,10 @@ function checkCourse(slug, rawMd, opts = {}) {
   } else if (lessonIdx.length && dsIdx[0] < lessonIdx[lessonIdx.length - 1]) {
     fehler.push(`[Spec \xA7 9] \u201E${DATENSCHUTZ}\u201C steht vor der letzten Lektion \u2014 sie geh\xF6rt direkt hinter die letzte Lektion.`);
   }
-  if (lessonIdx.length && (lessonIdx.length < 8 || lessonIdx.length > 10)) {
-    fehler.push(`[Spec \xA7 5] Der Kurs hat ${lessonIdx.length} Lektionen, verlangt sind 8\u201310.`);
+  const { min, max } = opts.lektionen ?? { min: 8, max: 10 };
+  if (lessonIdx.length && (lessonIdx.length < min || lessonIdx.length > max)) {
+    const quelle = opts.lektionen ? " (Vorgabe aus dem Auftrag)" : "";
+    fehler.push(`[Spec \xA7 5] Der Kurs hat ${lessonIdx.length} Lektionen, verlangt sind ${min}\u2013${max}${quelle}.`);
   }
   if (fm.kurs_niveau === "fortgeschritten") {
     const vIdx = headings.findIndex((h) => h.text === "## Voraussetzungen");
@@ -603,8 +613,17 @@ function main(argv) {
     niveau = args[n + 1];
     args.splice(n, 2);
   }
-  if (args.length !== 1 || niveau && !["einsteiger", "fortgeschritten"].includes(niveau)) {
-    console.error("Aufruf: node kurs-check.mjs <absoluter/pfad/content/<slug>.md> [--niveau einsteiger|fortgeschritten]");
+  let lektionen;
+  const l = args.findIndex((a) => a === "--lektionen" || a.startsWith("--lektionen="));
+  if (l >= 0) {
+    const wert = args[l].includes("=") ? args[l].slice("--lektionen=".length) : args[l + 1] ?? "";
+    args.splice(l, args[l].includes("=") ? 1 : 2);
+    lektionen = parseLektionen(wert);
+  }
+  if (args.length !== 1 || niveau && !["einsteiger", "fortgeschritten"].includes(niveau) || lektionen === null) {
+    console.error(
+      "Aufruf: node kurs-check.mjs <absoluter/pfad/content/<slug>.md> [--niveau einsteiger|fortgeschritten] [--lektionen=12-15  (nur wenn der Ideen-Eintrag einen anderen Umfang vorgibt)]"
+    );
     return 2;
   }
   const path = resolve(args[0]);
@@ -622,6 +641,7 @@ function main(argv) {
   }
   const r = checkCourse(slug, md, {
     niveau,
+    lektionen,
     toolStand: readToolStand(path),
     heute: (/* @__PURE__ */ new Date()).toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" })
   });
@@ -639,5 +659,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
 }
 export {
   GRAFIKEN_FREIGESCHALTET,
-  checkCourse
+  checkCourse,
+  parseLektionen
 };

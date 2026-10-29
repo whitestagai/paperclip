@@ -388,6 +388,8 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Schritte zu gross. Inhaltlich entscheiden: Oktober-Newsletter noch senden?
       Dann Kinder entdoppeln und zuweisen, sonst abbrechen. CLAA-2867 hat sich die
       Kinder selbst zugewiesen, ist aber wieder `blocked` (Post-Run-Guard). *(2026-10-17, Chat: Academy Kurs-Routine)*
+      **Stand 29.10.:** CLAA-2867 samt Kindern 2869/2871 abgebrochen (Ziel CLAA-2863 war schon `cancelled`).
+      CLAA-2994 und CLAA-2977 stehen weiter `blocked` — die Entscheidung dazu ist offen. *(2026-10-29, Chat: Alte Issues aufräumen)*
 
 - [ ] **Generator-Falle `build-agents-md.py`** — `--backup --apply` zusammen fuehrt
       nur das Backup aus (`main()` kehrt nach dem ersten Modus zurueck), meldet aber
@@ -474,6 +476,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       setzen — diese ID ist selbst tot (HTTP 400), das Issue wuerde den Fehler
       einbauen.
       *(2026-10-03, Chat: Tote Modell-ID)*
+      **Stand 29.10.: Unzugewiesene `todo` aelter als 30 Tage = 0.** Abgebrochen: Clara-Briefings R2–R8 KW 39
+      (CLAA-2832…2840, es gibt KW-43-Fassungen), WHI-9302 Finanzanalyse (Walter: EV9 und Mac Studios entfallen);
+      WHI-9013 als `done` (Volume gemountet, `E-Mails Clara V2` laeuft fehlerfrei). Juengere ohne Assignee: **47** —
+      die naechste Runde trifft also wieder diesen Stapel. *(2026-10-29, Chat: Alte Issues aufräumen)*
 
 - [ ] **★★Recovery-Issues blockieren ihr eigenes Rettungsziel** — struktureller
       Bug: Paperclip erzeugt fuer ein haengendes Issue Z ein Recovery-Issue R,
@@ -1175,6 +1181,11 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       — <Datum>`. Pruefen mit:
       `select title, count(*) from issues where title like '%IMAP-Verbindungsabbrueche%' group by 1;`
       *(2026-09-19, Chat: Nachtfehler und Modell-Wächter)*
+      **Stand 29.10.: im Feld meist gehalten, aber nicht immer.** 31 Tagestitel, 28 davon genau einmal —
+      der **12.10. erzeugte 10 Issues** mit identischem Titel, 04.10. und 25.10. je 2. Die Entprellung hat
+      also eine Luecke (vermutlich gleichzeitige Fehler, bevor das erste Issue sichtbar ist). Alle 55 offenen
+      Mailhub-V11-Meldungen am 29.10. abgebrochen (V11 ist seit 27.10. durch V12 ersetzt). Seit V12 gilt die
+      Entprellung je Eingangs-Workflow — beim naechsten Hetzner-Abbruch mit obiger Abfrage auf >1 pruefen. *(2026-10-29, Chat: Alte Issues aufräumen)*
 
 - [ ] **model-evict: Zehn-Minuten-Takt noch unbeobachtet** — der Job
       `ai.whitestag.model-evict` wurde am 19.09. um 09:58 per `bootstrap`
@@ -1348,6 +1359,14 @@ Umsetzung läuft in einer Booker-Session). R9 ist angehalten
       den Agenten, der daraufhin brav bestaetigte und den Status selbst auf
       `blocked` setzte. Das Parken war damit sofort wieder aufgehoben. Ohne
       `comment` haelt es. *(2026-09-06, Chat: Kontaktrecherche-Agent Clara)*
+
+- [ ] **Link-Detektor V10.3 im ersten Lauf belegen (Fr 30.10., 03:00)** — bis V10.2 legte er taeglich ein
+      neues Wochen-Issue an, weil `GET …/issues?labelId=` bei 500 Treffern kappt (Marker-Label an ~1100 Issues).
+      V10.3 (gleiche ID `RVd2VrFAgg0cSfBj`) sucht mit `&q=Link-Erkennung%20KW` und prueft das Montagsdatum.
+      Pruefen: `select identifier from issues where title like 'Link-Erkennung KW 44%' and status='backlog';`
+      → nur **WHI-10663**, mit neuem Tageskommentar. Am Montag 02.11. muss genau EIN KW-45-Issue entstehen.
+      Die Wochen-Issues schliesst niemand — auf V10.2 fehlt der Sonntags-Abschluss aus der V11-Planung.
+      *(2026-10-29, Chat: Alte Issues aufräumen)*
 
 ## Berichte und Mails
 
@@ -1613,6 +1632,11 @@ Umsetzung läuft in einer Booker-Session). R9 ist angehalten
       `[aufgaben]` in `~/.paperclip/logs/wake-satellite.log`. *(2026-10-28, Chat: Jarvis Claude Aufgaben)*
 
 ## Fuer Walter (nur von Hand)
+
+- [ ] **ILB-Foerderung ohne Mac Studios klaeren** — laut WHI-9302/WHI-1556 betraegt die Foerderung 28.500 €,
+      davon ~7.000 € fuer die RTX Pro 6000 (2026) und ~21.500 € gebunden an 2× Mac Studio (2027). Die Mac Studios
+      entfallen (Walter, 29.10.) — ob die ~21.500 € auf andere Hardware umgewidmet werden koennen oder verfallen,
+      ist nur bei der ILB zu klaeren. In Paperclip stehen weder Programmname, Bescheid noch Foerderzeitraum. *(2026-10-29, Chat: Alte Issues aufräumen)*
 
 - [ ] **RTX Pro 6000 aus LM Link abmelden** — traegt seit 21.10. keine Modelle mehr, keine
       Konfiguration zeigt auf sie. Am Filmrechner in LM Studio den Link trennen, dann ist

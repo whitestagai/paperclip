@@ -748,6 +748,18 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       die VORRANG-Zeile vor L08, setzt er `Umfang: …` unter die Kurstyp-Zeile, wertet der Lektor 12–15 nicht als ROT,
       baut der n8n-Kurs erkennbar auf `ki-automatisierung-n8n` auf? Laufzahl und `max_iterations` des Autors bei den
       langen Kursen beobachten; `skip_if_active` kann Donnerstag ausfallen lassen. *(2026-10-27, Chat: ACADEMY Kurse Vorrang)*
+      **Stand 29.10. (Paperclip, WHI-10665):** CEO nahm VORRANG 2 und den Umfang richtig, 14 Lektionen. Dann
+      blockierte `kurs-check` (fest 8–10) → Eskalation an Walter; behoben mit `--lektionen=12-15` (Routinen-Schritt
+      1b + Autor-Rolle). Runde 2 ROT wegen `<parameter=answer>` in 11 Wissens-Checks → von Hand repariert, CEO
+      angewiesen, als GELB auszuliefern. **Prüfen:** kam der Kurs an (Themen-Log, `academy-kurs-import.log`, Freigabe
+      im Admin), und setzen CEO und Autor beim Claude-Code-Kurs V03 `--lektionen` selbst? *(2026-10-29, Chat: Kurs-Check Lektionsumfang)*
+
+- [ ] **Werkzeug-Reste in zwei veröffentlichten Kursen** — der neue `kurs-check` (Spec § 2) findet
+      `<parameter=Antwort anzeigen</parameter>` in `ki-tourismus-reisebranche` (Lektion 6) und
+      `<parameter=summary>` in `vibe-coding-context-engineering` (Lektion 3); der Import übernimmt so etwas als
+      Antworttext. Beide Kurse sind veröffentlicht, die Vault-Datei kommt also nicht mehr in die App (siehe
+      Eintrag „Überarbeitung veröffentlichter Kurse“). In der App-Sitzung prüfen, ob der Rest live sichtbar ist,
+      und dort korrigieren. *(2026-10-29, Chat: Kurs-Check Lektionsumfang)*
 
 - [ ] **Ersten Kurs mit Grafik-Regeln gegenlesen (ab Mi 28.10.)** — seit 27.10. erlaubt Spec v8 § 7
       Lerngrafiken (```` ```grafik ````-Blöcke), Prüfprofil Punkte 18–20, Hinweis im Autoren-Auftrag aller drei

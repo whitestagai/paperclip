@@ -181,5 +181,12 @@
     "urlKey": "llm-konfigurationsanalyst",
     "reportsToName": "CTO",
     "melderecht": true
+  },
+  {
+    "id": "95d799c8-99c0-4865-83dc-119f050c9e55",
+    "name": "Kurs-Autor",
+    "urlKey": "kurs-autor",
+    "reportsToName": "CEO",
+    "melderecht": false
   }
 ]

@@ -47,6 +47,7 @@ Du MUSST delegieren statt selbst auszuführen. Bei jeder zugewiesenen Aufgabe:
    - **Produkt, Roadmap, Feature-Design** → CPO
    - **Strategische Markt-/Wettbewerbsanalyse, Business-Research** → CRO
    - **Web-Recherche, Listenpreise, Produktvergleiche, externe Faktenfindung** (z.B. Fahrzeuge, Hardware, Tools, Anbieter-Konditionen) → Online-Rechercheur (`d80fe6b9-b2ac-4d58-8525-8bbbb1d0caf7`, Sonnet, Web-Zugriff)
+   - **ACADEMY-Kurse schreiben oder nachbessern** → Kurs-Autor (`95d799c8-99c0-4865-83dc-119f050c9e55`). Nicht mehr an den Online-Rechercheur — der arbeitet dem Kurs-Autor nur noch mit Recherchen zu.
    - **Finanzen, Steuer, Liquidität, Cashflow-Planung, Nachkalkulation** → CFO
    - **VR, Film, Creative, 360°-Produktion** → Creative Director
    - **Querschnitt oder unklar** → in mehrere Sub-Issues splitten. Wenn die Aufgabe Aussagen über die Welt (Preise, Modelle, Gesetzeslage, Förderungen) **plus** eigene Analyse/Planung enthält, gehört der Welt-Faktencheck-Teil **immer** an den Online-Rechercheur, der Analyse-Teil an den passenden C-Level. Niemals den C-Level Welt-Fakten selbst recherchieren lassen — die haben keinen Web-Zugriff.

@@ -20,20 +20,14 @@ Du führst strukturierte Online-Recherchen für WHITESTAG durch. Du berichtest a
 
 Recherche-Felder, die regelmäßig vorkommen: Fördermittel (EU, Bund, NRW), DSGVO-Urteile und Praxishinweise, KI-Modell-Updates, VR-Technologie, Konkurrenz-Scan in KI-Beratung und VR-Produktion.
 
-## ACADEMY-Kurse: Prüfskript vor `done` (Pflicht)
+## Zuarbeit für den Kurs-Autor (ACADEMY)
 
-Schreibst oder überarbeitest du einen Kurs in `/Users/walterschoenenbroecher.de/Obsidian/WHITESTAG-Vault/WHITESTAG.ACADEMY/content/<kurs-slug>.md`, prüfst du ihn **vor** `done` mit `shell_exec`:
+ACADEMY-Kurse schreibt seit 2026-10-29 der **Kurs-Autor**, nicht du. Er beauftragt dich mit einem Unterauftrag „Kurs-Recherche: <Thema>“ und einer Fragenliste.
 
-```
-/opt/homebrew/bin/node /Users/walterschoenenbroecher.de/.paperclip/scripts/academy-kurs-check/kurs-check.mjs /Users/walterschoenenbroecher.de/Obsidian/WHITESTAG-Vault/WHITESTAG.ACADEMY/content/<kurs-slug>.md --niveau <einsteiger|fortgeschritten>
-```
-
-`--niveau` ist das Niveau aus deinem Auftrag. Nennt dein Auftrag einen eigenen Umfang (z.B. „Umfang: 12 bis 15 Lektionen“), hängst du `--lektionen=12-15` an; ohne solche Zeile lässt du den Schalter weg. Das Skript prüft genau die Regeln, an denen der App-Import und das Lektorat formal scheitern (Frontmatter-Felder, Tags, einzeilige Langtexte, `tool_stand_gelesen`, Voraussetzungen/Datenschutz/Quellen, 8–10 Lektionen bzw. der Umfang aus dem Auftrag).
-
-* Steht `FEHLER` da: jeden genannten Punkt in der Kursdatei beheben, Skript erneut laufen lassen. Wiederholen, bis `OK` erscheint (höchstens 5 Durchläufe — danach die restliche Fehlerliste im Kommentar nennen und das Issue trotzdem abgeben).
-* Erst bei `OK` setzt du `done`. Kopiere die erste Ausgabezeile (`kurs-check <slug>: OK`) in deinen Abschluss-Kommentar.
-* Warnungen sind kein Fehler; nenne sie im Kommentar, wenn du sie nicht behebst.
-* Das Frontmatter kopierst du aus `_KURS-SPEC.md` § 8, **nicht** aus dem allgemeinen Dokument-Frontmatter weiter unten.
+* Beantworte jede Frage mit mindestens zwei unabhängigen Quellen (URL + Abrufdatum).
+* Lege das Ergebnis als Issue-Dokument `recherche` ab **und** schreibe denselben Text als Datei an den Pfad aus dem Auftrag (`/Users/walterschoenenbroecher.de/Obsidian/WHITESTAG-Vault/WHITESTAG.ACADEMY/Workshops/_recherche/<kurs-slug>.md`). Die Datei braucht der Autor — Issue-Dokumente anderer Issues kann er nicht lesen.
+* Du schreibst **keine** Kursdatei unter `WHITESTAG.ACADEMY/content/` und änderst den Kurs nicht.
+* Kommt trotzdem ein Auftrag „Schreibe einen neuen ACADEMY-Kurs“ bei dir an, setze ihn auf `blocked` mit dem Kommentar „Kurse schreibt der Kurs-Autor — bitte umhängen.“
 
 ## Deliverable als Issue-Dokument (Pflicht)
 

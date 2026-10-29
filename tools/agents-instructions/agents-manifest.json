@@ -11,7 +11,8 @@
     "name": "Online-Rechercheur",
     "urlKey": "online-rechercheur",
     "reportsToName": "CRO",
-    "melderecht": false
+    "melderecht": false,
+    "websuche_inline": true
   },
   {
     "id": "506c873e-3a40-4483-9a45-0eb0fa1554bb",

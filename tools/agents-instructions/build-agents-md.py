@@ -22,10 +22,29 @@ def load_meldepflicht():
         return fh.read().rstrip("\n")
 
 
+# Kurzfassung fuer alle, deren Kernarbeit nicht die Websuche ist: der volle
+# Ablauf liegt im Skill `websuche`; die Regel zum Exit-Code bleibt hier, weil
+# ihr Verfehlen erfundene Negativbefunde erzeugt.
+WEBSUCHE_KURZ = """## Im Web suchen
+
+Brauchst du aktuelle Informationen aus dem Netz, rate nicht und schreibe nichts aus dem Gedächtnis — benutze den lokalen Websuche-Dienst. **Lies vorher den Skill `websuche`** (`skill_read`) — dort stehen Aufruf und Optionen.
+
+Ein Exit-Code ungleich 0 heisst: die Suche war **nicht möglich** — nicht, dass es nichts gibt. Schreibe dann niemals „dazu liessen sich keine Quellen finden", sondern melde die Störung."""
+
+
+def load_websuche(agent):
+    """Volltext fuer Agenten mit websuche_inline=true (Websuche ist Kernarbeit), sonst Kurzfassung."""
+    if not agent.get("websuche_inline"):
+        return WEBSUCHE_KURZ
+    with open(os.path.join(HERE, "_websuche.md"), encoding="utf-8") as fh:
+        return fh.read().rstrip("\n")
+
+
 def assemble(common, role, agent, skill_wissen="", meldepflicht=""):
     out = common.replace("{{ROLE}}", role.strip())
     out = out.replace("{{SKILL_WISSEN}}", skill_wissen)
     out = out.replace("{{MELDEPFLICHT}}", meldepflicht if agent.get("melderecht") else "")
+    out = out.replace("{{WEBSUCHE}}", load_websuche(agent))
     out = out.replace("{{agent_name}}", agent["name"])
     out = out.replace("{{reports_to_name}}", agent.get("reportsToName", ""))
     left = re.findall(r"\{\{[^}]+\}\}", out)

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>de.whitestag.vault-tagger-clara</string>
+
+    <!-- node, nicht zsh: nur node kommt aus launchd an den SMB-Vault -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/node</string>
+        <string>/Users/walterschoenenbroecher.de/.paperclip/scripts/vault-tagger-clara/vault-tagger-clara.js</string>
+    </array>
+
+    <!-- Täglich 01:30 -- 30 Minuten vor dem Clara-Vault-Maintainer (Routine 02:00) -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>1</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/walterschoenenbroecher.de/.paperclip/logs/vault-tagger-clara.launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/walterschoenenbroecher.de/.paperclip/logs/vault-tagger-clara.launchd.log</string>
+</dict>
+</plist>

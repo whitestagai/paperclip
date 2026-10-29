@@ -88,6 +88,12 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       `adapter_failed`-Laufs lesen —
       `select error_code, count(*), max(started_at) from heartbeat_runs r join agents a on a.id=r.agent_id where a.name='n8n-Betriebsingenieur' and r.status='failed' group by 1;`
       *(2026-10-06, Chat: Tote Modell-ID)*
+      **Stand 29.10.:** weiter aktiv — 59 von 175 Laeufen in 14 Tagen, VP Engineering 9x.
+      Der PII-Proxy antwortet in **6 ms** mit 400, ohne Grund im Log
+      (`~/Library/Logs/pii-proxy/out.log`). Zweiter Befund am selben Agenten: Kontext steht
+      schon beim Start bei **~165k Tokens** (cwd = Paperclip-Repo) → „Autocompact is
+      thrashing" in 33 Run-Logs. Und der Proxy **verfaelscht UUID-Teile** — IDs nie vom
+      Modell abtippen lassen (Gedaechtnis `project_pii_proxy_verfaelscht_uuids`). *(2026-10-29, Chat: Routinen aufräumen)*
 
 - [ ] **`n8n_health.healthz()` im Recovery-Skript: API-Key statt Base-URL** —
       in `~/.paperclip/scripts/recovery/` wird `healthz(api_key)` statt
@@ -367,13 +373,16 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       beide Node-Modelle, Decode-Rate loggen; unter Schwelle (qwen < 80, gemma < 15
       tok/s) Mail ueber den Melder. *(2026-10-21, Chat: LLM-Farm ohne RTX)*
 
-- [ ] **Office & Admin (Clara) scheitert an CLAA-3169** — „Oktober-Auftritte ermitteln und
-      Rechnungen erstellen" (R7): 6 Fehllaeufe am 21.10. (`max_iterations` 20, ein
-      Timeout), sucht eine **Rechnungsvorlage, die es nicht gibt**; Hilfestellung der
-      Bueroleitung half nicht. Agent per `resume` aus `error` geholt, Issue `blocked`.
-      **Zu entscheiden:** Vorlage bereitstellen (Pfad in die AGENTS.md), Auftrag in
-      Einzelrechnungen zerlegen, oder an einen qwen-Agenten (jetzt schnell auf der 5090)
-      geben. *(2026-10-21, Chat: LLM-Farm ohne RTX)*
+- [ ] **Mail-Triage ws@: ersten Lauf nach Wiederaufnahme pruefen** — seit 29.10. wieder
+      aktiv (Mo–Fr 07:00) mit neuem Text nach dem Vier-Augen-Verfahren (Freigabe-Entwuerfe
+      ueber `luna-queue-approval.py`, max. 8/Tag, keine Uebersichtsmail). Ungetestet: am
+      30.10. Issue (`in_review` an Walter) und die `[Freigabe #…]`-Mails ansehen — passt
+      die Auswahl, keine Dubletten, keine Paperclip-Benachrichtigungen triagiert? *(2026-10-29, Chat: Routinen aufräumen)*
+
+- [ ] **Clara-Vault-Pflege: ersten Nachtlauf belegen** — neu gebaut am 29.10.
+      (`tools/vault-tagger-clara/`, launchd `de.whitestag.vault-tagger-clara` 01:30, Routine
+      02:00). Am 30.10. pruefen: `~/.paperclip/logs/vault-tagger-clara-last.json` von heute
+      Nacht, Issue `done` mit zitierten Rohwerten. Testlaeufe von Hand waren gruen. *(2026-10-29, Chat: Routinen aufräumen)*
 
 - [ ] **Heartbeat-Wake-Fix im Live-Betrieb belegen** — seit 17.10. 09:36 werden
       `issue_children_completed`/`issue_blockers_resolved` bei laufendem Run
@@ -394,42 +403,6 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
 - [ ] **Generator-Falle `build-agents-md.py`** — `--backup --apply` zusammen fuehrt
       nur das Backup aus (`main()` kehrt nach dem ersten Modus zurueck), meldet aber
       nichts. Entweder Modi kombinierbar machen oder bei mehreren Flags abbrechen. *(2026-10-17, Chat: Academy Kurs-Routine)*
-
-- [ ] **★★Clara-Vault-Routine stillgelegt — Entscheidung ueber die Zukunft offen**
-      — der Agent (Clara Sound / Vault-Maintainer, `500a1656`) hat **keinen
-      `instructionsFilePath`**, das Issue verweist aber auf „Siehe AGENTS.md fuer
-      den vollstaendigen Ablauf". Folge: Er suchte sie im Dateisystem und
-      verbrauchte sein Budget — und wenn er doch abschloss, tat er es mit
-      **erfundenem Text**. Der als `succeeded` verbuchte Lauf vom 03.10. machte
-      sechs Schritte (Inbox, Checkout, Kontext, Kommentare, **ein einzelnes
-      `ls -R`**) und kommentierte dann „Running obsidian-tagger … All files
-      processed successfully. Frontmatter and tags are updated." Der Tagger wurde
-      nie aufgerufen.
-      **Am 04.10. abgeraeumt:** Routine auf `paused` (nicht `archived` —
-      rueckholbar), 35 hohle `done` und 8 liegengebliebene `blocked` auf
-      `cancelled`, die 30 echten bis 22.08. unberuehrt, Agent aus `error` zurueck.
-      Null Laeufe dabei ausgeloest (Status-Patch ohne `comment`, vorher an einem
-      Issue geprueft). Begruendung samt Randbedingungen steht in der
-      Routinen-Beschreibung.
-      **Und sie wird womoeglich gar nicht gebraucht:** 15.929 von 15.962
-      Markdown-Dateien im Clara-Vault haben Frontmatter (99 %); ohne die Ordner
-      `.obsidian-tagger-backup` und `.obsidian` fehlen **genau zwei**
-      (`_status.md`, `.trash/Willkommen.md`). Der Tagger lief zuletzt am
-      **22.08.** gegen Clara.
-      **Zu entscheiden:** ganz aufgeben, oder als monatliches Sicherheitsnetz neu
-      bauen. **Drei harte Randbedingungen dafuer:** (1) der lokale Spiegel
-      `~/.paperclip/clara-vault-mirror` taugt NICHT als Ziel — `sync-clara-mirror.js`
-      ist read-only mit `rsync -a --delete`, Frontmatter schreiben muss auf SMB;
-      (2) ein zsh-launchd-Job kommt nicht an SMB-Inhalte, **node schon** (Beweis:
-      `com.whitestag.brain-indexer-clara` laeuft als node-Job direkt auf dem
-      Vault); (3) `shell_exec` cappt bei 120 s — der Agent darf den Tagger nicht
-      selbst fahren, genau deshalb wurde er bei WHITESTAG in einen launchd-Dienst
-      ausgelagert. Richtige Bauweise waere also ein node-launchd-Dienst, der
-      `vault-tagger-clara-last.json` schreibt, plus eine AGENTS.md, die den
-      Agenten nur den Status lesen und **mit Zahlen** berichten laesst
-      (`exit_code`, `ok=/fail=`, Report-Pfad) — diese Belegpflicht ist das, was
-      das Fabulieren verhindert, nicht die Iterationszahl.
-      *(2026-10-04, Chat: Tote Modell-ID)*
 
 - [ ] **★Vorfall-Abschluss nachziehen — Entscheidung offen** — er liegt weiter
       **nur** in `feat/vorfall-abschluss`, waehrend die plist des Dev-Servers

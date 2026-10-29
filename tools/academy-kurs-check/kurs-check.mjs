@@ -582,6 +582,29 @@ function checkCourse(slug, rawMd, opts = {}) {
     const quelle = opts.lektionen ? " (Vorgabe aus dem Auftrag)" : "";
     fehler.push(`[Spec \xA7 5] Der Kurs hat ${lessonIdx.length} Lektionen, verlangt sind ${min}\u2013${max}${quelle}.`);
   }
+  const mdLines = md.split("\n");
+  let lektion = 0;
+  let imDetails = false;
+  let summaryGesehen = false;
+  mdLines.forEach((line, i) => {
+    const t = line.trim();
+    const l = t.match(/^## Lektion (\d+)/);
+    if (l) lektion = Number(l[1]);
+    if (t === "<details>") {
+      imDetails = true;
+      summaryGesehen = false;
+    } else if (imDetails && /^<summary>/.test(t)) {
+      summaryGesehen = true;
+    } else if (imDetails && t === "</details>") {
+      imDetails = false;
+      if (!summaryGesehen) {
+        fehler.push(`[Spec \xA7 2] Lektion ${lektion}: Im <details>-Block der Antwort fehlt die Zeile <summary>Antwort anzeigen</summary>.`);
+      }
+    }
+    for (const rest of line.match(/<\/?parameter\b[^>]*>/g) ?? []) {
+      fehler.push(`[Spec \xA7 2] Zeile ${i + 1}: Werkzeug-Rest \u201E${rest}\u201C im Kurstext \u2014 entfernen (geh\xF6rt nicht in den Kurs).`);
+    }
+  });
   if (fm.kurs_niveau === "fortgeschritten") {
     const vIdx = headings.findIndex((h) => h.text === "## Voraussetzungen");
     if (vIdx < 0) fehler.push("[Spec \xA7 10 F1] Abschnitt \u201E## Voraussetzungen\u201C fehlt (Pflicht bei fortgeschritten).");

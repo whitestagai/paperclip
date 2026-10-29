@@ -753,6 +753,9 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       1b + Autor-Rolle). Runde 2 ROT wegen `<parameter=answer>` in 11 Wissens-Checks → von Hand repariert, CEO
       angewiesen, als GELB auszuliefern. **Prüfen:** kam der Kurs an (Themen-Log, `academy-kurs-import.log`, Freigabe
       im Admin), und setzen CEO und Autor beim Claude-Code-Kurs V03 `--lektionen` selbst? *(2026-10-29, Chat: Kurs-Check Lektionsumfang)*
+      **Stand 29.10. 16:00: Paperclip-Kurs ist angekommen** — `paperclip-ki-firma-aufbauen` veröffentlicht, in
+      `/api/public/courses` und mit eigener Website-Seite `/kurse/paperclip-ki-firma-aufbauen/`. Offen bleibt nur
+      die `--lektionen`-Frage bei V03. *(2026-10-29, Chat: Kursberater Fehlerseite)*
 
 - [ ] **Werkzeug-Reste in zwei veröffentlichten Kursen** — der neue `kurs-check` (Spec § 2) findet
       `<parameter=Antwort anzeigen</parameter>` in `ki-tourismus-reisebranche` (Lektion 6) und

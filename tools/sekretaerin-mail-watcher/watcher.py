@@ -443,7 +443,7 @@ sondern folgende Anmerkung geschickt:
 Überarbeite den Entwurf gemäß dieser Anmerkung und lege ihn erneut zur Freigabe vor:
 
 ```
-bin/luna-queue-approval.py --area {entry['area']} --to {entry['to']} \\
+python3 ~/.paperclip/luna-bin/luna-queue-approval.py --area {entry['area']} --to {entry['to']} \\
   --subject "{entry['subject']}" --body /tmp/entwurf-neu.md \\
   --original-file "{entry['original_mail_file']}"
 ```
@@ -517,7 +517,7 @@ ist abschliessend.
 2. **Antwort-Entwurf zur Freigabe** für jede `actionable`/`unklar`-Mail — genau
    ein Skript, das rendert, in die Freigabe-Queue legt und Walter EINE Freigabe-Mail
    schickt:
-   `bin/luna-queue-approval.py --area <AI|FILM> --to <Absender-Adresse> \\
+   `python3 ~/.paperclip/luna-bin/luna-queue-approval.py --area <AI|FILM> --to <Absender-Adresse> \\
      --subject "AW: <Original-Betreff>" --body /tmp/entwurf.md --original-file "<Dateiname>"`
    Du sendest **nie** selbst an Externe. Walters „Okay" auf die Freigabe-Mail löst
    den Versand aus (deterministisch, ohne dich). Bei Korrektur weckt dich ein

@@ -179,6 +179,21 @@ var LABELS = [
   "Wissens-Check"
 ];
 var escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function maskCodeFences(md) {
+  let fence = null;
+  return md.split("\n").map((line) => {
+    const m = line.match(/^ {0,3}(`{3,}|~{3,})/);
+    if (fence === null) {
+      if (m) fence = m[1];
+      return line;
+    }
+    if (m && m[1][0] === fence[0] && m[1].length >= fence.length && line.trim() === m[1]) {
+      fence = null;
+      return line;
+    }
+    return " ".repeat(line.length);
+  }).join("\n");
+}
 function markerRegex(label) {
   const l = escape(label);
   return new RegExp(`\\*\\*${l}:\\*\\*|^#{2,4}[ \\t]*${l}(?![\\w\xC4\xD6\xDC\xE4\xF6\xFC\xDF-])[^\\n]*$`, "gm");
@@ -187,18 +202,18 @@ var STOPPERS = {
   "Feedback-Fokus": ["Abschlusstest"],
   "Wissens-Check": ["Quellen", "Abschlusstest"]
 };
-function cutSegment(text, label) {
+function cutSegment(text, masked, label) {
   const alts = ["\\n---", ...(STOPPERS[label] ?? []).map((s) => `\\*\\*${escape(s)}`)];
-  const stop = text.search(new RegExp(alts.join("|")));
+  const stop = masked.search(new RegExp(alts.join("|")));
   return (stop === -1 ? text : text.slice(0, stop)).trim();
 }
-function splitSections(body) {
+function splitSections(body, masked) {
   const found = [];
   let pos = 0;
   for (const label of LABELS) {
     const re = markerRegex(label);
     re.lastIndex = pos;
-    const m = re.exec(body);
+    const m = re.exec(masked);
     if (!m) continue;
     found.push({ label, start: m.index, end: m.index + m[0].length });
     pos = m.index + m[0].length;
@@ -206,7 +221,7 @@ function splitSections(body) {
   const out = {};
   found.forEach((f, i) => {
     const next = found[i + 1]?.start ?? body.length;
-    out[f.label] = cutSegment(body.slice(f.end, next), f.label);
+    out[f.label] = cutSegment(body.slice(f.end, next), masked.slice(f.end, next), f.label);
   });
   return out;
 }
@@ -226,25 +241,33 @@ function parseCheck(raw) {
   }
   return { question: raw, answer: null };
 }
-function extractPrivacySection(tail) {
-  const m = tail.match(/(?:^|\n)## (Datenschutz[^\n]*)\n([\s\S]*?)(?=\n## |$)/);
-  if (!m) return null;
-  const body = m[2].replace(/\n-{3,}\s*$/, "").trim();
-  return body ? `${m[1].trim()}
+function extractPrivacySection(tail, masked) {
+  const head = masked.match(/(?:^|\n)## (Datenschutz[^\n]*)\n/);
+  if (!head || head.index === void 0) return null;
+  const from = head.index + head[0].length;
+  const next = masked.slice(from).search(/\n## /);
+  const to = next === -1 ? tail.length : from + next;
+  const body = tail.slice(from, to).replace(/\n-{3,}\s*$/, "").trim();
+  return body ? `${head[1].trim()}
 
 ${body}` : null;
 }
 function parseLessons(md) {
-  const blocks = md.split(/\n## Lektion (\d+) — (.+)\n/);
+  const masked = maskCodeFences(md);
+  const heads = [...masked.matchAll(/\n## Lektion (\d+) — (.+)\n/g)];
   const out = [];
-  for (let i = 1; i < blocks.length; i += 3) {
-    const day = parseInt(blocks[i], 10);
-    if (Number.isNaN(day)) continue;
-    const title = blocks[i + 1]?.trim() ?? "";
-    const rawBody = blocks[i + 2] ?? "";
-    const h2 = rawBody.search(/\n## /);
+  heads.forEach((h, i) => {
+    const day = parseInt(h[1], 10);
+    if (Number.isNaN(day)) return;
+    const title = h[2].trim();
+    const from = h.index + h[0].length;
+    const to = heads[i + 1]?.index ?? md.length;
+    const rawBody = md.slice(from, to);
+    const rawMasked = masked.slice(from, to);
+    const h2 = rawMasked.search(/\n## /);
     const body = h2 === -1 ? rawBody : rawBody.slice(0, h2);
-    const s = splitSections(body);
+    const bodyMasked = h2 === -1 ? rawMasked : rawMasked.slice(0, h2);
+    const s = splitSections(body, bodyMasked);
     let goal = s.Lernziel ?? "";
     let content = s.Inhalt ?? "";
     if (s.Inhalt === void 0) {
@@ -266,12 +289,14 @@ function parseLessons(md) {
       check_question: question,
       check_answer: answer
     });
-  }
+  });
   if (out.length > 0) {
-    const privacy = extractPrivacySection(blocks[blocks.length - 1] ?? "");
+    const last = heads[heads.length - 1];
+    const tailFrom = last.index + last[0].length;
+    const privacy = extractPrivacySection(md.slice(tailFrom), masked.slice(tailFrom));
     if (privacy) {
-      const last = out[out.length - 1];
-      last.content = last.content ? `${last.content}
+      const last2 = out[out.length - 1];
+      last2.content = last2.content ? `${last2.content}
 
 ${privacy}` : privacy;
     }
@@ -569,7 +594,7 @@ function checkCourse(slug, rawMd, opts = {}) {
   if (lang && (lang.length < 1700 || lang.length > 2400)) {
     warnungen.push(`[Spec \xA7 8] langbeschreibung hat ${lang.length} Zeichen, Ziel sind 1700\u20132400.`);
   }
-  const headings = md.split("\n").map((l, i) => ({ text: l.trim(), line: i })).filter((h) => /^## /.test(h.text));
+  const headings = maskCodeFences(md).split("\n").map((l, i) => ({ text: l.trim(), line: i })).filter((h) => /^## /.test(h.text));
   const lessonIdx = headings.map((h, i) => /^## Lektion \d+/.test(h.text) ? i : -1).filter((i) => i >= 0);
   const dsIdx = headings.map((h, i) => h.text === DATENSCHUTZ ? i : -1).filter((i) => i >= 0);
   if (dsIdx.length !== 1) {

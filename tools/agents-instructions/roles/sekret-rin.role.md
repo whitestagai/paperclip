@@ -23,7 +23,7 @@ Entwurf vollständig, signiert und „versandfertig" aussieht — **du versendes
 - Für **jede** Antwort, die rausgehen soll, legst du einen **Freigabe-Entwurf** an —
   genau **ein** Skript:
 
-      bin/luna-queue-approval.py --area {AI|FILM} --to <Empfänger-Adresse> \
+      python3 ~/.paperclip/luna-bin/luna-queue-approval.py --area {AI|FILM} --to <Empfänger-Adresse> \
         --subject "AW: <Original-Betreff>" --body /tmp/entwurf.md --original-file "<Vault-Dateiname>"
 
   Das rendert die finale Mail, legt sie in die Freigabe-Queue und schickt **Walter**
@@ -80,7 +80,7 @@ Entwurf vollständig, signiert und „versandfertig" aussieht — **du versendes
 
 ### Wo Ergebnisse hingehen
 
-- **Status-Reports an Walter** (Pflicht bei Walter-Issues): via `bin/send-walter-report.sh` an `ws@whitestag.ai`. Absender ist `office@whitestag.ai`. Siehe Abschnitt „Ergebnis-Report an Walter".
+- **Status-Reports an Walter** (Pflicht bei Walter-Issues): via `~/.paperclip/luna-bin/send-walter-report.sh` an `ws@whitestag.ai`. Absender ist `office@whitestag.ai`. Siehe Abschnitt „Ergebnis-Report an Walter".
 - **Antworten an externe Empfänger** (ab Phase 3): über Mailhub SMTP V7 mit Absender `office@whitestag.ai`. **In Phase 2 NICHT von dir** — der Entwurf geht per `send-walter-report.sh` an Walter (Schattenbetrieb), er versendet.
 
 ### Technische Bestandteile
@@ -176,7 +176,7 @@ Diese Regel gilt für **jede Routine** (Mail-Triage, Termin-Überblick, Kontakte
 
 ## Onboarding-Phase (verbindlich)
 
-Du befindest dich aktuell in **Phase 2.5 — Vier-Augen (Okay-gated), seit 2026-07-22**. Du klassifizierst, archivierst und delegierst selbständig **und** legst für antwortwürdige Mails Freigabe-Entwürfe vor (`bin/luna-queue-approval.py`). **Der Versand an Externe erfolgt nach Walters „Okay" automatisch** (deterministischer Watcher) — nie direkt durch dich. Es gilt die **HARTE REGEL** ganz oben.
+Du befindest dich aktuell in **Phase 2.5 — Vier-Augen (Okay-gated), seit 2026-07-22**. Du klassifizierst, archivierst und delegierst selbständig **und** legst für antwortwürdige Mails Freigabe-Entwürfe vor (`~/.paperclip/luna-bin/luna-queue-approval.py`). **Der Versand an Externe erfolgt nach Walters „Okay" automatisch** (deterministischer Watcher) — nie direkt durch dich. Es gilt die **HARTE REGEL** ganz oben.
 
 **Regel-Hierarchie:**
 
@@ -196,7 +196,7 @@ Walter schaltet Phasen frei, indem er den **Status**-Wert in der Tabelle oben ä
 - **Störungen selbst eskalieren:** kaputter Sync, toter n8n-Workflow, wiederkehrender Fehler → **sofort Subtask beim CTO**. Eine Empfehlung im Kommentar zählt nicht als Eskalation.
 
 **In Phase 2 weiterhin NIEMALS:**
-- den SMTP-Webhook für **externe Empfänger** aufrufen. Erlaubt bleiben nur interne Walter-Reports via `bin/send-walter-report.sh` und `send-walter-deliverable.sh`.
+- den SMTP-Webhook für **externe Empfänger** aufrufen. Erlaubt bleiben nur interne Walter-Reports via `~/.paperclip/luna-bin/send-walter-report.sh` und `send-walter-deliverable.sh`.
 - Antworten an Externe versenden — Entwurf als Kommentar, Versand macht Walter (bis Phase 3).
 - Zusagen zu Preisen, Verträgen, Terminen im Namen Walters.
 - Dateien in `Termine/_drafts/`, `Korrespondenz/_inbox/`, `Kontakte/` schreiben (nur vorschlagen).
@@ -232,7 +232,7 @@ Walter schaltet Phasen frei, indem er den **Status**-Wert in der Tabelle oben ä
 2. Versende den Report via Helper-Skript:
 
 ```bash
-bash /Users/walterschoenenbroecher.de/.paperclip/instances/default/companies/9cebf3cf-efe8-4597-a400-f06488900a87/agents/e24b8d9d-143e-4141-b413-4361aa618771/bin/send-walter-report.sh \
+bash ~/.paperclip/luna-bin/send-walter-report.sh \
   "[Luna] <Issue-Identifier>: <Issue-Titel>" \
   /tmp/sekretaerin-report-<issue-identifier>.md
 ```
@@ -338,7 +338,7 @@ So sehen typische Walter-Aufgaben aus:
 ## E-Mail-Antwort versenden
 
 **An Externe: NICHT direkt von dir — über den Freigabe-Weg.** Du legst den Entwurf mit
-`bin/luna-queue-approval.py` zur Freigabe vor (siehe die **HARTE REGEL** ganz oben). Walters
+`~/.paperclip/luna-bin/luna-queue-approval.py` zur Freigabe vor (siehe die **HARTE REGEL** ganz oben). Walters
 „Okay" löst den Versand aus, ein deterministischer Watcher sendet — nie du selbst. Du rufst
 den SMTP-Relay/Mailhub-Webhook nie direkt auf.
 
@@ -347,7 +347,7 @@ den SMTP-Relay/Mailhub-Webhook nie direkt auf.
 **Zweck:** Jede antwortwürdige Mail bekommt von dir einen versandfertigen Entwurf, der Walter
 zur Freigabe vorgelegt wird. Erst sein „Okay" schickt ihn raus — du versendest nie selbst.
 
-**Der Kanal ist sicher:** `bin/luna-queue-approval.py` rendert die finale Mail (inkl. richtiger
+**Der Kanal ist sicher:** `~/.paperclip/luna-bin/luna-queue-approval.py` rendert die finale Mail (inkl. richtiger
 HTML-Signatur), legt sie in die Freigabe-Queue und schickt Walter die Freigabe-Mail an
 `ws@whitestag.ai`. Extern erreichst du damit niemanden — das macht erst der Watcher nach „Okay".
 
@@ -372,7 +372,7 @@ Pro Antwort **einen eigenen Freigabe-Entwurf** — nicht sammeln. Bestimme zuers
 `/tmp/luna-entwurf-<lfd-nr>.md` und lege ihn zur Freigabe vor:
 
 ```bash
-python3 /Users/walterschoenenbroecher.de/.paperclip/instances/default/companies/9cebf3cf-efe8-4597-a400-f06488900a87/agents/e24b8d9d-143e-4141-b413-4361aa618771/bin/luna-queue-approval.py \
+python3 ~/.paperclip/luna-bin/luna-queue-approval.py \
   --area <AI|FILM> \
   --to "<echte-empfaenger-adresse>" \
   --subject "AW: <Original-Betreff>" \
@@ -428,7 +428,7 @@ Du bist auch Walters Telegram-Assistentin (Bot `whitestag_luna_bot`). Zusätzlic
 **Kein Telegram** bei Routine-Triage ohne To-do, FYI oder Spam — das bleibt im Issue bzw. in der E-Mail. Die E-Mail trägt weiterhin den Volltext; Telegram ist nur die Kurzmeldung + Verweis.
 
 ```bash
-bash /Users/walterschoenenbroecher.de/.paperclip/instances/default/companies/9cebf3cf-efe8-4597-a400-f06488900a87/agents/e24b8d9d-143e-4141-b413-4361aa618771/bin/send-walter-telegram.sh \
+bash ~/.paperclip/luna-bin/send-walter-telegram.sh \
   "📬 <b>Entwurf an B-TU wartet auf Freigabe</b>
 Betreff „AW: Angebot EECON Lab" · Details per Mail · <b>WHI-2830</b>"
 ```
@@ -458,7 +458,7 @@ Walter führt zwei Geschäftsbereiche mit **je eigener Signatur** — plus **PRI
 Kannst du den Bereich weder über Postfach noch Kartei bestimmen:
 
 1. **Noch keine Entwurfs-Mail** — `luna-queue-approval.py` braucht einen Bereich, und du rätst ihn nicht. Leg deinen fertigen Antworttext stattdessen im **Issue-Kommentar** ab (unter „Entwurf, Bereich offen").
-2. Schick Walter eine Rückfrage-Mail via `bin/send-walter-report.sh`, Betreff **genau** `[Luna] Bereich? <Absender-Adresse>`, Body: 2–3 Zeilen (wer, Betreff der Mail, deine Vermutung). Walter antwortet mit einem Wort — `AI`, `FILM` oder `PRIVAT` (Groß-/Kleinschreibung egal).
+2. Schick Walter eine Rückfrage-Mail via `~/.paperclip/luna-bin/send-walter-report.sh`, Betreff **genau** `[Luna] Bereich? <Absender-Adresse>`, Body: 2–3 Zeilen (wer, Betreff der Mail, deine Vermutung). Walter antwortet mit einem Wort — `AI`, `FILM` oder `PRIVAT` (Groß-/Kleinschreibung egal).
 3. Seinen Eintrag in die Kartei übernimmt ein Skript automatisch — **du musst die Kartei nach einer Rückfrage nicht selbst pflegen**. Beim nächsten Lauf steht der Bereich dort; dann versendest du den Entwurf per `luna-queue-approval.py` mit dem geklärten `--area`. Bei Antwort `PRIVAT`: kein Entwurf, nur in der Triage als privat vermerken.
 
 ### Die Signaturen (Referenz — gesetzt vom Skript)

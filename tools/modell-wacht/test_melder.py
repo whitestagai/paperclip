@@ -78,3 +78,38 @@ def test_betroffene_modelle_aus_getrenntem_geraet_und_fehlenden_modellen():
     assert betroffene_modelle(getrennt, soll) == {"a-win", "b-win"}
     fehlt = [B("modell_fehlt", "hoch", "LM Studio «RTX Pro 6000»", "geladen", "rtx-modell", "t")]
     assert betroffene_modelle(fehlt, soll) == {"rtx-modell"}
+
+
+def _getrennt(name="MacbookM5Mx128"):
+    from pruefung import Befund as B
+    return [B("geraet_getrennt", "hoch", "LM Link «{}»".format(name), "status", None, "t")]
+
+
+def test_kurzer_abriss_wird_entprellt():
+    """30.10.2026: Keepalive-Abriss von wenigen Minuten — keine Meldung."""
+    from melder import bestaetige
+    laeufe = iter([(_getrennt(), {"n": 2}), ([], {"n": 3})])
+    gewartet_auf = []
+    befunde, ergebnis, gewartet = bestaetige(
+        _getrennt(), {"n": 1}, [], pruefen=lambda: next(laeufe),
+        warten=gewartet_auf.append, frist=600, takt=60)
+    assert befunde == [] and ergebnis == {"n": 3}
+    assert gewartet == 120 and gewartet_auf == [60, 60]
+
+
+def test_echter_ausfall_wird_nach_frist_gemeldet():
+    from melder import bestaetige
+    befunde, _, gewartet = bestaetige(
+        _getrennt(), {}, [], pruefen=lambda: (_getrennt(), {}),
+        warten=lambda s: None, frist=600, takt=60)
+    assert befunde == _getrennt() and gewartet == 600
+
+
+def test_schon_gemeldetes_geraet_wartet_nicht():
+    from melder import bestaetige
+    from pruefung import signatur
+    def nie():
+        raise AssertionError("darf nicht nachprüfen")
+    _, _, gewartet = bestaetige(
+        _getrennt(), {}, signatur(_getrennt()), pruefen=nie, warten=nie)
+    assert gewartet == 0

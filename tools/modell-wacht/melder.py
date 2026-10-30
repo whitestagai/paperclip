@@ -17,12 +17,13 @@ import html
 import json
 import os
 import sys
+import time
 import urllib.request
 from datetime import datetime
 
 sys.path.insert(0, os.path.expanduser("~/.paperclip/scripts"))
 
-from pruefung import entwarnung_faellig, meldung_faellig, signatur  # noqa: E402
+from pruefung import entwarnung_faellig, meldung_faellig, neu_getrennt, signatur  # noqa: E402
 from waechter import hole_soll, pruefe  # noqa: E402
 
 LOG = os.path.expanduser("~/.paperclip/logs/modell-wacht.log")
@@ -36,6 +37,13 @@ MAILHUB = "http://127.0.0.1:5678/webhook/mailhub/send"
 MAILHUB_ENV = os.path.expanduser("~/.paperclip/instances/default/secrets/mailhub.env")
 MAIL_VON = "cto@whitestag.ai"
 MAIL_AN = os.environ.get("MODELL_WACHT_MAIL_AN", "ws@whitestag.ai")
+
+# Entprellung seit 30.10.2026: Ein LM-Link-Abriss (`peer_keepalive_timeout`)
+# dauert ein paar Minuten; am 30.10. war das MacBook nach 4–7 Minuten zurück.
+# Ein neu getrenntes Gerät wird deshalb bis zu 10 Minuten im Minutentakt
+# nachgeprüft — bei 30 Minuten Takt bleibt genug Luft bis zum nächsten Lauf.
+BESTAETIGUNG_FRIST = int(os.environ.get("MODELL_WACHT_BESTAETIGUNG", "600"))
+BESTAETIGUNG_TAKT = 60
 
 
 def _protokoll(zeile: str) -> None:
@@ -186,10 +194,32 @@ def _sende(betreff: str, text: str, html_text: str) -> None:
             raise RuntimeError("Mailhub HTTP {}".format(r.status))
 
 
+def bestaetige(befunde, ergebnis, zuletzt, pruefen=pruefe, warten=time.sleep,
+               frist=BESTAETIGUNG_FRIST, takt=BESTAETIGUNG_TAKT) -> tuple:
+    """Prüft nach, solange ein Gerät neu getrennt ist und die Frist läuft.
+
+    Liefert (Befunde, Ergebnis, gewartete Sekunden) des letzten Laufs — ist das
+    Gerät zurück, ist das ein Stand ohne den Abriss, und es wird nicht gemeldet.
+    """
+    gewartet = 0
+    while gewartet < frist and neu_getrennt(signatur(befunde), zuletzt):
+        warten(takt)
+        gewartet += takt
+        befunde, ergebnis = pruefen()
+    return befunde, ergebnis, gewartet
+
+
 def main() -> int:
     befunde, ergebnis = pruefe()
-    sig = signatur(befunde)
     zuletzt = _zuletzt()
+    if neu_getrennt(signatur(befunde), zuletzt):
+        befunde, ergebnis, gewartet = bestaetige(befunde, ergebnis, zuletzt)
+        _protokoll(
+            "entprellt: Gerät nach {} s wieder verbunden".format(gewartet)
+            if not neu_getrennt(signatur(befunde), zuletzt)
+            else "Trennung nach {} s Nachprüfung bestätigt".format(gewartet)
+        )
+    sig = signatur(befunde)
     faellig = meldung_faellig(sig, zuletzt)
 
     if faellig:

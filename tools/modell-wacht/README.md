@@ -118,6 +118,16 @@ Zustand in `~/.paperclip/logs/modell-wacht-last.json` wird bei **jedem** Lauf
 fortgeschrieben, auch ohne Meldung — sonst bliebe ein behobener und wieder
 auftretender Fehler beim zweiten Mal stumm.
 
+**Ein neu getrenntes Gerät wird erst nachgeprüft** (seit 30.10.2026). LM Link
+verliert Peers regelmäßig für ein paar Minuten (`peer_keepalive_timeout`, im
+Oktober zwölfmal). Am 30.10. traf der 14:23-Lauf genau so eine Lücke — das
+MacBook war um 14:26 wieder da, gemeldet wurden 58 harte Befunde. Seither prüft
+der Melder bei einem neu getrennten Gerät bis zu 10 Minuten im Minutentakt nach
+und meldet nur, was danach noch steht. Frist umstellbar per
+`MODELL_WACHT_BESTAETIGUNG` (Sekunden). Im Log steht dann
+`entprellt: Gerät nach N s wieder verbunden` oder
+`Trennung nach N s Nachprüfung bestätigt`.
+
 ### Mail
 
 Bei jedem Wechsel des harten Befundstands geht eine Mail an `ws@whitestag.ai`
@@ -238,7 +248,7 @@ Entwickeln, sondern erst nachts im Dienst.
 ## Tests
 
 ```sh
-/usr/bin/python3 -m pytest -q     # 55 Tests
+/usr/bin/python3 -m pytest -q     # 65 Tests
 ```
 
 Jeder Test in `test_pruefung.py` ist ein Vorfall, der bereits passiert ist.

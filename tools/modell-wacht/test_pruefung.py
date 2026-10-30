@@ -367,3 +367,12 @@ def test_entwarnung_nur_beim_wechsel_von_hart_auf_gruen():
     assert entwarnung_faellig([], ["a|b|c"]) is True
     assert entwarnung_faellig([], []) is False
     assert entwarnung_faellig(["a|b|c"], ["a|b|c"]) is False
+
+
+def test_neu_getrenntes_geraet_wird_nachgeprueft_bekanntes_nicht():
+    """30.10.2026: MacBook 14:19 getrennt, 14:23 gemeldet, 14:26 zurück."""
+    from pruefung import neu_getrennt
+    mb = "geraet_getrennt|LM Link «MacbookM5Mx128»|status"
+    assert neu_getrennt([mb], []) is True
+    assert neu_getrennt([mb], [mb]) is False
+    assert neu_getrennt(["unbekannt|q|f"], []) is False

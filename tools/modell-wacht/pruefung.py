@@ -381,6 +381,22 @@ def meldung_faellig(jetzt: List[str], zuletzt: List[str]) -> bool:
     return bool(jetzt) and jetzt != zuletzt
 
 
+def neu_getrennt(jetzt: List[str], zuletzt: List[str]) -> bool:
+    """Ist in diesem Lauf ein Gerät NEU als getrennt aufgetaucht?
+
+    Dann wird vor der Meldung nachgeprüft. Anlass 30.10.2026: Das MacBook verlor
+    um 14:19 die LM-Link-Verbindung (`peer_keepalive_timeout`), der Lauf um
+    14:23 traf genau die Lücke, um 14:26 war es wieder verbunden. Ergebnis:
+    Alarm-Mail mit 58 harten Befunden für eine Lücke von wenigen Minuten. Im
+    Oktober zwölf solcher Abrisse.
+
+    Ein schon gemeldetes getrenntes Gerät löst keine neue Wartezeit aus —
+    gemeldet wird ohnehin nur bei Wechsel.
+    """
+    vorher = set(zuletzt)
+    return any(s.startswith("geraet_getrennt|") and s not in vorher for s in jetzt)
+
+
 def entwarnung_faellig(jetzt: List[str], zuletzt: List[str]) -> bool:
     """Einmal Entwarnung, wenn harte Befunde verschwunden sind.
 

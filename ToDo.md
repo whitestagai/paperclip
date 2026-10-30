@@ -563,6 +563,11 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       Limit 30** (382 von 782 Runs, 14 Tage). Hochdrehen allein loest es nicht.
       *(2026-09-13, Chat: Selbstheilung wiederhergestellt)*
 
+- [ ] **Lessons-Nachtlauf nach Reparatur prüfen (31.10. 02:00)** — in der Nacht zum 30.10. brach er mit Exit 2 ab, weil
+      `install.sh` nur `lib/*.sh` nach `~/.paperclip/scripts/lib/` verlinkte und `bundle_sync.py`/`lessons_runs.py` fehlten.
+      Behoben (`ce3cef9f6`, Links angelegt, Dry-Run grün). Prüfen: `/tmp/agent-learning-lessons.out.log` ohne
+      „FEHLGESCHLAGEN“, Lessons-Issue erreicht `done` ohne `max_iterations`. *(2026-10-30, Chat: Skills und Kurs-Autor)*
+
 - [x] **~~Agenten kommen aus `error` nicht von selbst zurueck~~ — Ursache am
       13.09. gefunden und behoben.** Der Selbstheilungs-Pfad griff nicht, **weil
       es ihn im laufenden Stand nicht mehr gab**: Am **02.09. um 20:57** wechselte
@@ -689,10 +694,14 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       `**Umfang:**`-Angabe, Laufzahl und Fehlläufe des Autors gegenüber den 7er-Kursen.
       *(2026-10-19, Chat: Kursmix und Niveau)*
 
-- [ ] **Ruft der Autor `kurs-check` selbst auf?** — seit 21.10. Pflicht in `roles/online-rechercheur.role.md`
-      (vor `done`, bis OK). Im ersten Lauf (22.10., WHI-10367) ist der Aufruf nur beim CEO belegt; in den
-      Run-Events des Online-Rechercheurs fand sich kein Treffer. Beim nächsten Kurs im Run-Protokoll des Autors
-      (`log_ref` → ndjson, `shell_exec` mit `kurs-check.mjs`) nachsehen. *(2026-10-22, Chat: ACADEMY Kurs-Formprüfung)*
+- [ ] **WHI-10729: Reinigungs-Kurs im Lektorat zweimal ROT** — „KI in Reinigung und Gebäudeservice“ (erster Kurs des
+      neuen Kurs-Autors) kam aus Runde 2 erneut ROT zurück, u. a. wegen der Falschbehauptung „KI kann keine Live-Websuche“
+      (widerspricht `_KI-TOOL-STAND.md`). Laut Spec § 4 keine dritte Runde — der CEO hat blockiert, Walter entscheidet. *(2026-10-30, Chat: Skills und Kurs-Autor)*
+
+- [ ] **Kurs-Autor beobachten: WHI-10722 und die nächsten Routinen** — Friseur-Kurs am 30.10. vom Rechercheur auf den
+      Kurs-Autor (`95d799c8…`) umgehängt. Prüfen: Nutzt er `fs_edit_file` statt Neuschreiben, zieht er Fakten aus
+      `_KI-TOOL-STAND.md` (siehe WHI-10729), und bleiben Unteraufträge von Nicht-Managern nicht wieder ohne Assignee liegen
+      (WHI-10721 musste von Hand ans Lektorat). *(2026-10-30, Chat: Skills und Kurs-Autor)*
 
 - [ ] **CEO-Mail nach dem API-Key-Fix im Echtbetrieb belegen** — seit 14.05. scheiterte jede Mail eines
       lmstudio-Agenten (CEO u. a.) an „PAPERCLIP_API_KEY nicht im Env“, Fix im Adapter `fbe4976` seit 23.10. 08:20 live.
@@ -795,6 +804,10 @@ Chatuebergreifende Aufgabenliste. Was hier steht, ist noch offen.
       *(2026-09-05, Chat: Routinen, Fallback und Mail-Anhänge)*
 
 ## Modelle und Agenten
+
+- [ ] **Skill-Pilot messen (~05.11.)** — seit 29.10. stehen Bild- und Websuche als Firmen-Skills statt in `_common.md`.
+      Eingabe-Tokens je Agent gegen die Vorwoche und `skill_read bild-bestellen`/`websuche` in den Run-Logs prüfen; erst
+      danach Stufe 2 (Mailhub-Block, 6,5 KB in 7 Rollen). *(2026-10-30, Chat: Skills und Kurs-Autor)*
 
 - [ ] **VP Engineering auf Strata bei echter Code-Arbeit gegenlesen** — seit 23.10.
       faehrt er tagsueber `qwen3.8-flash-next-unsloth-ud-q4_k_xl` ueber Strata
@@ -1384,6 +1397,10 @@ Umsetzung läuft in einer Booker-Session). R9 ist angehalten
       *(2026-09-11, Chat: Routinen-Lastverteilung)*
 
 ## Repo-Stand und Deploy
+
+- [ ] **Push ausstehend: agent-learning und lmstudio-Adapter** — agent-learning-tree (`feat/health-insights-company`)
+      `6c6e88dd0`, `ce3cef9f6`; Adapter (`main`) `1041c99`, `8004d15`. Der agent-learning-Tree hat daneben fremde
+      uncommittete Änderungen (brain-plists, `decay.sh` u. a.) — nicht mitnehmen. *(2026-10-30, Chat: Skills und Kurs-Autor)*
 
 - [ ] **Heartbeat-Fix als Upstream-PR anbieten?** — der Fehler (`activeRunExecutions`
       je Service-Instanz → falsches „Process lost" bei Adaptern ohne Kindprozess)

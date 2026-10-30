@@ -17,6 +17,7 @@ schickt auch keine Fehlermeldung.
   9. n8n, Nextcloud                 (täglich 05:45)  — Grenze 30 h
  10. Backups-Ordner, Nextcloud      (täglich 05:15)  — Grenze 30 h
  11. Academy-DB-Abholung, Synology  (montags 09:30)  — Grenze 9 Tage
+ 12. Paperclip-Instanz, Nextcloud   (täglich 05:15)  — Grenze 30 h
 Dazu die Belegung des Nextcloud-Kontos (Warnung ab 80 %).
 
 WICHTIG: Nicht direkt per launchd starten. macOS verweigert einem launchd-Job
@@ -69,6 +70,9 @@ TAG_NAS = "nas-projekte"
 TAG_N8N = "n8n"
 # Seit 25.10.2026: SynologyDrive-Mac/Backups/ mit den Academy-DB-Dumps.
 TAG_BACKUPS = "synology-backups"
+# Seit 29.10.2026: secrets/master.key, AGENTS.md und Skills der Instanz.
+# Ohne den Schluessel sind die Firmen-Secrets im DB-Dump unlesbar.
+TAG_INSTANZ = "paperclip-instanz"
 
 # Hier legt de.whitestag.academy-backup-pull die DB-Dumps vom Academy-Server
 # ab. Geprueft wird das Alter des juengsten DUMPS, nicht das des Snapshots:
@@ -416,7 +420,8 @@ def baue_bericht(kennzahlen, vorher):
                              ("system-secrets", "Systemgeheimnisse"),
                              ("nas-projekte", "NAS-Projektordner"),
                              ("n8n", "n8n"),
-                             ("synology-backups", "Backups-Ordner")):
+                             ("synology-backups", "Backups-Ordner"),
+                             ("paperclip-instanz", "Paperclip-Instanz")):
         n = kennzahlen.get("snaps", {}).get(schluessel)
         if n is None:
             continue
@@ -528,6 +533,8 @@ def main():
                            GRENZE_TAEGLICH, "restic"),
         pruefung.Pruefling("Backups-Ordner (Nextcloud)", aus_repo(TAG_BACKUPS),
                            GRENZE_TAEGLICH, "restic"),
+        pruefung.Pruefling("Paperclip-Instanz (Nextcloud)", aus_repo(TAG_INSTANZ),
+                           GRENZE_TAEGLICH, "restic"),
         pruefung.Pruefling("Academy-DB-Abholung (Synology)",
                            academy_stand(ACADEMY_DUMPS),
                            GRENZE_ACADEMY, "Dump-Ordner"),
@@ -556,7 +563,7 @@ def main():
     kennzahlen = {
         "snaps": zaehle_je_tag(snaps, [TAG_CODE, TAG_DEV, TAG_DB, TAG_VAULT,
                                        TAG_SECRETS, TAG_NAS, TAG_N8N,
-                                       TAG_BACKUPS]),
+                                       TAG_BACKUPS, TAG_INSTANZ]),
         "nc_used_gb": (belegt_bytes / 1024 ** 3
                        if belegt_bytes is not None else None),
     }

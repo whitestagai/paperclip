@@ -604,6 +604,9 @@ function checkCourse(slug, rawMd, opts = {}) {
     for (const rest of line.match(/<\/?parameter\b[^>]*>/g) ?? []) {
       fehler.push(`[Spec \xA7 2] Zeile ${i + 1}: Werkzeug-Rest \u201E${rest}\u201C im Kurstext \u2014 entfernen (geh\xF6rt nicht in den Kurs).`);
     }
+    for (const fremd of line.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]+/gu) ?? []) {
+      fehler.push(`[Spec \xA7 2] Zeile ${i + 1}: Fremde Schriftzeichen \u201E${fremd}\u201C im Kurstext \u2014 durch das deutsche Wort ersetzen.`);
+    }
   });
   if (fm.kurs_niveau === "fortgeschritten") {
     const vIdx = headings.findIndex((h) => h.text === "## Voraussetzungen");

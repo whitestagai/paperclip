@@ -602,7 +602,7 @@ function checkCourse(slug, rawMd, opts = {}) {
   } else if (lessonIdx.length && dsIdx[0] < lessonIdx[lessonIdx.length - 1]) {
     fehler.push(`[Spec \xA7 9] \u201E${DATENSCHUTZ}\u201C steht vor der letzten Lektion \u2014 sie geh\xF6rt direkt hinter die letzte Lektion.`);
   }
-  const { min, max } = opts.lektionen ?? { min: 8, max: 10 };
+  const { min, max } = opts.lektionen ?? { min: 12, max: 15 };
   if (lessonIdx.length && (lessonIdx.length < min || lessonIdx.length > max)) {
     const quelle = opts.lektionen ? " (Vorgabe aus dem Auftrag)" : "";
     fehler.push(`[Spec \xA7 5] Der Kurs hat ${lessonIdx.length} Lektionen, verlangt sind ${min}\u2013${max}${quelle}.`);

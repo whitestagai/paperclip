@@ -596,6 +596,11 @@ function checkCourse(slug, rawMd, opts = {}) {
   }
   const headings = maskCodeFences(md).split("\n").map((l, i) => ({ text: l.trim(), line: i })).filter((h) => /^## /.test(h.text));
   const lessonIdx = headings.map((h, i) => /^## Lektion \d+/.test(h.text) ? i : -1).filter((i) => i >= 0);
+  for (const h of headings) {
+    if (/^## Lektion\b/.test(h.text) && !/^## Lektion \d+ —\s+\S/.test(h.text)) {
+      fehler.push(`[Spec \xA7 2] Zeile ${h.line + 1}: Lektionskopf \u201E${h.text}\u201C \u2014 er muss \u201E## Lektion N \u2014 Titel\u201C lauten (oder ist ein Rest und geh\xF6rt weg).`);
+    }
+  }
   const dsIdx = headings.map((h, i) => h.text === DATENSCHUTZ ? i : -1).filter((i) => i >= 0);
   if (dsIdx.length !== 1) {
     fehler.push(`[Spec \xA7 3/9] Die \xDCberschrift \u201E${DATENSCHUTZ}\u201C muss genau einmal vorkommen (gefunden: ${dsIdx.length}).`);

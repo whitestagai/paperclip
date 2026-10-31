@@ -41,6 +41,15 @@ test('Frontmatter als Liste stürzt nicht ab', () => {
   assert.deepEqual(n.fm, {});
 });
 
+test('hash hängt nur am Inhalt, nicht am Frontmatter', () => {
+  // Kopien zwischen Ordnern unterscheiden sich fast immer in erstellt/quelle.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vpc-'));
+  fs.writeFileSync(path.join(dir, 'a.md'), '---\nerstellt: 2026-05-31\n---\nGleicher Text\n');
+  fs.writeFileSync(path.join(dir, 'b.md'), '---\nerstellt: 2026-06-02\n---\nGleicher Text\n');
+  const [a, b] = ladeNotizen(dir);
+  assert.equal(a.hash, b.hash);
+});
+
 test('Dateien über 2 MB werden nicht gelesen', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vpc-'));
   fs.writeFileSync(path.join(dir, 'gross.md'), 'x'.repeat(2 * 1024 * 1024 + 1));

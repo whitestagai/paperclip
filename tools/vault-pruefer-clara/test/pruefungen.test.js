@@ -14,9 +14,13 @@ const n = (pfad, fm = { tags: TAGS }, extra = {}) => ({
 });
 const pfade = (eintraege) => eintraege.map((e) => e.pfad).sort();
 
-test('P1 meldet fmFehler mit der ersten Fehlerzeile', () => {
-  const b = pruefe([n('K/x.md', null, { fmFehler: 'unknown escape sequence at line 7' })], VORLAGE);
-  assert.deepEqual(b.P1, [{ pfad: 'K/x.md', detail: 'unknown escape sequence at line 7' }]);
+test('P1 meldet die Fehlerart ohne Zeilen- und Spaltenangabe', () => {
+  // Sonst wird jede Datei zu einer eigenen Gruppe im Bericht.
+  const b = pruefe([
+    n('K/x.md', null, { fmFehler: 'unknown escape sequence at line 7, column 43:' }),
+    n('K/y.md', null, { fmFehler: 'unknown escape sequence at line 7, column 34:' }),
+  ], VORLAGE);
+  assert.deepEqual(b.P1.map((e) => e.detail), ['unknown escape sequence', 'unknown escape sequence']);
 });
 
 test('P3 meldet typ außerhalb der Vorlage mit Wert als detail', () => {

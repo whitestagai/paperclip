@@ -39,7 +39,7 @@ function pruefe(notizen, vorlage) {
   };
 
   for (const n of notizen) {
-    if (n.fmFehler) b.P1.push({ pfad: n.pfad, detail: n.fmFehler });
+    if (n.fmFehler) b.P1.push({ pfad: n.pfad, detail: n.fmFehler.replace(/ at line \d+.*$/, '').replace(/[;:]\s*$/, '') });
     if (n.fm) {
       const { typ, status, tags } = n.fm;
       if (typ != null && !vorlage.typen.has(String(typ))) b.P3.push({ pfad: n.pfad, detail: String(typ) });

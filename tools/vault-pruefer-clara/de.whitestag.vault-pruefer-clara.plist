@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>de.whitestag.vault-pruefer-clara</string>
+
+    <!-- node, nicht zsh: nur node kommt aus launchd an den SMB-Vault (Bericht wird dort geschrieben) -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/opt/homebrew/bin/node</string>
+        <string>/Users/walterschoenenbroecher.de/.paperclip/scripts/vault-pruefer-clara/vault-pruefer-clara.js</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>BRAIN_DATABASE_URL</key>
+        <string>postgres://walterschoenenbroecher.de@localhost:5432/paperclip_brain_clara</string>
+    </dict>
+
+    <!-- Täglich 01:45 -- nach dem Tagger (01:30), vor dem Clara-Vault-Maintainer (Routine 02:00) -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>1</integer>
+        <key>Minute</key>
+        <integer>45</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/walterschoenenbroecher.de/.paperclip/logs/vault-pruefer-clara.launchd.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/walterschoenenbroecher.de/.paperclip/logs/vault-pruefer-clara.launchd.log</string>
+</dict>
+</plist>

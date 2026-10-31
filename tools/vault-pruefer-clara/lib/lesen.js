@@ -35,7 +35,6 @@ function ladeNotizen(wurzel) {
     const n = { pfad: rel.normalize('NFC'), groesse, gross: groesse > MAX_GROESSE, fm: null, fmFehler: null, body: '', hash: null };
     if (!n.gross) {
       const roh = fs.readFileSync(abs, 'utf8');
-      n.hash = crypto.createHash('sha256').update(roh).digest('hex');
       try {
         // Leeres Optionsobjekt: gray-matter cacht sonst nach Inhalt und
         // liefert für gleichen Text dasselbe Objekt zurück.
@@ -46,6 +45,8 @@ function ladeNotizen(wurzel) {
         n.fmFehler = String(e.message).split('\n')[0];
         n.body = roh;
       }
+      // Nur der Text zählt: Kopien unterscheiden sich fast immer im Frontmatter.
+      n.hash = crypto.createHash('sha256').update(n.body.trim()).digest('hex');
     }
     notizen.push(n);
   }

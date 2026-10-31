@@ -1,0 +1,12 @@
+{
+  "name": "vault-pruefer-clara",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3",
+    "postgres": "^3.4.5"
+  }
+}

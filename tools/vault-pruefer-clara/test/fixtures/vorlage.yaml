@@ -1,0 +1,10 @@
+basis:
+  title:
+  tags:            # Liste, MIN 2, MAX 6 aus Taxonomie unten
+  typ:
+  status:          # Entwurf | In Bearbeitung | Abgeschlossen | Archiviert
+
+typen:
+  Notiz:        {}
+  Songtext:
+    titel:

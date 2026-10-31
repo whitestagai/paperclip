@@ -32,7 +32,9 @@ function splitIntoBlocks(md: string): Block[] {
     const content = buf.join("\n").trim();
     if (content.length > 0) {
       blocks.push({
-        heading: [...headingStack],
+        // A skipped level (e.g. "#" followed by "###") leaves a hole in the
+        // stack; spreading it would yield undefined, which postgres rejects.
+        heading: headingStack.filter((h) => h !== undefined),
         content,
         tokens: tokenCount(content),
       });

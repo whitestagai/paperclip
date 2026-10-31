@@ -39,6 +39,13 @@ describe("chunker", () => {
     expect(leafChunk?.headingPath).toEqual(["Top", "Middle", "Leaf"]);
   });
 
+  it("leaves skipped heading levels out of heading_path", () => {
+    const md = "# Top\n\nIntro\n\n### Deep\n\nDeep body";
+    const chunks = chunkMarkdown(md, { maxTokens: 800, overlapTokens: 100 });
+    const deepChunk = chunks.find((c) => c.content.includes("Deep body"));
+    expect(deepChunk?.headingPath).toEqual(["Top", "Deep"]);
+  });
+
   it("returns no chunks for empty body", () => {
     const chunks = chunkMarkdown("", { maxTokens: 800, overlapTokens: 100 });
     expect(chunks).toEqual([]);

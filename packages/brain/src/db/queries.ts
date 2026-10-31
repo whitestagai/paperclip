@@ -59,6 +59,10 @@ export async function getNoteByPath(db: BrainDb, path: string): Promise<Note | n
   };
 }
 
+export async function setNoteChecksum(db: BrainDb, id: string, checksum: string): Promise<void> {
+  await db.update(brainNotes).set({ checksum }).where(eq(brainNotes.id, id));
+}
+
 export async function deleteNote(db: BrainDb, path: string): Promise<void> {
   await db.delete(brainNotes).where(eq(brainNotes.path, path));
 }

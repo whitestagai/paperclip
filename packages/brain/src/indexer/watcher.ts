@@ -2,10 +2,12 @@ import type { BrainDbHandle } from "../db/client.js";
 import { parseNote } from "./parser.js";
 import { chunkMarkdown } from "./chunker.js";
 import type { Embedder } from "./embedder.js";
-import { upsertNote, getNoteByPath, deleteNote } from "../db/queries.js";
+import { upsertNote, getNoteByPath, deleteNote, setNoteChecksum } from "../db/queries.js";
 import { writeChunks } from "./writer.js";
 
 const CHUNK_OPTS = { maxTokens: 800, overlapTokens: 100 };
+/** Never equals a sha256 hex digest, so a half-written note is always retried. */
+const PENDING_CHECKSUM = "pending";
 /**
  * Folders whose contents are never indexed, matched on whole path segments.
  * The "Analysen" entries hold machine-generated reports that are rewritten
@@ -49,7 +51,12 @@ export async function indexFile(
   if (existing && existing.checksum === parsed.checksum) return "unchanged";
 
   const chunks = chunkMarkdown(parsed.body, CHUNK_OPTS);
+  const embeddings =
+    chunks.length > 0 ? await embed.embedBatch(chunks.map((c) => c.content)) : [];
 
+  // The checksum is stored only once the chunks are written. Storing it up
+  // front made every failed write look "unchanged" to the next rescan, so the
+  // note was never retried.
   const noteId = await upsertNote(handle.db, {
     path: parsed.path,
     folder: parsed.folder,
@@ -57,21 +64,15 @@ export async function indexFile(
     frontmatter: parsed.frontmatter,
     mtime: parsed.mtime,
     sizeBytes: parsed.sizeBytes,
-    checksum: parsed.checksum,
+    checksum: PENDING_CHECKSUM,
   });
-
-  if (chunks.length === 0) {
-    await writeChunks(handle.sql, noteId, []);
-    return "empty";
-  }
-
-  const embeddings = await embed.embedBatch(chunks.map((c) => c.content));
   await writeChunks(
     handle.sql,
     noteId,
     chunks.map((c, i) => ({ ...c, embedding: embeddings[i]! })),
   );
-  return "indexed";
+  await setNoteChecksum(handle.db, noteId, parsed.checksum);
+  return chunks.length === 0 ? "empty" : "indexed";
 }
 
 export async function removeFile(handle: BrainDbHandle, relPath: string): Promise<void> {

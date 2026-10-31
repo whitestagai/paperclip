@@ -10,7 +10,8 @@ Gegenstück zu `vault-tagger-nightly.sh` (WHITESTAG), seit 2026-10-29.
 | Status für den Agenten | `~/.paperclip/logs/vault-tagger-clara-last.json` |
 | Log | `~/.paperclip/logs/vault-tagger-clara.log` |
 | Report | `<Vault>/Paperclip/_Meta/Vault-Tagger-Reports/` |
-| Agent | Clara Sound / Vault-Maintainer `500a1656`, Routine „Clara-Vault Frontmatter-Pflege" 02:00 |
+| Agent | Clara Sound / Vault-Maintainer `500a1656`, Routine „Clara-Vault-Pflege" 02:00 |
+| Strukturprüfung | `tools/vault-pruefer-clara/` (01:45) — der Agent berichtet beide Dienste in einem Kommentar |
 
 **Warum node statt zsh:** Ein zsh-launchd-Job kommt nicht an SMB-Inhalte, node schon; der
 gestartete python-Tagger erbt den Zugriff.

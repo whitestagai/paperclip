@@ -6,6 +6,7 @@ import { createBrainDb } from "../db/client.js";
 import { createEmbedder } from "./embedder.js";
 import { indexFile, removeFile } from "./watcher.js";
 import { fullRescan } from "./rescan.js";
+import { createSerialQueue } from "./serial-queue.js";
 
 const RESCAN_INTERVAL_MS = 60 * 60 * 1000;
 
@@ -60,9 +61,12 @@ async function main(): Promise<void> {
     `[indexer] watch mode: ${cfg.watchUsePolling ? `polling@${cfg.watchPollIntervalMs}ms` : "fsevents"}`,
   );
 
+  // One file at a time: a bulk import fires thousands of events at once.
+  const queue = createSerialQueue();
+
   watcher.on("add", async (abs) => {
     try {
-      const r = await indexFile(handle, embed, vaultRoot, rel(abs));
+      const r = await queue.push(() => indexFile(handle, embed, vaultRoot, rel(abs)));
       console.log(`[indexer] add ${rel(abs)} → ${r}`);
     } catch (e) {
       console.error(`[indexer] add error ${rel(abs)}:`, e instanceof Error ? e.message : e);
@@ -70,7 +74,7 @@ async function main(): Promise<void> {
   });
   watcher.on("change", async (abs) => {
     try {
-      const r = await indexFile(handle, embed, vaultRoot, rel(abs));
+      const r = await queue.push(() => indexFile(handle, embed, vaultRoot, rel(abs)));
       console.log(`[indexer] change ${rel(abs)} → ${r}`);
     } catch (e) {
       console.error(`[indexer] change error ${rel(abs)}:`, e instanceof Error ? e.message : e);
@@ -78,7 +82,7 @@ async function main(): Promise<void> {
   });
   watcher.on("unlink", async (abs) => {
     try {
-      await removeFile(handle, rel(abs));
+      await queue.push(() => removeFile(handle, rel(abs)));
       console.log(`[indexer] unlink ${rel(abs)}`);
     } catch (e) {
       console.error(`[indexer] unlink error ${rel(abs)}:`, e instanceof Error ? e.message : e);

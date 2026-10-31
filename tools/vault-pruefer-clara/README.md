@@ -24,6 +24,13 @@ Der Prüfer **ändert keine Notiz**. Korrekturen laufen nur nach Liste und Freig
 `clara-mirror-sync.log` älter als 60 min) · 4 Index-DB nicht erreichbar (P2 = `null`, Rest läuft) ·
 124 Timeout (30 min). Bei ≠ 0 geht eine Mail an ws@.
 
+Der Timeout greift erst nach dem Einlesen: Scan und Prüfungen laufen synchron (~3 s für
+17.500 Notizen auf dem lokalen Spiegel). Ein hängender Dateizugriff würde den Lauf
+blockieren — beim lokalen Spiegel bewusst in Kauf genommen.
+
+`letzter-stand.json` hält `{ vortag, heute }`: Ein zweiter Lauf am selben Tag vergleicht
+weiter mit dem Vortag. Tageslisten älter als 30 Tage werden beim Lauf entfernt.
+
 Tests: `npm test` (node --test, keine Datenbank nötig).
 
 Deploy:

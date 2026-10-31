@@ -18,7 +18,8 @@ const PRUEFUNGEN = {
 };
 
 const LINK = /!?\[\[([^\]|#^]+)/g;
-const ANHANG = /\.(png|jpe?g|gif|webp|svg|pdf|mp3|wav|m4a|canvas)$/i;
+// Jede Endung außer .md ist ein Anhang (Bild, Video, Office, Canvas, …).
+const ANHANG = /\.(?!md$)[a-z0-9]{1,12}$/i;
 const istImportRest = (ziel) => /^(http|mailto:|\[)/i.test(ziel) || ziel === 'Bearbeiten';
 
 const basisname = (pfad) => pfad.split('/').pop().replace(/\.md$/, '').toLowerCase();
@@ -48,7 +49,8 @@ function pruefe(notizen, vorlage) {
       else if (tags.length < vorlage.tagsMin || tags.length > vorlage.tagsMax) b.P5.push({ pfad: n.pfad, detail: `${tags.length} Tags` });
     }
     for (const [, roh] of n.body.matchAll(LINK)) {
-      const ziel = roh.trim();
+      // NFC wie die Pfade; „\" vor „|" stammt aus Tabellen ([[Ziel\|Alias]]).
+      const ziel = roh.trim().replace(/\\$/, '').normalize('NFC');
       if (istImportRest(ziel)) b.P6_import.push({ pfad: n.pfad, detail: ziel });
       else if (!ANHANG.test(ziel) && !existiert(ziel)) b.P6_echt.push({ pfad: n.pfad, detail: ziel });
     }

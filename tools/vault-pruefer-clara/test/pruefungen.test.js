@@ -67,6 +67,17 @@ test('P6 trennt echte tote Links von Import-Resten', () => {
   assert.equal(b.P6_import.length, 4);
 });
 
+test('P6 erkennt jede Nicht-md-Endung als Anhang', () => {
+  const quelle = n('Quelle.md', undefined, { body: '[[clip.mp4]] [[Angebot.docx]] [[Liste.xlsx]] [[foto.HEIC]] [[Plan.excalidraw]]' });
+  assert.deepEqual(pruefe([quelle], VORLAGE).P6_echt, []);
+});
+
+test('P6 löst NFD-Linkziele und Tabellen-Alias mit \\| auf', () => {
+  const quelle = n('Quelle.md', undefined, { body: `[[${'Müller'.normalize('NFD')}]] | [[Ziel\\|Alias]] |` });
+  const b = pruefe([quelle, n('K/Müller.md'), n('Ziel.md')], VORLAGE);
+  assert.deepEqual(b.P6_echt, []);
+});
+
 test('P7 trennt inhaltsgleich und nur namensgleich', () => {
   const b = pruefe([
     n('A/Brief.md', undefined, { hash: 'h1' }),

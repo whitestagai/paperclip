@@ -30,6 +30,8 @@ function spiegelAktuell(logText, jetzt, maxMinuten = 60) {
     const m = zeilen[i].match(OK_ZEILE);
     if (!m) continue;
     const alter = Math.round((jetzt - ausBerlin(...m.slice(1).map(Number))) / 60000);
+    // Uhr verstellt oder Zeile kaputt: Ein Sync aus der Zukunft beweist nichts.
+    if (alter < -5) return { ok: false, grund: `letzter Sync liegt ${-alter} min in der Zukunft` };
     return alter <= maxMinuten
       ? { ok: true, grund: `letzter Sync vor ${alter} min` }
       : { ok: false, grund: `letzter erfolgreicher Sync vor ${alter} min (Grenze ${maxMinuten} min)` };

@@ -33,6 +33,35 @@ test('spiegelAktuell: Nacht der Sommerzeit-Umstellung ergibt das echte Alter', (
   assert.match(r.grund, /vor 15 min/);
 });
 
+test('spiegelAktuell: OK-Zeile aus der Zukunft ist nicht aktuell', () => {
+  const r = spiegelAktuell(okZeile(-60) + '\n', JETZT);
+  assert.equal(r.ok, false);
+  assert.match(r.grund, /Zukunft/);
+});
+
+test('main: zweiter Lauf am selben Tag vergleicht weiter mit dem Vortag', async () => {
+  const u = umgebung(okZeile(10) + '\n');
+  fs.mkdirSync(u.opts.stateDir, { recursive: true });
+  // Vortag: 3 P1-Befunde. Heute 1 → Delta −2, auch beim zweiten Lauf heute.
+  const vortag = { timestamp: '2026-10-31T00:45:00Z', pruefungen: { P1: { anzahl: 3, delta_vortag: null, stufe: 'hoch' } } };
+  fs.writeFileSync(path.join(u.opts.stateDir, 'letzter-stand.json'), JSON.stringify(vortag));
+  await main(u.opts);
+  await main(u.opts);
+  const s = JSON.parse(fs.readFileSync(u.opts.statusDatei, 'utf8'));
+  assert.equal(s.pruefungen.P1.delta_vortag, -2);
+});
+
+test('main: Tageslisten älter als 30 Tage werden entfernt', async () => {
+  const u = umgebung(okZeile(10) + '\n');
+  for (const d of ['2026-09-30', '2026-10-05', 'nicht-loeschen']) fs.mkdirSync(path.join(u.opts.stateDir, d), { recursive: true });
+  await main(u.opts);
+  const rest = fs.readdirSync(u.opts.stateDir).sort();
+  assert.ok(!rest.includes('2026-09-30'));
+  assert.ok(rest.includes('2026-10-05'));
+  assert.ok(rest.includes('nicht-loeschen'));
+  assert.ok(rest.includes('2026-11-01'));
+});
+
 test('spiegelAktuell: nur Abbrüche, leer oder Müll ist nicht aktuell', () => {
   assert.equal(spiegelAktuell('2026-11-01 01:40:00  ABBRUCH: x\n', JETZT).ok, false);
   assert.equal(spiegelAktuell('', JETZT).ok, false);

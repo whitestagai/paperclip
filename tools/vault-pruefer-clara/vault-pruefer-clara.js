@@ -53,9 +53,36 @@ async function mailhub(subject, body) {
   } catch (e) { console.error('Fehler-Mail gescheitert: ' + e.message); }
 }
 
+// Über eine Temp-Datei: Der Agent liest nie eine halb geschriebene Datei.
 function schreibeJson(datei, daten) {
   fs.mkdirSync(path.dirname(datei), { recursive: true });
-  fs.writeFileSync(datei, JSON.stringify(daten, null, 2) + '\n');
+  const tmp = datei + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(daten, null, 2) + '\n');
+  fs.renameSync(tmp, datei);
+}
+
+// letzter-stand.json hält { vortag, heute }. Gehört „heute" zu einem früheren
+// Tag, wird es zum Vortag. Ältere Fassungen enthielten nur einen Status.
+function ladeStand(datei, datum) {
+  let roh = null;
+  try { roh = JSON.parse(fs.readFileSync(datei, 'utf8')); } catch (e) {}
+  if (!roh) return { vortag: null, heute: null };
+  if (!('heute' in roh)) roh = { vortag: null, heute: roh };
+  const heuteDatum = roh.heute?.timestamp ? datumBerlin(new Date(roh.heute.timestamp)) : null;
+  return heuteDatum === datum ? roh : { vortag: roh.heute, heute: null };
+}
+
+const TAGESLISTE = /^\d{4}-\d{2}-\d{2}$/;
+const AUFBEWAHRUNG_TAGE = 30;
+
+// Nur Ordner mit Datumsnamen im eigenen State-Verzeichnis, älter als 30 Tage.
+function raeumeListenAuf(stateDir, jetzt) {
+  const grenze = datumBerlin(new Date(jetzt - AUFBEWAHRUNG_TAGE * 86400000));
+  for (const e of fs.readdirSync(stateDir, { withFileTypes: true })) {
+    if (e.isDirectory() && TAGESLISTE.test(e.name) && e.name < grenze) {
+      fs.rmSync(path.join(stateDir, e.name), { recursive: true });
+    }
+  }
 }
 
 async function pruefen(o, jetzt) {
@@ -131,8 +158,10 @@ async function lauf(o) {
 
   const { befunde, notizen, exitCode, fehler } = ergebnis;
   const letzterStand = path.join(o.stateDir, 'letzter-stand.json');
-  let vorher = null;
-  try { vorher = JSON.parse(fs.readFileSync(letzterStand, 'utf8')); } catch (e) {}
+  const { vortag, heute } = ladeStand(letzterStand, datum);
+  // Ein Wiederholungslauf am selben Tag vergleicht weiter mit dem Vortag —
+  // sonst setzte ein Probelauf vor 02:00 alle Deltas auf 0.
+  const vorher = vortag;
 
   const reportPath = path.join(o.berichtDir, `${datum}.md`);
   const status = baueStatus({ befunde, vorher, notizenGesamt: notizen.length, exitCode, reportPath, zeit: jetzt });
@@ -141,8 +170,9 @@ async function lauf(o) {
   // Status und Vortag zuerst: Fällt danach das NAS aus, liest der Agent einen
   // Status mit Grund statt eines veralteten Erfolgs von gestern.
   schreibeListen(befunde, path.join(o.stateDir, datum));
+  raeumeListenAuf(o.stateDir, jetzt);
   schreibeJson(o.statusDatei, status);
-  schreibeJson(letzterStand, fuerVortag(status, vorher));
+  schreibeJson(letzterStand, { vortag, heute: fuerVortag(status, heute || vortag) });
   try {
     fs.mkdirSync(o.berichtDir, { recursive: true });
     fs.writeFileSync(reportPath, baueBericht(status, befunde, datum));

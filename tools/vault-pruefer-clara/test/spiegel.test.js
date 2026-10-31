@@ -26,6 +26,13 @@ test('spiegelAktuell: OK-Zeile 90 Minuten alt ist veraltet', () => {
   assert.match(r.grund, /90/);
 });
 
+test('spiegelAktuell: Nacht der Sommerzeit-Umstellung ergibt das echte Alter', () => {
+  // 28.03.2027: 02:00 CET springt auf 03:00 CEST. 01:30 CET = 00:30Z, Prüfung um 00:45Z.
+  const r = spiegelAktuell('2027-03-28 01:30:00  OK (node): 1 .md gespiegelt.\n', new Date('2027-03-28T00:45:00Z'));
+  assert.equal(r.ok, true);
+  assert.match(r.grund, /vor 15 min/);
+});
+
 test('spiegelAktuell: nur Abbrüche, leer oder Müll ist nicht aktuell', () => {
   assert.equal(spiegelAktuell('2026-11-01 01:40:00  ABBRUCH: x\n', JETZT).ok, false);
   assert.equal(spiegelAktuell('', JETZT).ok, false);
@@ -66,6 +73,43 @@ test('main gegen Fixtures: Index nicht erreichbar ergibt exit 4, Rest läuft', a
   assert.ok(fs.existsSync(path.join(u.opts.stateDir, '2026-11-01', 'P1.txt')));
   assert.ok(fs.existsSync(path.join(u.opts.stateDir, 'letzter-stand.json')));
   assert.equal(u.mails.length, 1);
+});
+
+test('main: Bericht nicht schreibbar ergibt exit 3, Status und Vortag trotzdem geschrieben', async () => {
+  const u = umgebung(okZeile(10) + '\n');
+  // Elternpfad ist eine Datei → mkdir scheitert wie bei fehlendem NAS-Mount.
+  const blocker = path.join(u.dir, 'kein-nas');
+  fs.writeFileSync(blocker, '');
+  u.opts.berichtDir = path.join(blocker, 'Reports');
+  await main(u.opts);
+  const s = JSON.parse(fs.readFileSync(u.opts.statusDatei, 'utf8'));
+  assert.equal(s.exit_code, 3);
+  assert.match(s.fehler, /Bericht nicht schreibbar/);
+  assert.equal(s.report_path, '');
+  assert.equal(s.pruefungen.P1.anzahl, 1);
+  assert.ok(fs.existsSync(path.join(u.opts.stateDir, 'letzter-stand.json')));
+  assert.ok(u.mails.some((m) => /Bericht nicht schreibbar/.test(m.text)));
+});
+
+test('main: unerwarteter Fehler beim Schreiben ergibt exit 1 statt keinem Status', async () => {
+  const u = umgebung(okZeile(10) + '\n');
+  const blocker = path.join(u.dir, 'state-ist-datei');
+  fs.writeFileSync(blocker, '');
+  u.opts.stateDir = blocker;
+  await main(u.opts);
+  const s = JSON.parse(fs.readFileSync(u.opts.statusDatei, 'utf8'));
+  assert.equal(s.exit_code, 1);
+  assert.ok(s.fehler);
+  assert.equal(u.mails.length, 1);
+});
+
+test('main: fehlender Spiegel bei frischem Log ergibt exit 3', async () => {
+  const u = umgebung(okZeile(10) + '\n');
+  u.opts.spiegel = path.join(u.dir, 'gibt-es-nicht');
+  await main(u.opts);
+  const s = JSON.parse(fs.readFileSync(u.opts.statusDatei, 'utf8'));
+  assert.equal(s.exit_code, 3);
+  assert.match(s.fehler, /Spiegel nicht lesbar/);
 });
 
 test('main mit veraltetem Spiegel: exit 3, kein Bericht', async () => {

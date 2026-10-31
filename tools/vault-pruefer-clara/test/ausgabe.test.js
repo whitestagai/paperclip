@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const matter = require('gray-matter');
-const { baueStatus, baueBericht, schreibeListen } = require('../lib/ausgabe');
+const { baueStatus, baueBericht, schreibeListen, fuerVortag } = require('../lib/ausgabe');
 const { pruefe, PRUEFUNGEN } = require('../lib/pruefungen');
 const { ladeVorlage } = require('../lib/lesen');
 
@@ -38,6 +38,17 @@ test('P2 null bleibt null, ohne Absturz', () => {
   const s = status(Object.assign(leer(), { P2: null }), vorher);
   assert.deepEqual(s.pruefungen.P2, { anzahl: null, delta_vortag: null, stufe: 'hoch' });
   assert.equal(s.neu_hoch, 0);
+});
+
+test('fuerVortag trägt eine ausgefallene Prüfung vom Vorlauf weiter', () => {
+  // Sonst versteckt eine Nacht ohne Index-DB jeden Anstieg von P2 für immer.
+  const n1 = status(Object.assign(leer(), { P2: eintraege(3) }));
+  const n2 = status(Object.assign(leer(), { P2: null }), n1);
+  const gespeichert = fuerVortag(n2, n1);
+  assert.equal(gespeichert.pruefungen.P2.anzahl, 3);
+  const n3 = status(Object.assign(leer(), { P2: eintraege(40) }), gespeichert);
+  assert.equal(n3.pruefungen.P2.delta_vortag, 37);
+  assert.equal(n3.neu_hoch, 37);
 });
 
 test('Bericht nennt Änderungen zuerst und je Prüfung die Quelle', () => {

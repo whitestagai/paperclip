@@ -28,6 +28,19 @@ function baueStatus({ befunde, vorher, notizenGesamt, exitCode, reportPath, zeit
   };
 }
 
+// Stand für den Vergleich in der nächsten Nacht. Eine Prüfung, die in diesem
+// Lauf ausgefallen ist (anzahl null, z. B. P2 ohne Index-DB), behält den Wert
+// des Vorlaufs — sonst hätte die nächste Nacht kein Delta und ein Anstieg
+// bliebe unsichtbar.
+function fuerVortag(status, vorher) {
+  const pruefungen = {};
+  for (const k of SCHLUESSEL) {
+    const p = status.pruefungen[k];
+    pruefungen[k] = p.anzahl == null && vorher?.pruefungen?.[k] ? vorher.pruefungen[k] : p;
+  }
+  return { ...status, pruefungen };
+}
+
 const zahl = (x) => (x == null ? '–' : String(x));
 const delta = (x) => (x == null ? '–' : x > 0 ? `+${x}` : String(x));
 
@@ -83,4 +96,4 @@ function schreibeListen(befunde, verzeichnis) {
   }
 }
 
-module.exports = { baueStatus, baueBericht, schreibeListen };
+module.exports = { baueStatus, baueBericht, schreibeListen, fuerVortag };

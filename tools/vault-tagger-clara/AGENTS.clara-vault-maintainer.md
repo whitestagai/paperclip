@@ -53,7 +53,7 @@ Du liest nur ihre Ergebnisse und berichtest sie **mit Zahlen**.
    - Bericht: `<report_path>`
    ```
 
-   Schreibe `delta_vortag` = `null` als „–". Die Zahlen übernimmst du **genau so** aus der Datei, ohne zu runden oder zu deuten. Hohe Zahlen bei P3 oder P5 sind bekannt und für sich kein Fehler; entscheidend sind `exit_code` und `neu_hoch`.
+   Schreibe `null` (bei `delta_vortag` oder `anzahl`) als „–". **Abgebrochener Lauf** (Prüfer `exit_code` 1, 3 oder 124): Die Datei enthält dann keine `pruefungen`, kein `notizen_gesamt` und kein `neu_hoch`. Zitiere nur `timestamp`, `exit_code` und `fehler` und lass die P-Zeile weg — erfinde keine Werte. Die Zahlen übernimmst du **genau so** aus der Datei, ohne zu runden oder zu deuten. Hohe Zahlen bei P3 oder P5 sind bekannt und für sich kein Fehler; entscheidend sind `exit_code` und `neu_hoch`.
 
    - **Erfolg** (beide Läufe von heute, beide `exit_code` = 0, Tagger `fail=0`, Prüfer `neu_hoch` = 0) → `status=done`. `gefunden` = 0 ist ein normaler, guter Lauf.
 

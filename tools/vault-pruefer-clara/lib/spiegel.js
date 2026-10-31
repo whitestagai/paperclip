@@ -7,14 +7,21 @@
 const OK_ZEILE = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})  OK /;
 
 // Berliner Wandzeit → Date, unabhängig von der Zeitzone des Rechners.
-function ausBerlin(j, mo, t, h, mi, s) {
-  const alsUtc = Date.UTC(j, mo - 1, t, h, mi, s);
-  const wand = new Date(alsUtc).toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' });
+function versatzBerlin(zeitpunkt) {
+  const wand = new Date(zeitpunkt).toLocaleString('sv-SE', { timeZone: 'Europe/Berlin' });
   const [d, z] = wand.split(' ');
   const [wj, wmo, wt] = d.split('-').map(Number);
   const [wh, wmi, ws] = z.split(':').map(Number);
-  const versatz = Date.UTC(wj, wmo - 1, wt, wh, wmi, ws) - alsUtc;
-  return new Date(alsUtc - versatz);
+  return Date.UTC(wj, wmo - 1, wt, wh, wmi, ws) - zeitpunkt;
+}
+
+function ausBerlin(j, mo, t, h, mi, s) {
+  const alsUtc = Date.UTC(j, mo - 1, t, h, mi, s);
+  // Zweiter Durchgang: Der Versatz gilt am echten Zeitpunkt, nicht an der als
+  // UTC gelesenen Wandzeit — sonst liegt die Nacht der Sommerzeit-Umstellung
+  // eine Stunde daneben.
+  const erste = alsUtc - versatzBerlin(alsUtc);
+  return new Date(alsUtc - versatzBerlin(erste));
 }
 
 function spiegelAktuell(logText, jetzt, maxMinuten = 60) {

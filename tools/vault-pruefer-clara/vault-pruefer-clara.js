@@ -13,7 +13,7 @@ const path = require('path');
 const { ladeVorlage, ladeNotizen } = require('./lib/lesen');
 const { pruefe } = require('./lib/pruefungen');
 const { vergleicheIndex, ladeIndex } = require('./lib/index-abgleich');
-const { baueStatus, baueBericht, schreibeListen } = require('./lib/ausgabe');
+const { baueStatus, baueBericht, schreibeListen, fuerVortag } = require('./lib/ausgabe');
 const { spiegelAktuell } = require('./lib/spiegel');
 
 const HOME = os.homedir();
@@ -67,7 +67,9 @@ async function pruefen(o, jetzt) {
   }
 
   const vorlage = ladeVorlage(o.vorlage);
-  const notizen = ladeNotizen(o.spiegel);
+  let notizen;
+  try { notizen = ladeNotizen(o.spiegel); }
+  catch (e) { return { abbruch: { exit_code: 3, fehler: 'Spiegel nicht lesbar: ' + e.message } }; }
   const befunde = pruefe(notizen, vorlage);
   let exitCode = 0;
   let fehler;
@@ -81,8 +83,27 @@ async function pruefen(o, jetzt) {
   return { befunde, notizen, exitCode, fehler };
 }
 
+// Jeder Fehler, auch nach dem Prüfen, endet in einer Status-Datei mit Grund.
+// Sonst läge dort der Erfolg von gestern, und der Agent meldete nur
+// „nicht gefeuert" — ohne Mail an Walter.
 async function main(opts = {}) {
   const o = { ...STANDARD, mail: mailhub, ...opts };
+  try {
+    return await lauf(o);
+  } catch (e) {
+    const status = {
+      timestamp: (o.jetzt || new Date()).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+      exit_code: 1,
+      fehler: 'Unerwarteter Fehler: ' + e.message,
+      report_path: '',
+    };
+    try { schreibeJson(o.statusDatei, status); } catch (e2) { console.error('Status nicht schreibbar: ' + e2.message); }
+    await o.mail('Vault-Prüfer Clara: Lauf abgebrochen (exit 1)', status.fehler);
+    return status;
+  }
+}
+
+async function lauf(o) {
   const jetzt = o.jetzt || new Date();
   const datum = datumBerlin(jetzt);
   const zeitstempel = jetzt.toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -117,13 +138,22 @@ async function main(opts = {}) {
   const status = baueStatus({ befunde, vorher, notizenGesamt: notizen.length, exitCode, reportPath, zeit: jetzt });
   if (fehler) status.fehler = fehler;
 
+  // Status und Vortag zuerst: Fällt danach das NAS aus, liest der Agent einen
+  // Status mit Grund statt eines veralteten Erfolgs von gestern.
   schreibeListen(befunde, path.join(o.stateDir, datum));
-  fs.mkdirSync(o.berichtDir, { recursive: true });
-  fs.writeFileSync(reportPath, baueBericht(status, befunde, datum));
   schreibeJson(o.statusDatei, status);
-  schreibeJson(letzterStand, status);
+  schreibeJson(letzterStand, fuerVortag(status, vorher));
+  try {
+    fs.mkdirSync(o.berichtDir, { recursive: true });
+    fs.writeFileSync(reportPath, baueBericht(status, befunde, datum));
+  } catch (e) {
+    status.exit_code = 3;
+    status.report_path = '';
+    status.fehler = [status.fehler, 'Bericht nicht schreibbar (NAS-Mount /Volumes/homes prüfen): ' + e.message].filter(Boolean).join(' · ');
+    schreibeJson(o.statusDatei, status);
+  }
 
-  if (exitCode !== 0) await o.mail(`Vault-Prüfer Clara: Lauf unvollständig (exit ${exitCode})`, fehler);
+  if (status.exit_code !== 0) await o.mail(`Vault-Prüfer Clara: Lauf unvollständig (exit ${status.exit_code})`, status.fehler);
   return status;
 }
 
